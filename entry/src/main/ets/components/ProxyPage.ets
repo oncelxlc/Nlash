@@ -277,7 +277,7 @@ export struct ProxyPage {
         top: this.metrics.pagePadding,
         left: this.metrics.pagePadding,
         right: this.metrics.pagePadding,
-        bottom: this.metrics.pagePadding + 80
+        bottom: this.metrics.pagePadding + 60
       })
     }
     .width('100%')

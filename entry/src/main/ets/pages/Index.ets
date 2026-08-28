@@ -275,6 +275,7 @@ struct Index {
     .backgroundColor($r('app.color.nav_surface'))
     .border({ width: { top: 1 }, color: $r('app.color.nav_divider') })
     .zIndex(1)
+    .expandSafeArea([SafeAreaType.SYSTEM],[SafeAreaEdge.BOTTOM])
   }
 
   build() {
@@ -299,5 +300,6 @@ struct Index {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.app_background'))
+    .expandSafeArea([SafeAreaType.SYSTEM],[SafeAreaEdge.BOTTOM])
   }
 }
