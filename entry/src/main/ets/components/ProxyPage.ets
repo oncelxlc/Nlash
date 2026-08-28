@@ -287,7 +287,7 @@ export struct ProxyPage {
   @Builder
   private floatingDelayButton() {
     if (this.currentGroup() !== undefined) {
-      Button(this.busyKey.length > 0 ? '测速中…' : '⚡ 测试当前组')
+      Button(this.busyKey.length > 0 ? '测速中…' : '⚡ 测试')
         .type(ButtonType.Normal)
         .borderRadius(BUTTON_RADIUS)
         .height(52)

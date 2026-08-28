@@ -233,6 +233,7 @@ struct Index {
     .backgroundColor($r('app.color.nav_surface'))
     .border({ width: { right: 1 }, color: $r('app.color.nav_divider') })
     .zIndex(1)
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
@@ -290,7 +291,6 @@ struct Index {
         .mode(NavigationMode.Stack)
         .navDestination(this.destinationBuilder)
         .backgroundColor($r('app.color.app_background'))
-        .clip(true)
         this.bottomNavigation()
       }
       .height('100%')
