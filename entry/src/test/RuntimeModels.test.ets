@@ -3,11 +3,13 @@ import {
   appendTrafficSample,
   ConnectionSnapshot,
   connectionTitle,
+  DEFAULT_RUNTIME_MODE,
   formatBytes,
   formatSpeed,
   mergeGroupDelay,
   ProxyGroupSnapshot,
   pruneProxySelections,
+  RuntimeMode,
   TrafficSample
 } from '../main/ets/models/RuntimeModels';
 
@@ -17,6 +19,10 @@ export default function runtimeModelsTest() {
       expect(formatBytes(0)).assertEqual('0 B');
       expect(formatBytes(1536)).assertEqual('1.5 KiB');
       expect(formatSpeed(1024)).assertEqual('1.0 KiB/s');
+    });
+
+    it('defaultsRuntimeModeToRule', 0, () => {
+      expect(DEFAULT_RUNTIME_MODE).assertEqual(RuntimeMode.RULE);
     });
 
     it('prefersHostForConnectionTitle', 0, () => {

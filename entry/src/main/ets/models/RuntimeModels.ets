@@ -4,6 +4,8 @@ export enum RuntimeMode {
   DIRECT = 'direct'
 }
 
+export const DEFAULT_RUNTIME_MODE: RuntimeMode = RuntimeMode.RULE;
+
 export enum ProxySnapshotSource {
   NONE = 'none',
   CONFIG = 'config',

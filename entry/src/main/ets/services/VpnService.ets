@@ -5,6 +5,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import {
   decodeVpnStateEnvelope,
   CoreRestartAction,
+  resolveVpnConnectedAt,
   resolveCoreRestartAction,
   VPN_BUNDLE_NAME,
   VPN_STATE_COMMON_EVENT,
@@ -27,6 +28,7 @@ class VpnService {
   private applicationContext: common.ApplicationContext | undefined;
   private state: VpnState = VpnState.IDLE;
   private lastMessage: string = '';
+  private connectedAt: number = 0;
   private listeners: Set<VpnStateListener> = new Set<VpnStateListener>();
   private startOperation: Promise<void> | undefined;
   private stopOperation: Promise<void> | undefined;
@@ -164,6 +166,10 @@ class VpnService {
     return this.lastMessage;
   }
 
+  getConnectedAt(): number {
+    return this.connectedAt;
+  }
+
   subscribe(listener: VpnStateListener): () => void {
     this.listeners.add(listener);
     listener(this.state, this.lastMessage);
@@ -219,6 +225,7 @@ class VpnService {
   private updateState(state: VpnState, message: string = ''): void {
     const previousState = this.state;
     const previousMessage = this.lastMessage;
+    this.connectedAt = resolveVpnConnectedAt(previousState, state, this.connectedAt, Date.now());
     this.state = state;
     this.lastMessage = message;
     hilog.info(DOMAIN, TAG, 'state=%{public}s message=%{public}s', state, message);

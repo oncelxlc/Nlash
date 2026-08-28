@@ -24,6 +24,29 @@ export function resolveCoreRestartAction(state: VpnState): CoreRestartAction {
   return CoreRestartAction.RESTART;
 }
 
+export function formatVpnRunDuration(totalSeconds: number): string {
+  const seconds = Number.isFinite(totalSeconds) && totalSeconds > 0 ? Math.floor(totalSeconds) : 0;
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor(seconds % 3600 / 60);
+  const remainingSeconds = seconds % 60;
+  return `${durationPart(hours)}:${durationPart(minutes)}:${durationPart(remainingSeconds)}`;
+}
+
+export function resolveVpnConnectedAt(previousState: VpnState, state: VpnState,
+  connectedAt: number, now: number): number {
+  if (state === VpnState.CONNECTED && previousState !== VpnState.CONNECTED) {
+    return now;
+  }
+  if (state === VpnState.IDLE || state === VpnState.DISCONNECTED || state === VpnState.ERROR) {
+    return 0;
+  }
+  return connectedAt;
+}
+
+function durationPart(value: number): string {
+  return value < 10 ? `0${value}` : value.toString();
+}
+
 export interface VpnStateEvent {
   state: VpnState;
   message: string;

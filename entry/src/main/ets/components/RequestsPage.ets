@@ -2,6 +2,7 @@ import { formatBytes, RequestRecord, RuntimeStoreSnapshot } from '../models/Runt
 import { feedbackService } from '../services/FeedbackService';
 import { runtimeStore } from '../stores/RuntimeStore';
 import { ResponsiveMetrics, resolveResponsiveMetrics } from '../ui/ResponsiveMetrics';
+import { BUTTON_RADIUS } from '../ui/UiConstants';
 
 enum RequestFilter {
   ALL = 'ALL',
@@ -149,6 +150,7 @@ export struct RequestsPage {
           ForEach(FILTERS, (item: RequestFilter) => {
             Button(this.filterLabel(item))
               .type(ButtonType.Normal)
+              .borderRadius(BUTTON_RADIUS)
               .fontColor(this.filter === item ? Color.White : $r('app.color.content_primary'))
               .backgroundColor(this.filter === item ? $r('app.color.nav_selected') : $r('app.color.card_background'))
               .onClick((): void => {
@@ -202,6 +204,8 @@ export struct RequestsPage {
   private floatingClearButton() {
     if (this.requests.length > 0) {
       Button('清空记录')
+        .type(ButtonType.Normal)
+        .borderRadius(BUTTON_RADIUS)
         .height(52)
         .padding({ left: 20, right: 20 })
         .fontColor(Color.White)

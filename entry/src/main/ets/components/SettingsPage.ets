@@ -5,6 +5,7 @@ import { coreClient } from '../services/CoreClient';
 import { runtimeStore } from '../stores/RuntimeStore';
 import { settingsStore } from '../stores/SettingsStore';
 import { ResponsiveMetrics, resolveResponsiveMetrics } from '../ui/ResponsiveMetrics';
+import { BUTTON_RADIUS } from '../ui/UiConstants';
 
 const THEMES: AppThemeMode[] = [AppThemeMode.SYSTEM, AppThemeMode.LIGHT, AppThemeMode.DARK];
 
@@ -166,6 +167,7 @@ export struct SettingsPage {
       ForEach(THEMES, (theme: AppThemeMode) => {
         Button(this.themeLabel(theme))
           .type(ButtonType.Normal)
+          .borderRadius(BUTTON_RADIUS)
           .layoutWeight(1)
           .fontColor(this.settings.themeMode === theme ? Color.White : $r('app.color.content_primary'))
           .backgroundColor(this.settings.themeMode === theme ?
@@ -195,6 +197,8 @@ export struct SettingsPage {
           this.delayUrlInput = value;
         })
       Button('保存网络设置')
+        .type(ButtonType.Normal)
+        .borderRadius(BUTTON_RADIUS)
         .width('100%')
         .enabled(!this.saving)
         .onClick((): void => {
@@ -209,6 +213,7 @@ export struct SettingsPage {
     Column({ space: 8 }) {
       Button('重置 Core 流量统计')
         .type(ButtonType.Normal)
+        .borderRadius(BUTTON_RADIUS)
         .width('100%')
         .enabled(this.runtimeAvailable && this.runtimeBusyKey.length === 0)
         .onClick((): void => {
@@ -216,6 +221,7 @@ export struct SettingsPage {
         })
       Button('清空会话请求记录')
         .type(ButtonType.Normal)
+        .borderRadius(BUTTON_RADIUS)
         .width('100%')
         .onClick((): void => {
           this.clearRequests();

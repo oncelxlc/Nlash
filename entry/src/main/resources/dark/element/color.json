@@ -55,6 +55,38 @@
     {
       "name": "status_error",
       "value": "#FF8A8A"
+    },
+    {
+      "name": "mode_rule_background",
+      "value": "#253451"
+    },
+    {
+      "name": "mode_rule_foreground",
+      "value": "#8AB4FF"
+    },
+    {
+      "name": "mode_global_background",
+      "value": "#8AB4FF"
+    },
+    {
+      "name": "mode_global_foreground",
+      "value": "#101114"
+    },
+    {
+      "name": "mode_direct_background",
+      "value": "#343A45"
+    },
+    {
+      "name": "mode_direct_foreground",
+      "value": "#F4F5F7"
+    },
+    {
+      "name": "vpn_fab_background",
+      "value": "#B9C9CE"
+    },
+    {
+      "name": "vpn_fab_foreground",
+      "value": "#344047"
     }
   ]
 }

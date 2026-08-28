@@ -3,6 +3,8 @@ import {
   CoreRestartAction,
   decodeVpnStateEnvelope,
   encodeVpnStateEnvelope,
+  formatVpnRunDuration,
+  resolveVpnConnectedAt,
   resolveCoreRestartAction,
   VpnState,
   VpnStateEnvelope,
@@ -71,6 +73,25 @@ export default function vpnModelsTest() {
       expect(resolveCoreRestartAction(VpnState.ERROR)).assertEqual(CoreRestartAction.RESTART);
       expect(resolveCoreRestartAction(VpnState.STARTING)).assertEqual(CoreRestartAction.BLOCKED);
       expect(resolveCoreRestartAction(VpnState.STOPPING)).assertEqual(CoreRestartAction.BLOCKED);
+    });
+
+    it('formatsSingleRunDuration', 0, () => {
+      expect(formatVpnRunDuration(0)).assertEqual('00:00:00');
+      expect(formatVpnRunDuration(65)).assertEqual('00:01:05');
+      expect(formatVpnRunDuration(3661)).assertEqual('01:01:01');
+      expect(formatVpnRunDuration(360061)).assertEqual('100:01:01');
+      expect(formatVpnRunDuration(-1)).assertEqual('00:00:00');
+    });
+
+    it('tracksSingleRunStartAcrossVpnStates', 0, () => {
+      const startedAt = resolveVpnConnectedAt(VpnState.STARTING, VpnState.CONNECTED, 0, 1000);
+      expect(startedAt).assertEqual(1000);
+      expect(resolveVpnConnectedAt(VpnState.CONNECTED, VpnState.CONNECTED, startedAt, 2000))
+        .assertEqual(startedAt);
+      expect(resolveVpnConnectedAt(VpnState.CONNECTED, VpnState.STOPPING, startedAt, 3000))
+        .assertEqual(startedAt);
+      expect(resolveVpnConnectedAt(VpnState.STOPPING, VpnState.DISCONNECTED, startedAt, 4000))
+        .assertEqual(0);
     });
   });
 }

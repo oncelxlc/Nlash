@@ -10,6 +10,7 @@ import { feedbackService } from '../services/FeedbackService';
 import { runtimeStore } from '../stores/RuntimeStore';
 import { settingsStore } from '../stores/SettingsStore';
 import { ResponsiveMetrics, resolveResponsiveMetrics } from '../ui/ResponsiveMetrics';
+import { BUTTON_RADIUS } from '../ui/UiConstants';
 
 @Component
 export struct ProxyPage {
@@ -180,6 +181,7 @@ export struct ProxyPage {
       .onClick((): void => { this.selectNode(node); })
       Button('⚡')
         .type(ButtonType.Normal)
+        .borderRadius(BUTTON_RADIUS)
         .fontSize(14)
         .width(38)
         .height(30)
@@ -233,6 +235,7 @@ export struct ProxyPage {
               ForEach(this.groups, (group: ProxyGroupSnapshot) => {
                 Button(group.name)
                   .type(ButtonType.Normal)
+                  .borderRadius(BUTTON_RADIUS)
                   .fontColor(this.selectedGroup === group.name ? Color.White : $r('app.color.content_primary'))
                   .backgroundColor(this.selectedGroup === group.name ?
                     $r('app.color.nav_selected') : $r('app.color.card_background'))
@@ -285,6 +288,8 @@ export struct ProxyPage {
   private floatingDelayButton() {
     if (this.currentGroup() !== undefined) {
       Button(this.busyKey.length > 0 ? '测速中…' : '⚡ 测试当前组')
+        .type(ButtonType.Normal)
+        .borderRadius(BUTTON_RADIUS)
         .height(52)
         .padding({ left: 20, right: 20 })
         .backgroundColor($r('app.color.nav_selected'))

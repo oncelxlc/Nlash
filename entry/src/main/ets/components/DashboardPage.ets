@@ -1,6 +1,7 @@
 import { Profile, ProfileStoreSnapshot } from '../models/ProfileModels';
 import {
   DashboardSnapshot,
+  DEFAULT_RUNTIME_MODE,
   formatBytes,
   formatSpeed,
   LocalNetworkSnapshot,
@@ -8,7 +9,7 @@ import {
   RuntimeStoreSnapshot,
   TrafficSample
 } from '../models/RuntimeModels';
-import { VpnState } from '../models/VpnModels';
+import { formatVpnRunDuration, VpnState } from '../models/VpnModels';
 import { feedbackService } from '../services/FeedbackService';
 import { localNetworkService } from '../services/LocalNetworkService';
 import { vpnService } from '../services/VpnService';
@@ -20,6 +21,7 @@ import {
   resolveDashboardSpeedCardHeight,
   resolveResponsiveMetrics
 } from '../ui/ResponsiveMetrics';
+import { BUTTON_RADIUS } from '../ui/UiConstants';
 
 const MODES: RuntimeMode[] = [RuntimeMode.RULE, RuntimeMode.GLOBAL, RuntimeMode.DIRECT];
 
@@ -33,6 +35,9 @@ export struct DashboardPage {
   @State history: TrafficSample[] = [];
   @State localNetwork: LocalNetworkSnapshot = { localIpv4: '未知', checking: true };
   @State restarting: boolean = false;
+  @State selectedMode: RuntimeMode = DEFAULT_RUNTIME_MODE;
+  @State runtimeBusyKey: string = '';
+  @State elapsedSeconds: number = 0;
   @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
   private chartSettings: RenderingContextSettings = new RenderingContextSettings(true);
   private chartContext: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.chartSettings);
@@ -42,11 +47,16 @@ export struct DashboardPage {
   private unsubscribeProfiles: (() => void) | undefined = undefined;
   private unsubscribeRuntime: (() => void) | undefined = undefined;
   private unsubscribeNetwork: (() => void) | undefined = undefined;
+  private elapsedTimer: number | undefined = undefined;
 
   aboutToAppear(): void {
     this.unsubscribeVpn = vpnService.subscribe((state: VpnState, message: string): void => {
       this.vpnState = state;
       this.message = message;
+      if (state === VpnState.IDLE || state === VpnState.DISCONNECTED || state === VpnState.ERROR) {
+        this.selectedMode = DEFAULT_RUNTIME_MODE;
+      }
+      this.syncElapsedTimer();
     });
     this.unsubscribeProfiles = profileStore.subscribe((snapshot: ProfileStoreSnapshot): void => {
       this.profiles = snapshot.profiles;
@@ -55,6 +65,10 @@ export struct DashboardPage {
     this.unsubscribeRuntime = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
       this.runtime = snapshot.dashboard;
       this.history = snapshot.trafficHistory;
+      this.runtimeBusyKey = snapshot.busyKey;
+      if (snapshot.dashboard !== undefined) {
+        this.selectedMode = snapshot.dashboard.mode;
+      }
       setTimeout((): void => this.drawTrafficChart(), 0);
     });
     this.unsubscribeNetwork = localNetworkService.subscribe((snapshot: LocalNetworkSnapshot): void => {
@@ -71,6 +85,7 @@ export struct DashboardPage {
     this.unsubscribeProfiles = undefined;
     this.unsubscribeRuntime = undefined;
     this.unsubscribeNetwork = undefined;
+    this.stopElapsedTimer();
   }
 
   private getActiveProfile(): Profile | undefined {
@@ -128,8 +143,12 @@ export struct DashboardPage {
   }
 
   private async setMode(mode: RuntimeMode): Promise<void> {
+    if (mode === this.selectedMode || this.runtimeBusyKey.length > 0) {
+      return;
+    }
     try {
       await runtimeStore.setMode(mode);
+      this.selectedMode = mode;
       feedbackService.success(`已切换为${this.modeLabel(mode)}模式`);
     } catch (error) {
       feedbackService.error(this.errorMessage(error));
@@ -176,6 +195,33 @@ export struct DashboardPage {
     const exception = error as Error;
     return typeof exception.message === 'string' && exception.message.length > 0 ?
       exception.message : '操作失败';
+  }
+
+  private syncElapsedTimer(): void {
+    this.updateElapsedSeconds();
+    if (vpnService.getConnectedAt() > 0) {
+      if (this.elapsedTimer === undefined) {
+        this.elapsedTimer = setInterval((): void => this.updateElapsedSeconds(), 1000);
+      }
+    } else {
+      this.stopElapsedTimer();
+    }
+  }
+
+  private updateElapsedSeconds(): void {
+    const connectedAt = vpnService.getConnectedAt();
+    this.elapsedSeconds = connectedAt > 0 ? Math.max(0, Math.floor((Date.now() - connectedAt) / 1000)) : 0;
+  }
+
+  private stopElapsedTimer(): void {
+    if (this.elapsedTimer !== undefined) {
+      clearInterval(this.elapsedTimer);
+      this.elapsedTimer = undefined;
+    }
+  }
+
+  private hasRunStarted(): boolean {
+    return vpnService.getConnectedAt() > 0;
   }
 
   private hasTrafficData(): boolean {
@@ -312,32 +358,29 @@ export struct DashboardPage {
   @Builder
   private vpnCard(cardWidth: Length) {
     Column({ space: 8 }) {
-      Row() {
-        Column({ space: 5 }) {
-          this.cardTitle('VPN 代理')
-          Text(this.message.length > 0 ? this.message : '整机 VPN / TUN')
-            .fontSize(12)
-            .fontColor($r('app.color.content_secondary'))
-            .maxLines(2)
-        }
-        .alignItems(HorizontalAlign.Start)
-        .layoutWeight(1)
-        Toggle({ type: ToggleType.Switch, isOn: this.isVpnActive() })
-          .enabled(!this.isVpnBusy() && (this.isVpnActive() || this.getActiveProfile() !== undefined))
-          .onChange((enabled: boolean): void => { this.toggleVpn(enabled); })
-      }
-      .width('100%')
+      this.cardTitle('VPN 代理模式')
+      Text(this.vpnState === VpnState.CONNECTED ? '选择 Core 当前的流量处理方式' : '连接 VPN 后可切换模式')
+        .fontSize(12)
+        .fontColor($r('app.color.content_secondary'))
+        .maxLines(1)
+        .width('100%')
       Row({ space: 8 }) {
         ForEach(MODES, (mode: RuntimeMode) => {
           Button(this.modeLabel(mode))
             .type(ButtonType.Normal)
+            .borderRadius(BUTTON_RADIUS)
             .layoutWeight(1)
             .height(32)
             .fontSize(13)
-            .fontColor(this.runtime?.mode === mode ? Color.White : $r('app.color.content_primary'))
-            .backgroundColor(this.runtime?.mode === mode ?
-              $r('app.color.nav_selected') : $r('app.color.app_background'))
-            .enabled(this.vpnState === VpnState.CONNECTED)
+            .fontColor(mode === RuntimeMode.RULE ? $r('app.color.mode_rule_foreground') :
+              (mode === RuntimeMode.GLOBAL ? $r('app.color.mode_global_foreground') :
+                $r('app.color.mode_direct_foreground')))
+            .backgroundColor(mode === RuntimeMode.RULE ? $r('app.color.mode_rule_background') :
+              (mode === RuntimeMode.GLOBAL ? $r('app.color.mode_global_background') :
+                $r('app.color.mode_direct_background')))
+            .border({ width: this.selectedMode === mode ? 2 : 0, color: $r('app.color.content_primary') })
+            .opacity(this.selectedMode === mode ? 1 : 0.62)
+            .enabled(this.vpnState === VpnState.CONNECTED && this.runtimeBusyKey.length === 0)
             .onClick((): void => { this.setMode(mode); })
         }, (mode: RuntimeMode): string => mode)
       }
@@ -349,6 +392,34 @@ export struct DashboardPage {
     .padding(12)
     .borderRadius(16)
     .backgroundColor($r('app.color.card_background'))
+  }
+
+  @Builder
+  private floatingVpnButton() {
+    Button({ type: ButtonType.Normal }) {
+      Row({ space: 8 }) {
+        Text(this.hasRunStarted() ? 'Ⅱ' : '▶')
+          .fontSize(this.hasRunStarted() ? 19 : 17)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.vpn_fab_foreground'))
+        if (this.hasRunStarted()) {
+          Text(formatVpnRunDuration(this.elapsedSeconds))
+            .fontSize(14)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.vpn_fab_foreground'))
+        }
+      }
+      .justifyContent(FlexAlign.Center)
+    }
+    .width(this.hasRunStarted() ? 126 : 56)
+    .height(56)
+    .borderRadius(BUTTON_RADIUS)
+    .backgroundColor($r('app.color.vpn_fab_background'))
+    .enabled(!this.isVpnBusy() && (this.isVpnActive() || this.getActiveProfile() !== undefined))
+    .accessibilityText(this.hasRunStarted() ? '停止 VPN' : '启动 VPN')
+    .margin({ right: this.metrics.pagePadding, bottom: this.metrics.pagePadding })
+    .zIndex(2)
+    .onClick((): void => { this.toggleVpn(!this.isVpnActive()); })
   }
 
   @Builder
@@ -418,34 +489,45 @@ export struct DashboardPage {
   }
 
   build() {
-    Scroll() {
-      Column({ space: this.metrics.sectionGap }) {
-        Row({ space: 12 }) {
-          Column({ space: 4 }) {
-            Text($r('app.string.nav_dashboard'))
-              .fontSize(28)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.content_primary'))
+    Stack({ alignContent: Alignment.BottomEnd }) {
+      Scroll() {
+        Column({ space: this.metrics.sectionGap }) {
+          Row({ space: 12 }) {
+            Column({ space: 4 }) {
+              Text($r('app.string.nav_dashboard'))
+                .fontSize(28)
+                .fontWeight(FontWeight.Bold)
+                .fontColor($r('app.color.content_primary'))
+            }
+            .alignItems(HorizontalAlign.Start)
+            .layoutWeight(1)
+            Text(this.coreStatus())
+              .fontSize(12)
+              .fontColor(this.vpnState === VpnState.CONNECTED ?
+                $r('app.color.status_success') : $r('app.color.content_secondary'))
+              .enabled(!this.isVpnBusy() && !this.restarting)
+              .opacity(this.isVpnBusy() || this.restarting ? 0.55 : 1)
+              .onClick((): void => { this.confirmCoreRestart(); })
           }
-          .alignItems(HorizontalAlign.Start)
-          .layoutWeight(1)
-          Text(this.coreStatus())
-            .fontSize(12)
-            .fontColor(this.vpnState === VpnState.CONNECTED ?
-              $r('app.color.status_success') : $r('app.color.content_secondary'))
-            .enabled(!this.isVpnBusy() && !this.restarting)
-            .opacity(this.isVpnBusy() || this.restarting ? 0.55 : 1)
-            .onClick((): void => { this.confirmCoreRestart(); })
-        }
-        .width('100%')
+          .width('100%')
 
-        this.dashboardCards()
+          this.dashboardCards()
+        }
+        .justifyContent(FlexAlign.Start)
+        .alignItems(HorizontalAlign.Start)
+        .width('100%')
+        .constraintSize({ minHeight: '100%' })
+        .padding({
+          top: this.metrics.pagePadding,
+          left: this.metrics.pagePadding,
+          right: this.metrics.pagePadding,
+          bottom: this.metrics.pagePadding + 80
+        })
       }
-      .justifyContent(FlexAlign.Start)
-      .alignItems(HorizontalAlign.Start)
       .width('100%')
-      .constraintSize({ minHeight: '100%' })
-      .padding(this.metrics.pagePadding)
+      .height('100%')
+
+      this.floatingVpnButton()
     }
     .width('100%')
     .height('100%')

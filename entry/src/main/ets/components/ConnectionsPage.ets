@@ -7,6 +7,7 @@ import {
 import { feedbackService } from '../services/FeedbackService';
 import { runtimeStore } from '../stores/RuntimeStore';
 import { ResponsiveMetrics, resolveResponsiveMetrics } from '../ui/ResponsiveMetrics';
+import { BUTTON_RADIUS } from '../ui/UiConstants';
 
 @Component
 export struct ConnectionsPage {
@@ -102,6 +103,7 @@ export struct ConnectionsPage {
         .alignItems(HorizontalAlign.Start)
         Button('关闭')
           .type(ButtonType.Normal)
+          .borderRadius(BUTTON_RADIUS)
           .fontColor($r('app.color.status_error'))
           .enabled(this.busyKey.length === 0)
           .onClick((): void => {
@@ -224,6 +226,8 @@ export struct ConnectionsPage {
   private floatingCloseAllButton() {
     if (this.connections.length > 0) {
       Button('全部关闭')
+        .type(ButtonType.Normal)
+        .borderRadius(BUTTON_RADIUS)
         .height(52)
         .padding({ left: 20, right: 20 })
         .fontColor(Color.White)

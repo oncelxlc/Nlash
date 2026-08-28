@@ -8,6 +8,7 @@ import {
 import { feedbackService } from '../services/FeedbackService';
 import { profileStore } from '../stores/ProfileStore';
 import { ResponsiveMetrics, resolveResponsiveMetrics } from '../ui/ResponsiveMetrics';
+import { BUTTON_RADIUS } from '../ui/UiConstants';
 
 @Component
 export struct ConfigurationPage {
@@ -208,7 +209,7 @@ export struct ConfigurationPage {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
 
-      Button({ type: ButtonType.Circle }) {
+      Button({ type: ButtonType.Normal }) {
         Image($r('app.media.action_refresh'))
           .width(22)
           .height(22)
@@ -216,6 +217,7 @@ export struct ConfigurationPage {
       }
         .width(44)
         .height(44)
+        .borderRadius(BUTTON_RADIUS)
         .backgroundColor($r('app.color.card_background'))
         .enabled(this.busyProfileId.length === 0 && this.hasSubscription())
         .accessibilityText('刷新全部订阅')
@@ -287,24 +289,28 @@ export struct ConfigurationPage {
       Row({ space: 8 }) {
         Button(profile.id === this.activeProfileId ? '已选择' : '选择')
           .type(ButtonType.Normal)
+          .borderRadius(BUTTON_RADIUS)
           .enabled(this.busyProfileId.length === 0 && profile.id !== this.activeProfileId)
           .onClick((): void => {
             this.selectProfile(profile.id);
           })
         Button('更新')
           .type(ButtonType.Normal)
+          .borderRadius(BUTTON_RADIUS)
           .enabled(this.busyProfileId.length === 0 && profile.type === ProfileType.SUBSCRIPTION)
           .onClick((): void => {
             this.updateProfile(profile.id);
           })
         Button('改名')
           .type(ButtonType.Normal)
+          .borderRadius(BUTTON_RADIUS)
           .enabled(this.busyProfileId.length === 0)
           .onClick((): void => {
             this.openRename(profile);
           })
         Button('删除')
           .type(ButtonType.Normal)
+          .borderRadius(BUTTON_RADIUS)
           .fontColor($r('app.color.status_error'))
           .enabled(this.busyProfileId.length === 0)
           .onClick((): void => {
@@ -386,6 +392,8 @@ export struct ConfigurationPage {
             .fontColor(Color.White)
         }
       }
+        .type(ButtonType.Normal)
+        .borderRadius(BUTTON_RADIUS)
         .width('100%')
         .height(48)
         .enabled(this.busyProfileId.length === 0)
@@ -415,11 +423,14 @@ export struct ConfigurationPage {
         Button('取消')
           .layoutWeight(1)
           .type(ButtonType.Normal)
+          .borderRadius(BUTTON_RADIUS)
           .onClick((): void => {
             this.showProfileSheet = false;
           })
         Button('保存')
           .layoutWeight(1)
+          .type(ButtonType.Normal)
+          .borderRadius(BUTTON_RADIUS)
           .enabled(this.busyProfileId.length === 0)
           .onClick((): void => {
             this.renameProfile();
@@ -445,6 +456,8 @@ export struct ConfigurationPage {
         .fontColor($r('app.color.content_secondary'))
         .width('100%')
       Button('添加订阅')
+        .type(ButtonType.Normal)
+        .borderRadius(BUTTON_RADIUS)
         .width('100%')
         .height(48)
         .onClick((): void => {
@@ -452,6 +465,7 @@ export struct ConfigurationPage {
         })
       Button('导入本地 YAML')
         .type(ButtonType.Normal)
+        .borderRadius(BUTTON_RADIUS)
         .width('100%')
         .height(48)
         .onClick((): void => {
@@ -477,7 +491,7 @@ export struct ConfigurationPage {
 
   @Builder
   private floatingAddButton() {
-    Button({ type: ButtonType.Circle }) {
+    Button({ type: ButtonType.Normal }) {
       Text('+')
         .fontSize(30)
         .fontWeight(FontWeight.Medium)
@@ -485,6 +499,7 @@ export struct ConfigurationPage {
     }
       .width(56)
       .height(56)
+      .borderRadius(BUTTON_RADIUS)
       .backgroundColor($r('app.color.nav_selected'))
       .enabled(this.busyProfileId.length === 0)
       .accessibilityText('添加或导入配置')
