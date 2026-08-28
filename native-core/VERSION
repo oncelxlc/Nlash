@@ -1,0 +1,8 @@
+nlash_core=0.2.0
+go=go1.27.0
+go_tls_patch=97ce7c6ef39edf2a0a0eba7d6fd1075abf26dc2f
+go_tls_patch_sha256=F23053EDA062FDDE8EA6BEB767A404C3B353A46E787D2FE12B83DE1396B1D255
+mihomo_tag=v1.19.30
+mihomo_commit=ac017cdd246ce8bd547653d927e7bf77d7ee73d5
+mihomo_sum=h1:2lTz7fcyZAQQzwbPuETChtwSHIHsT4zYhBSC3i/fRVI=
+harmony_api=24

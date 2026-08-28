@@ -1,0 +1,9 @@
+{
+  "module": {
+    "name": "proxy_core",
+    "type": "har",
+    "deviceTypes": [
+      "phone"
+    ]
+  }
+}

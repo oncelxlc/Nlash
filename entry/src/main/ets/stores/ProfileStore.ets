@@ -1,0 +1,294 @@
+import { common } from '@kit.AbilityKit';
+import {
+  Profile,
+  ProfileStoreListener,
+  ProfileStoreSnapshot,
+  ProfileType,
+  ProfileUpdateStage
+} from '../models/ProfileModels';
+import { VpnState } from '../models/VpnModels';
+import { preferenceRepository } from '../repository/PreferenceRepository';
+import { profileRepository } from '../repository/ProfileRepository';
+import { subscriptionService } from '../services/SubscriptionService';
+import { vpnService } from '../services/VpnService';
+
+class ProfileStore {
+  private profiles: Profile[] = [];
+  private activeProfileId: string = '';
+  private stage: ProfileUpdateStage = ProfileUpdateStage.IDLE;
+  private busyProfileId: string = '';
+  private listeners: Set<ProfileStoreListener> = new Set<ProfileStoreListener>();
+  private initializeOperation: Promise<void> | undefined;
+  private initialized: boolean = false;
+
+  initialize(context: common.UIAbilityContext): Promise<void> {
+    if (this.initialized) {
+      return Promise.resolve();
+    }
+    if (this.initializeOperation === undefined) {
+      subscriptionService.initialize(context);
+      const operation = this.initializeInternal(context);
+      this.initializeOperation = operation;
+      operation.then((): void => {
+        this.initializeOperation = undefined;
+      }, (): void => {
+        this.initializeOperation = undefined;
+      });
+    }
+    return this.initializeOperation;
+  }
+
+  getSnapshot(): ProfileStoreSnapshot {
+    return {
+      profiles: this.profiles.slice(),
+      activeProfileId: this.activeProfileId,
+      stage: this.stage,
+      busyProfileId: this.busyProfileId
+    };
+  }
+
+  subscribe(listener: ProfileStoreListener): () => void {
+    this.listeners.add(listener);
+    listener(this.getSnapshot());
+    return (): void => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  async addSubscription(name: string, sourceUrl: string): Promise<void> {
+    await this.ensureReady();
+    this.assertIdle();
+    this.beginOperation('new');
+    try {
+      const profile = await subscriptionService.add(name, sourceUrl, (stage: ProfileUpdateStage): void => {
+        this.setStage(stage);
+      });
+      await this.reload();
+      if (this.activeProfileId.length === 0) {
+        await this.activate(profile);
+      }
+      this.finishOperation('配置已添加并通过校验');
+    } catch (error) {
+      const failure = this.toError(error);
+      this.failOperation(failure.message);
+      throw failure;
+    }
+  }
+
+  async importLocal(): Promise<void> {
+    await this.ensureReady();
+    this.assertIdle();
+    this.beginOperation('import');
+    try {
+      const profile = await subscriptionService.importLocal((stage: ProfileUpdateStage): void => {
+        this.setStage(stage);
+      });
+      await this.reload();
+      if (this.activeProfileId.length === 0) {
+        await this.activate(profile);
+      }
+      this.finishOperation('本地配置已导入并通过校验');
+    } catch (error) {
+      const failure = this.toError(error);
+      this.failOperation(failure.message);
+      throw failure;
+    }
+  }
+
+  async update(id: string): Promise<void> {
+    await this.ensureReady();
+    this.assertIdle();
+    this.assertRuntimeAllowsProfileChange(id);
+    const profile = this.requireProfile(id);
+    this.beginOperation(id);
+    try {
+      await subscriptionService.update(profile, (stage: ProfileUpdateStage): void => {
+        this.setStage(stage);
+      });
+      await this.reload();
+      this.finishOperation('订阅已更新并通过校验');
+    } catch (error) {
+      const failure = this.toError(error);
+      this.failOperation(failure.message);
+      throw failure;
+    }
+  }
+
+  async updateAll(): Promise<void> {
+    await this.ensureReady();
+    this.assertIdle();
+    this.assertRuntimeStopped();
+    const subscriptions = this.profiles.filter((profile: Profile): boolean =>
+      profile.type === ProfileType.SUBSCRIPTION);
+    if (subscriptions.length === 0) {
+      return;
+    }
+    for (let index = 0; index < subscriptions.length; index += 1) {
+      await this.update(subscriptions[index].id);
+    }
+  }
+
+  async rename(id: string, name: string): Promise<void> {
+    await this.ensureReady();
+    this.assertIdle();
+    const profile = this.requireProfile(id);
+    this.beginOperation(id);
+    try {
+      await subscriptionService.rename(profile, name);
+      await this.reload();
+      this.finishOperation('配置已重命名');
+    } catch (error) {
+      const failure = this.toError(error);
+      this.failOperation(failure.message);
+      throw failure;
+    }
+  }
+
+  async select(id: string): Promise<void> {
+    await this.ensureReady();
+    this.assertIdle();
+    this.assertRuntimeStopped();
+    const profile = this.requireProfile(id);
+    this.beginOperation(id);
+    try {
+      await this.activate(profile);
+      this.finishOperation('已切换活动配置');
+    } catch (error) {
+      const failure = this.toError(error);
+      this.failOperation(failure.message);
+      throw failure;
+    }
+  }
+
+  async remove(id: string): Promise<void> {
+    await this.ensureReady();
+    this.assertIdle();
+    this.assertRuntimeAllowsProfileChange(id);
+    const profile = this.requireProfile(id);
+    this.beginOperation(id);
+    try {
+      await subscriptionService.remove(profile);
+      if (this.activeProfileId === id) {
+        await preferenceRepository.clearActiveProfile();
+        this.activeProfileId = '';
+      }
+      await preferenceRepository.removeProxySelections(id);
+      await this.reload();
+      if (this.activeProfileId.length === 0 && this.profiles.length > 0) {
+        await this.activate(this.profiles[0]);
+      }
+      this.finishOperation('配置已删除');
+    } catch (error) {
+      const failure = this.toError(error);
+      this.failOperation(failure.message);
+      throw failure;
+    }
+  }
+
+  private async initializeInternal(context: common.UIAbilityContext): Promise<void> {
+    await preferenceRepository.initialize(context);
+    await profileRepository.initialize(context);
+    this.profiles = await profileRepository.list();
+    this.activeProfileId = await preferenceRepository.getActiveProfileId();
+    if (this.activeProfileId.length > 0 && !this.profiles.some((profile: Profile): boolean =>
+      profile.id === this.activeProfileId)) {
+      await preferenceRepository.clearActiveProfile();
+      this.activeProfileId = '';
+    }
+    this.initialized = true;
+    this.publish();
+  }
+
+  private async reload(): Promise<void> {
+    this.profiles = await profileRepository.list();
+    this.publish();
+  }
+
+  private async activate(profile: Profile): Promise<void> {
+    await preferenceRepository.setActiveProfile(profile.id, profile.localPath);
+    this.activeProfileId = profile.id;
+    this.publish();
+  }
+
+  private assertRuntimeAllowsProfileChange(id: string): void {
+    if (id !== this.activeProfileId) {
+      return;
+    }
+    if (this.isRuntimeActive()) {
+      throw new Error('请先断开 VPN，再修改当前活动配置');
+    }
+  }
+
+  private assertRuntimeStopped(): void {
+    if (this.isRuntimeActive()) {
+      throw new Error('请先断开 VPN，再切换或批量更新配置');
+    }
+  }
+
+  private isRuntimeActive(): boolean {
+    const state = vpnService.getState();
+    return state === VpnState.CONNECTED || state === VpnState.STARTING ||
+      state === VpnState.REQUESTING_PERMISSION || state === VpnState.STOPPING;
+  }
+
+  private requireProfile(id: string): Profile {
+    const profile = this.profiles.find((item: Profile): boolean => item.id === id);
+    if (profile === undefined) {
+      throw new Error('配置不存在或已被删除');
+    }
+    return profile;
+  }
+
+  private async ensureReady(): Promise<void> {
+    if (this.initializeOperation !== undefined) {
+      await this.initializeOperation;
+    }
+    if (!this.initialized) {
+      throw new Error('配置数据初始化失败');
+    }
+  }
+
+  private assertIdle(): void {
+    if (this.busyProfileId.length > 0) {
+      throw new Error('已有配置操作正在进行');
+    }
+  }
+
+  private beginOperation(profileId: string): void {
+    this.busyProfileId = profileId;
+    this.stage = ProfileUpdateStage.IDLE;
+    this.publish();
+  }
+
+  private setStage(stage: ProfileUpdateStage): void {
+    this.stage = stage;
+    this.publish();
+  }
+
+  private finishOperation(_message: string): void {
+    this.stage = ProfileUpdateStage.SUCCESS;
+    this.busyProfileId = '';
+    this.publish();
+  }
+
+  private failOperation(_message: string): void {
+    this.stage = ProfileUpdateStage.ERROR;
+    this.busyProfileId = '';
+    this.publish();
+  }
+
+  private publish(): void {
+    const snapshot = this.getSnapshot();
+    this.listeners.forEach((listener: ProfileStoreListener): void => {
+      listener(snapshot);
+    });
+  }
+
+  private toError(error: Object): Error {
+    const exception = error as Error;
+    const message = typeof exception.message === 'string' ? exception.message : '';
+    return message.length > 0 ? new Error(message) : new Error('配置操作失败');
+  }
+}
+
+export const profileStore = new ProfileStore();

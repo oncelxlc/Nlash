@@ -1,0 +1,52 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "module description"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "description"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "Nlash"
+    },
+    {
+      "name": "ProxyVpnAbility_desc",
+      "value": "Nlash VPN extension"
+    },
+    {
+      "name": "app_title",
+      "value": "Nlash"
+    },
+    {
+      "name": "nav_dashboard",
+      "value": "仪表盘"
+    },
+    {
+      "name": "nav_proxy",
+      "value": "代理"
+    },
+    {
+      "name": "nav_configuration",
+      "value": "配置"
+    },
+    {
+      "name": "nav_requests",
+      "value": "请求"
+    },
+    {
+      "name": "nav_connections",
+      "value": "连接"
+    },
+    {
+      "name": "nav_settings",
+      "value": "设置"
+    },
+    {
+      "name": "feature_coming_soon",
+      "value": "功能开发中"
+    }
+  ]
+}

@@ -1,0 +1,872 @@
+diff --git a/src/cmd/asm/internal/flags/flags.go b/src/cmd/asm/internal/flags/flags.go
+index 19aa6563..685da2d6 100644
+--- a/src/cmd/asm/internal/flags/flags.go
++++ b/src/cmd/asm/internal/flags/flags.go
+@@ -22,6 +22,7 @@ var (
+ 	Shared     = flag.Bool("shared", false, "generate code that can be linked into a shared library")
+ 	Dynlink    = flag.Bool("dynlink", false, "support references to Go symbols defined in other shared libraries")
+ 	Linkshared = flag.Bool("linkshared", false, "generate code that will be linked against Go shared libraries")
++	TLSModel   = flag.String("tls", "auto", "TLS model for thread-local storage: auto, GD, IE")
+ 	AllErrors  = flag.Bool("e", false, "no limit on number of errors reported")
+ 	SymABIs    = flag.Bool("gensymabis", false, "write symbol ABI information to output file, don't assemble")
+ 	Importpath = flag.String("p", obj.UnlinkablePkg, "set expected package import to path")
+diff --git a/src/cmd/asm/main.go b/src/cmd/asm/main.go
+index 25cf3071..a3939fc9 100644
+--- a/src/cmd/asm/main.go
++++ b/src/cmd/asm/main.go
+@@ -46,6 +46,32 @@ func main() {
+ 	ctxt.Flag_dynlink = *flags.Dynlink
+ 	ctxt.Flag_linkshared = *flags.Linkshared
+ 	ctxt.Flag_shared = *flags.Shared || *flags.Dynlink
++	switch *flags.TLSModel {
++	case "auto":
++		// Default: GD is set externally by the go command for c-shared/c-archive.
++		// When not explicitly set, defaults to IE/LE based on Flag_shared.
++	case "GD":
++		ctxt.Flag_tlsgd = true
++	case "IE":
++		ctxt.Flag_tlsgd = false
++	default:
++		log.Printf("unknown -tls=%s; must be auto, GD, or IE", *flags.TLSModel)
++		os.Exit(2)
++	}
++	// Set preprocessor define so runtime assembly can use #ifdef TLS_GD.
++	// Only set for architectures with actual GD TLS instruction generation.
++	// Other architectures fall back to IE instructions regardless of Flag_tlsgd.
++	if ctxt.Flag_tlsgd {
++		switch ctxt.Arch.Name {
++		case "arm64", "amd64", "riscv64":
++			flags.D = append(flags.D, "TLS_GD=1")
++		// ARM32: GD TLS assembler/linker support is implemented (case 112/113,
++		// R_TLS_GD, R_ARM_TLS_GD32) and the library loads on musl, but a
++		// separate pre-existing runtime init crash (#19938) prevents it from
++		// working. Default to IE until that's fixed. Users can try -tls=GD
++		// manually once the runtime issue is resolved.
++		}
++	}
+ 	ctxt.Flag_maymorestack = flags.DebugFlags.MayMoreStack
+ 	ctxt.Debugpcln = flags.DebugFlags.PCTab
+ 	ctxt.IsAsm = true
+diff --git a/src/cmd/compile/internal/base/flag.go b/src/cmd/compile/internal/base/flag.go
+index c8f1b2db..4ec3ef08 100644
+--- a/src/cmd/compile/internal/base/flag.go
++++ b/src/cmd/compile/internal/base/flag.go
+@@ -119,6 +119,7 @@ type CmdFlags struct {
+ 	Pack               bool         "help:\"write to file.a instead of file.o\""
+ 	Race               bool         "help:\"enable race detector\""
+ 	Shared             *bool        "help:\"generate code that can be linked into a shared library\"" // &Ctxt.Flag_shared, set below
++	Tls                string       "help:\"TLS model for thread-local storage (auto, GD, IE)\""
+ 	SmallFrames        bool         "help:\"reduce the size limit for stack allocated objects\""      // small stacks, to diagnose GC latency; see golang.org/issue/27732
+ 	Spectre            string       "help:\"enable spectre mitigations in `list` (all, index, ret)\""
+ 	Std                bool         "help:\"compiling standard library\""
+@@ -304,6 +305,16 @@ func ParseFlags() {
+ 
+ 	Ctxt.CompressInstructions = Debug.CompressInstructions != 0
+ 	Ctxt.Flag_shared = Ctxt.Flag_dynlink || Ctxt.Flag_shared
++	switch Flag.Tls {
++	case "", "auto":
++		// Default: set externally by the go command.
++	case "GD":
++		Ctxt.Flag_tlsgd = true
++	case "IE":
++		Ctxt.Flag_tlsgd = false
++	default:
++		log.Fatalf("unknown -tls=%s; must be auto, GD, or IE", Flag.Tls)
++	}
+ 	Ctxt.Flag_optimize = Flag.N == 0
+ 	Ctxt.Debugasm = int(Flag.S)
+ 	Ctxt.Flag_maymorestack = Debug.MayMoreStack
+diff --git a/src/cmd/go/internal/work/init.go b/src/cmd/go/internal/work/init.go
+index 964d6e83..a944fe04 100644
+--- a/src/cmd/go/internal/work/init.go
++++ b/src/cmd/go/internal/work/init.go
+@@ -240,6 +240,11 @@ func buildModeInit() {
+ 				// suitable for inclusion in a PIE or
+ 				// shared library.
+ 				codegenArg = "-shared"
++				// Use General Dynamic TLS model so the library can be
++				// loaded via dlopen on non-glibc systems (e.g. musl).
++				// See go.dev/issue/13492.
++				forcedAsmflags = append(forcedAsmflags, "-tls=GD")
++				forcedGcflags = append(forcedGcflags, "-tls=GD")
+ 			}
+ 		}
+ 		cfg.ExeSuffix = ".a"
+@@ -252,6 +257,11 @@ func buildModeInit() {
+ 			switch cfg.Goos {
+ 			case "linux", "android", "freebsd":
+ 				codegenArg = "-shared"
++				// Use General Dynamic TLS model so the library can be
++				// loaded via dlopen on non-glibc systems (e.g. musl).
++				// See go.dev/issue/13492.
++				forcedAsmflags = append(forcedAsmflags, "-tls=GD")
++				forcedGcflags = append(forcedGcflags, "-tls=GD")
+ 			case "windows":
+ 				// Do not add usual .exe suffix to the .dll file.
+ 				cfg.ExeSuffix = ""
+diff --git a/src/cmd/internal/obj/arm64/a.out.go b/src/cmd/internal/obj/arm64/a.out.go
+index 3a39f271..f6a9dd2b 100644
+--- a/src/cmd/internal/obj/arm64/a.out.go
++++ b/src/cmd/internal/obj/arm64/a.out.go
+@@ -598,6 +598,12 @@ const (
+ 	// offset from the thread local base.
+ 	C_TLS_IE
+ 
++	// TLS "var" in general dynamic mode using TLSDESC: will become a
++	// 4-instruction sequence (adrp, ldr, add, blr) that calls the
++	// TLSDESC resolver to obtain the TLS offset. Required for libraries
++	// loaded via dlopen on non-glibc systems (e.g. musl).
++	C_TLS_GD
++
+ 	C_ROFF // register offset (including register extended)
+ 
+ 	C_GOK
+diff --git a/src/cmd/internal/obj/arm64/asm7.go b/src/cmd/internal/obj/arm64/asm7.go
+index d8d63b19..ba365c37 100644
+--- a/src/cmd/internal/obj/arm64/asm7.go
++++ b/src/cmd/internal/obj/arm64/asm7.go
+@@ -479,6 +479,7 @@ var optab = []Optab{
+ 	{AMOVD, C_GOTADDR, C_NONE, C_NONE, C_ZREG, C_NONE, 71, 8, 0, 0, 0},
+ 	{AMOVD, C_TLS_LE, C_NONE, C_NONE, C_ZREG, C_NONE, 69, 4, 0, 0, 0},
+ 	{AMOVD, C_TLS_IE, C_NONE, C_NONE, C_ZREG, C_NONE, 70, 8, 0, 0, 0},
++	{AMOVD, C_TLS_GD, C_NONE, C_NONE, C_ZREG, C_NONE, 111, 16, 0, 0, 0},
+ 
+ 	{AFMOVS, C_FREG, C_NONE, C_NONE, C_ADDR, C_NONE, 64, 12, 0, 0, 0},
+ 	{AFMOVS, C_ADDR, C_NONE, C_NONE, C_FREG, C_NONE, 65, 12, 0, 0, 0},
+@@ -2067,7 +2068,9 @@ func (c *ctxt7) aclass(a *obj.Addr) int {
+ 			c.instoffset = a.Offset
+ 			if a.Sym != nil { // use relocation
+ 				if a.Sym.Type == objabi.STLSBSS {
+-					if c.ctxt.Flag_shared {
++					if c.ctxt.Flag_tlsgd {
++						return C_TLS_GD
++					} else if c.ctxt.Flag_shared {
+ 						return C_TLS_IE
+ 					} else {
+ 						return C_TLS_LE
+@@ -4677,6 +4680,30 @@ func (c *ctxt7) asmout(p *obj.Prog, out []uint32) (count int) {
+ 			c.ctxt.Diag("invalid offset on MOVW $tlsvar")
+ 		}
+ 
++	case 111: /* GD model movd $tlsvar, reg -> TLSDESC sequence: adrp x0; ldr x1,[x0]; add x0,x0; blr x1 */
++		// TLSDESC ABI: result (TLS offset) is always in X0.
++		// Clobbers X0, X1, and LR (X30).
++		if p.To.Reg != REG_R0 {
++			c.ctxt.Diag("TLSDESC (GD TLS) result must target R0, got %v", p.To)
++		}
++		// adrp x0, :tlsdesc:sym
++		o1 = ADR(1, 0, REG_R0)
++		// ldr x1, [x0, :tlsdesc_lo12:sym]
++		o2 = c.olsr12u(p, c.opldr(p, AMOVD), 0, REG_R0, REG_R1)
++		// add x0, x0, :tlsdesc_lo12:sym
++		o3 = c.opirr(p, AADD) | uint32(REG_R0&31)<<5 | uint32(REG_R0&31)
++		// blr x1
++		o4 = 0xD63F0020 // BLR X1
++		c.cursym.AddRel(c.ctxt, obj.Reloc{
++			Type: objabi.R_ARM64_TLS_GD,
++			Off:  int32(c.pc),
++			Siz:  16,
++			Sym:  p.From.Sym,
++		})
++		if p.From.Offset != 0 {
++			c.ctxt.Diag("invalid offset on MOVW $tlsvar")
++		}
++
+ 	case 71: /* movd sym@GOT, reg -> adrp REGTMP, #0; ldr reg, [REGTMP, #0] + relocs */
+ 		o1 = ADR(1, 0, REGTMP)
+ 		o2 = c.olsr12u(p, c.opldr(p, AMOVD), 0, REGTMP, p.To.Reg)
+diff --git a/src/cmd/internal/obj/fips140.go b/src/cmd/internal/obj/fips140.go
+index 0e4f2a47..dbefd06b 100644
+--- a/src/cmd/internal/obj/fips140.go
++++ b/src/cmd/internal/obj/fips140.go
+@@ -364,6 +364,8 @@ func (s *LSym) checkFIPSReloc(ctxt *Link, rel Reloc) {
+ 		objabi.R_LOONG64_TLS_LE_LO,
+ 		objabi.R_LOONG64_TLS_IE_HI,
+ 		objabi.R_LOONG64_TLS_IE_LO,
++		objabi.R_LOONG64_TLS_GD_HI,
++		objabi.R_LOONG64_TLS_GD_LO,
+ 		objabi.R_LOONG64_GOT_HI,
+ 		objabi.R_LOONG64_GOT_LO,
+ 		objabi.R_LOONG64_GOT64_HI,
+@@ -377,6 +379,7 @@ func (s *LSym) checkFIPSReloc(ctxt *Link, rel Reloc) {
+ 		objabi.R_POWER_TLS,
+ 		objabi.R_POWER_TLS_IE_PCREL34,
+ 		objabi.R_POWER_TLS_LE_TPREL34,
++		objabi.R_POWER_TLS_GD,
+ 		objabi.R_RISCV_JAL,
+ 		objabi.R_RISCV_PCREL_ITYPE,
+ 		objabi.R_RISCV_PCREL_STYPE,
+@@ -392,6 +395,9 @@ func (s *LSym) checkFIPSReloc(ctxt *Link, rel Reloc) {
+ 		objabi.R_RISCV_RVC_JUMP,
+ 		objabi.R_TLS_IE,
+ 		objabi.R_TLS_LE,
++		objabi.R_TLS_GD,
++		objabi.R_ARM64_TLS_GD,
++		objabi.R_RISCV_TLS_GD,
+ 		objabi.R_WEAKADDROFF:
+ 		// ok
+ 		return
+diff --git a/src/cmd/internal/obj/link.go b/src/cmd/internal/obj/link.go
+index 088a7c57..17533f2e 100644
+--- a/src/cmd/internal/obj/link.go
++++ b/src/cmd/internal/obj/link.go
+@@ -1161,6 +1161,7 @@ type Link struct {
+ 	Debugpcln            string
+ 	Flag_shared          bool
+ 	Flag_dynlink         bool
++	Flag_tlsgd           bool
+ 	Flag_linkshared      bool
+ 	Flag_optimize        bool
+ 	Flag_locationlists   bool
+diff --git a/src/cmd/internal/objabi/reloctype.go b/src/cmd/internal/objabi/reloctype.go
+index b6764ff8..ccb35f80 100644
+--- a/src/cmd/internal/objabi/reloctype.go
++++ b/src/cmd/internal/objabi/reloctype.go
+@@ -72,6 +72,11 @@ const (
+ 	// is not set on intel platforms but is set to a TLS symbol -- runtime.tlsg -- in
+ 	// the linker when externally linking).
+ 	R_TLS_IE
++	// R_TLS_GD, used on amd64, resolves using the General Dynamic TLS model
++	// (TLSDESC on amd64). Generates a TLSDESC sequence that calls the dynamic
++	// linker's resolver to obtain the TLS offset. Required for libraries loaded
++	// via dlopen on non-glibc systems. See go.dev/issue/13492.
++	R_TLS_GD
+ 	R_GOTOFF
+ 	R_PLT0
+ 	R_PLT1
+@@ -137,6 +142,12 @@ const (
+ 	// referenced (thread local) symbol from the GOT.
+ 	R_ARM64_TLS_IE
+ 
++	// R_ARM64_TLS_GD relocates an ADRP; LDR; ADD; BLR instruction sequence
++	// (TLSDESC) to obtain the offset from the thread local base to the
++	// thread local variable. Used for General Dynamic TLS model, required
++	// for libraries loaded via dlopen on non-glibc systems.
++	R_ARM64_TLS_GD
++
+ 	// R_ARM64_GOTPCREL relocates an adrp, ld64 pair to compute the address of the GOT
+ 	// slot of the referenced symbol.
+ 	R_ARM64_GOTPCREL
+@@ -212,6 +223,11 @@ const (
+ 	// the thread pointer in one prefixed instruction.
+ 	R_POWER_TLS_LE_TPREL34
+ 
++	// R_POWER_TLS_GD relocates a D-form instruction pair using the General Dynamic
++	// TLS model for ppc64. Emits R_PPC64_GOT_TLSGD16_HA/LO to obtain the GOT entry
++	// for the TLS variable, used with __tls_get_addr. See go.dev/issue/13492.
++	R_POWER_TLS_GD
++
+ 	// R_ADDRPOWER_DS is similar to R_ADDRPOWER above, but assumes the second
+ 	// instruction is a "DS-form" instruction, which has an immediate field occupying
+ 	// bits [15:2] of the instruction word. Bits [15:2] of the address of the
+@@ -282,6 +298,11 @@ const (
+ 	// LUI + I-type instruction sequence.
+ 	R_RISCV_TLS_LE
+ 
++	// R_RISCV_TLS_GD resolves a 32 bit TLS general-dynamic address for an
++	// AUIPC + ADDI instruction pair. Used with __tls_get_addr.
++	// See go.dev/issue/13492.
++	R_RISCV_TLS_GD
++
+ 	// R_RISCV_GOT_HI20 resolves the high 20 bits of a 32-bit PC-relative GOT
+ 	// address.
+ 	R_RISCV_GOT_HI20
+@@ -365,6 +386,12 @@ const (
+ 	R_LOONG64_TLS_IE_HI
+ 	R_LOONG64_TLS_IE_LO
+ 
++	// R_LOONG64_TLS_GD_HI and R_LOONG64_TLS_GD_LO relocate a pcalau12i, addi.d
++	// pair using the General Dynamic TLS model for loong64. Used with
++	// __tls_get_addr. See go.dev/issue/13492.
++	R_LOONG64_TLS_GD_HI
++	R_LOONG64_TLS_GD_LO
++
+ 	// R_LOONG64_GOT_HI resolves [31...12]bits of 32/64-bit PC-relative offset of
+ 	// GOT entry, by encoding it into pcalau12i instruction
+ 	// R_LOONG64_GOT_LO resolves [11...0]bits of 32/64-bit PC-relative offset of
+diff --git a/src/cmd/internal/objabi/reloctype_string.go b/src/cmd/internal/objabi/reloctype_string.go
+index c7a5e6c0..e091e3fe 100644
+--- a/src/cmd/internal/objabi/reloctype_string.go
++++ b/src/cmd/internal/objabi/reloctype_string.go
+@@ -24,101 +24,107 @@ func _() {
+ 	_ = x[R_PCREL-14]
+ 	_ = x[R_TLS_LE-15]
+ 	_ = x[R_TLS_IE-16]
+-	_ = x[R_GOTOFF-17]
+-	_ = x[R_PLT0-18]
+-	_ = x[R_PLT1-19]
+-	_ = x[R_PLT2-20]
+-	_ = x[R_USEFIELD-21]
+-	_ = x[R_USETYPE-22]
+-	_ = x[R_USEIFACE-23]
+-	_ = x[R_USEIFACEMETHOD-24]
+-	_ = x[R_USENAMEDMETHOD-25]
+-	_ = x[R_METHODOFF-26]
+-	_ = x[R_KEEP-27]
+-	_ = x[R_POWER_TOC-28]
+-	_ = x[R_GOTPCREL-29]
+-	_ = x[R_JMPMIPS-30]
+-	_ = x[R_DWARFSECREF-31]
+-	_ = x[R_ARM64_TLS_LE-32]
+-	_ = x[R_ARM64_TLS_IE-33]
+-	_ = x[R_ARM64_GOTPCREL-34]
+-	_ = x[R_ARM64_GOT-35]
+-	_ = x[R_ARM64_PCREL-36]
+-	_ = x[R_ARM64_PCREL_LDST8-37]
+-	_ = x[R_ARM64_PCREL_LDST16-38]
+-	_ = x[R_ARM64_PCREL_LDST32-39]
+-	_ = x[R_ARM64_PCREL_LDST64-40]
+-	_ = x[R_ARM64_LDST8-41]
+-	_ = x[R_ARM64_LDST16-42]
+-	_ = x[R_ARM64_LDST32-43]
+-	_ = x[R_ARM64_LDST64-44]
+-	_ = x[R_ARM64_LDST128-45]
+-	_ = x[R_POWER_TLS_LE-46]
+-	_ = x[R_POWER_TLS_IE-47]
+-	_ = x[R_POWER_TLS-48]
+-	_ = x[R_POWER_TLS_IE_PCREL34-49]
+-	_ = x[R_POWER_TLS_LE_TPREL34-50]
+-	_ = x[R_ADDRPOWER_DS-51]
+-	_ = x[R_ADDRPOWER_GOT-52]
+-	_ = x[R_ADDRPOWER_GOT_PCREL34-53]
+-	_ = x[R_ADDRPOWER_PCREL-54]
+-	_ = x[R_ADDRPOWER_TOCREL-55]
+-	_ = x[R_ADDRPOWER_TOCREL_DS-56]
+-	_ = x[R_ADDRPOWER_D34-57]
+-	_ = x[R_ADDRPOWER_PCREL34-58]
+-	_ = x[R_RISCV_JAL-59]
+-	_ = x[R_RISCV_JAL_TRAMP-60]
+-	_ = x[R_RISCV_CALL-61]
+-	_ = x[R_RISCV_PCREL_ITYPE-62]
+-	_ = x[R_RISCV_PCREL_STYPE-63]
+-	_ = x[R_RISCV_TLS_IE-64]
+-	_ = x[R_RISCV_TLS_LE-65]
+-	_ = x[R_RISCV_GOT_HI20-66]
+-	_ = x[R_RISCV_GOT_PCREL_ITYPE-67]
+-	_ = x[R_RISCV_PCREL_HI20-68]
+-	_ = x[R_RISCV_PCREL_LO12_I-69]
+-	_ = x[R_RISCV_PCREL_LO12_S-70]
+-	_ = x[R_RISCV_BRANCH-71]
+-	_ = x[R_RISCV_ADD32-72]
+-	_ = x[R_RISCV_SUB32-73]
+-	_ = x[R_RISCV_RVC_BRANCH-74]
+-	_ = x[R_RISCV_RVC_JUMP-75]
+-	_ = x[R_PCRELDBL-76]
+-	_ = x[R_LOONG64_ADDR_HI-77]
+-	_ = x[R_LOONG64_ADDR_LO-78]
+-	_ = x[R_LOONG64_ADDR64_HI-79]
+-	_ = x[R_LOONG64_ADDR64_LO-80]
+-	_ = x[R_LOONG64_ADDR_PCREL20_S2-81]
+-	_ = x[R_LOONG64_TLS_LE_HI-82]
+-	_ = x[R_LOONG64_TLS_LE_LO-83]
+-	_ = x[R_CALLLOONG64-84]
+-	_ = x[R_LOONG64_CALL36-85]
+-	_ = x[R_LOONG64_TLS_IE_HI-86]
+-	_ = x[R_LOONG64_TLS_IE_LO-87]
+-	_ = x[R_LOONG64_GOT_HI-88]
+-	_ = x[R_LOONG64_GOT_LO-89]
+-	_ = x[R_LOONG64_GOT64_HI-90]
+-	_ = x[R_LOONG64_GOT64_LO-91]
+-	_ = x[R_LOONG64_ADD64-92]
+-	_ = x[R_LOONG64_SUB64-93]
+-	_ = x[R_JMP16LOONG64-94]
+-	_ = x[R_JMP21LOONG64-95]
+-	_ = x[R_ADDRMIPSU-96]
+-	_ = x[R_ADDRMIPSTLS-97]
+-	_ = x[R_ADDRCUOFF-98]
+-	_ = x[R_WASMIMPORT-99]
+-	_ = x[R_XCOFFREF-100]
+-	_ = x[R_PEIMAGEOFF-101]
+-	_ = x[R_INITORDER-102]
+-	_ = x[R_DWTXTADDR_U1-103]
+-	_ = x[R_DWTXTADDR_U2-104]
+-	_ = x[R_DWTXTADDR_U3-105]
+-	_ = x[R_DWTXTADDR_U4-106]
++	_ = x[R_TLS_GD-17]
++	_ = x[R_GOTOFF-18]
++	_ = x[R_PLT0-19]
++	_ = x[R_PLT1-20]
++	_ = x[R_PLT2-21]
++	_ = x[R_USEFIELD-22]
++	_ = x[R_USETYPE-23]
++	_ = x[R_USEIFACE-24]
++	_ = x[R_USEIFACEMETHOD-25]
++	_ = x[R_USENAMEDMETHOD-26]
++	_ = x[R_METHODOFF-27]
++	_ = x[R_KEEP-28]
++	_ = x[R_POWER_TOC-29]
++	_ = x[R_GOTPCREL-30]
++	_ = x[R_JMPMIPS-31]
++	_ = x[R_DWARFSECREF-32]
++	_ = x[R_ARM64_TLS_LE-33]
++	_ = x[R_ARM64_TLS_IE-34]
++	_ = x[R_ARM64_TLS_GD-35]
++	_ = x[R_ARM64_GOTPCREL-36]
++	_ = x[R_ARM64_GOT-37]
++	_ = x[R_ARM64_PCREL-38]
++	_ = x[R_ARM64_PCREL_LDST8-39]
++	_ = x[R_ARM64_PCREL_LDST16-40]
++	_ = x[R_ARM64_PCREL_LDST32-41]
++	_ = x[R_ARM64_PCREL_LDST64-42]
++	_ = x[R_ARM64_LDST8-43]
++	_ = x[R_ARM64_LDST16-44]
++	_ = x[R_ARM64_LDST32-45]
++	_ = x[R_ARM64_LDST64-46]
++	_ = x[R_ARM64_LDST128-47]
++	_ = x[R_POWER_TLS_LE-48]
++	_ = x[R_POWER_TLS_IE-49]
++	_ = x[R_POWER_TLS-50]
++	_ = x[R_POWER_TLS_IE_PCREL34-51]
++	_ = x[R_POWER_TLS_LE_TPREL34-52]
++	_ = x[R_POWER_TLS_GD-53]
++	_ = x[R_ADDRPOWER_DS-54]
++	_ = x[R_ADDRPOWER_GOT-55]
++	_ = x[R_ADDRPOWER_GOT_PCREL34-56]
++	_ = x[R_ADDRPOWER_PCREL-57]
++	_ = x[R_ADDRPOWER_TOCREL-58]
++	_ = x[R_ADDRPOWER_TOCREL_DS-59]
++	_ = x[R_ADDRPOWER_D34-60]
++	_ = x[R_ADDRPOWER_PCREL34-61]
++	_ = x[R_RISCV_JAL-62]
++	_ = x[R_RISCV_JAL_TRAMP-63]
++	_ = x[R_RISCV_CALL-64]
++	_ = x[R_RISCV_PCREL_ITYPE-65]
++	_ = x[R_RISCV_PCREL_STYPE-66]
++	_ = x[R_RISCV_TLS_IE-67]
++	_ = x[R_RISCV_TLS_LE-68]
++	_ = x[R_RISCV_TLS_GD-69]
++	_ = x[R_RISCV_GOT_HI20-70]
++	_ = x[R_RISCV_GOT_PCREL_ITYPE-71]
++	_ = x[R_RISCV_PCREL_HI20-72]
++	_ = x[R_RISCV_PCREL_LO12_I-73]
++	_ = x[R_RISCV_PCREL_LO12_S-74]
++	_ = x[R_RISCV_BRANCH-75]
++	_ = x[R_RISCV_ADD32-76]
++	_ = x[R_RISCV_SUB32-77]
++	_ = x[R_RISCV_RVC_BRANCH-78]
++	_ = x[R_RISCV_RVC_JUMP-79]
++	_ = x[R_PCRELDBL-80]
++	_ = x[R_LOONG64_ADDR_HI-81]
++	_ = x[R_LOONG64_ADDR_LO-82]
++	_ = x[R_LOONG64_ADDR64_HI-83]
++	_ = x[R_LOONG64_ADDR64_LO-84]
++	_ = x[R_LOONG64_ADDR_PCREL20_S2-85]
++	_ = x[R_LOONG64_TLS_LE_HI-86]
++	_ = x[R_LOONG64_TLS_LE_LO-87]
++	_ = x[R_CALLLOONG64-88]
++	_ = x[R_LOONG64_CALL36-89]
++	_ = x[R_LOONG64_TLS_IE_HI-90]
++	_ = x[R_LOONG64_TLS_IE_LO-91]
++	_ = x[R_LOONG64_TLS_GD_HI-92]
++	_ = x[R_LOONG64_TLS_GD_LO-93]
++	_ = x[R_LOONG64_GOT_HI-94]
++	_ = x[R_LOONG64_GOT_LO-95]
++	_ = x[R_LOONG64_GOT64_HI-96]
++	_ = x[R_LOONG64_GOT64_LO-97]
++	_ = x[R_LOONG64_ADD64-98]
++	_ = x[R_LOONG64_SUB64-99]
++	_ = x[R_JMP16LOONG64-100]
++	_ = x[R_JMP21LOONG64-101]
++	_ = x[R_ADDRMIPSU-102]
++	_ = x[R_ADDRMIPSTLS-103]
++	_ = x[R_ADDRCUOFF-104]
++	_ = x[R_WASMIMPORT-105]
++	_ = x[R_XCOFFREF-106]
++	_ = x[R_PEIMAGEOFF-107]
++	_ = x[R_INITORDER-108]
++	_ = x[R_DWTXTADDR_U1-109]
++	_ = x[R_DWTXTADDR_U2-110]
++	_ = x[R_DWTXTADDR_U3-111]
++	_ = x[R_DWTXTADDR_U4-112]
+ }
+ 
+-const _RelocType_name = "R_ADDRR_ADDRPOWERR_ADDRARM64R_ADDRMIPSR_ADDROFFR_SIZER_CALLR_CALLARMR_CALLARM64R_CALLINDR_CALLPOWERR_CALLMIPSR_CONSTR_PCRELR_TLS_LER_TLS_IER_GOTOFFR_PLT0R_PLT1R_PLT2R_USEFIELDR_USETYPER_USEIFACER_USEIFACEMETHODR_USENAMEDMETHODR_METHODOFFR_KEEPR_POWER_TOCR_GOTPCRELR_JMPMIPSR_DWARFSECREFR_ARM64_TLS_LER_ARM64_TLS_IER_ARM64_GOTPCRELR_ARM64_GOTR_ARM64_PCRELR_ARM64_PCREL_LDST8R_ARM64_PCREL_LDST16R_ARM64_PCREL_LDST32R_ARM64_PCREL_LDST64R_ARM64_LDST8R_ARM64_LDST16R_ARM64_LDST32R_ARM64_LDST64R_ARM64_LDST128R_POWER_TLS_LER_POWER_TLS_IER_POWER_TLSR_POWER_TLS_IE_PCREL34R_POWER_TLS_LE_TPREL34R_ADDRPOWER_DSR_ADDRPOWER_GOTR_ADDRPOWER_GOT_PCREL34R_ADDRPOWER_PCRELR_ADDRPOWER_TOCRELR_ADDRPOWER_TOCREL_DSR_ADDRPOWER_D34R_ADDRPOWER_PCREL34R_RISCV_JALR_RISCV_JAL_TRAMPR_RISCV_CALLR_RISCV_PCREL_ITYPER_RISCV_PCREL_STYPER_RISCV_TLS_IER_RISCV_TLS_LER_RISCV_GOT_HI20R_RISCV_GOT_PCREL_ITYPER_RISCV_PCREL_HI20R_RISCV_PCREL_LO12_IR_RISCV_PCREL_LO12_SR_RISCV_BRANCHR_RISCV_ADD32R_RISCV_SUB32R_RISCV_RVC_BRANCHR_RISCV_RVC_JUMPR_PCRELDBLR_LOONG64_ADDR_HIR_LOONG64_ADDR_LOR_LOONG64_ADDR64_HIR_LOONG64_ADDR64_LOR_LOONG64_ADDR_PCREL20_S2R_LOONG64_TLS_LE_HIR_LOONG64_TLS_LE_LOR_CALLLOONG64R_LOONG64_CALL36R_LOONG64_TLS_IE_HIR_LOONG64_TLS_IE_LOR_LOONG64_GOT_HIR_LOONG64_GOT_LOR_LOONG64_GOT64_HIR_LOONG64_GOT64_LOR_LOONG64_ADD64R_LOONG64_SUB64R_JMP16LOONG64R_JMP21LOONG64R_ADDRMIPSUR_ADDRMIPSTLSR_ADDRCUOFFR_WASMIMPORTR_XCOFFREFR_PEIMAGEOFFR_INITORDERR_DWTXTADDR_U1R_DWTXTADDR_U2R_DWTXTADDR_U3R_DWTXTADDR_U4"
++const _RelocType_name = "R_ADDRR_ADDRPOWERR_ADDRARM64R_ADDRMIPSR_ADDROFFR_SIZER_CALLR_CALLARMR_CALLARM64R_CALLINDR_CALLPOWERR_CALLMIPSR_CONSTR_PCRELR_TLS_LER_TLS_IER_TLS_GDR_GOTOFFR_PLT0R_PLT1R_PLT2R_USEFIELDR_USETYPER_USEIFACER_USEIFACEMETHODR_USENAMEDMETHODR_METHODOFFR_KEEPR_POWER_TOCR_GOTPCRELR_JMPMIPSR_DWARFSECREFR_ARM64_TLS_LER_ARM64_TLS_IER_ARM64_TLS_GDR_ARM64_GOTPCRELR_ARM64_GOTR_ARM64_PCRELR_ARM64_PCREL_LDST8R_ARM64_PCREL_LDST16R_ARM64_PCREL_LDST32R_ARM64_PCREL_LDST64R_ARM64_LDST8R_ARM64_LDST16R_ARM64_LDST32R_ARM64_LDST64R_ARM64_LDST128R_POWER_TLS_LER_POWER_TLS_IER_POWER_TLSR_POWER_TLS_IE_PCREL34R_POWER_TLS_LE_TPREL34R_POWER_TLS_GDR_ADDRPOWER_DSR_ADDRPOWER_GOTR_ADDRPOWER_GOT_PCREL34R_ADDRPOWER_PCRELR_ADDRPOWER_TOCRELR_ADDRPOWER_TOCREL_DSR_ADDRPOWER_D34R_ADDRPOWER_PCREL34R_RISCV_JALR_RISCV_JAL_TRAMPR_RISCV_CALLR_RISCV_PCREL_ITYPER_RISCV_PCREL_STYPER_RISCV_TLS_IER_RISCV_TLS_LER_RISCV_TLS_GDR_RISCV_GOT_HI20R_RISCV_GOT_PCREL_ITYPER_RISCV_PCREL_HI20R_RISCV_PCREL_LO12_IR_RISCV_PCREL_LO12_SR_RISCV_BRANCHR_RISCV_ADD32R_RISCV_SUB32R_RISCV_RVC_BRANCHR_RISCV_RVC_JUMPR_PCRELDBLR_LOONG64_ADDR_HIR_LOONG64_ADDR_LOR_LOONG64_ADDR64_HIR_LOONG64_ADDR64_LOR_LOONG64_ADDR_PCREL20_S2R_LOONG64_TLS_LE_HIR_LOONG64_TLS_LE_LOR_CALLLOONG64R_LOONG64_CALL36R_LOONG64_TLS_IE_HIR_LOONG64_TLS_IE_LOR_LOONG64_TLS_GD_HIR_LOONG64_TLS_GD_LOR_LOONG64_GOT_HIR_LOONG64_GOT_LOR_LOONG64_GOT64_HIR_LOONG64_GOT64_LOR_LOONG64_ADD64R_LOONG64_SUB64R_JMP16LOONG64R_JMP21LOONG64R_ADDRMIPSUR_ADDRMIPSTLSR_ADDRCUOFFR_WASMIMPORTR_XCOFFREFR_PEIMAGEOFFR_INITORDERR_DWTXTADDR_U1R_DWTXTADDR_U2R_DWTXTADDR_U3R_DWTXTADDR_U4"
+ 
+-var _RelocType_index = [...]uint16{0, 6, 17, 28, 38, 47, 53, 59, 68, 79, 88, 99, 109, 116, 123, 131, 139, 147, 153, 159, 165, 175, 184, 194, 210, 226, 237, 243, 254, 264, 273, 286, 300, 314, 330, 341, 354, 373, 393, 413, 433, 446, 460, 474, 488, 503, 517, 531, 542, 564, 586, 600, 615, 638, 655, 673, 694, 709, 728, 739, 756, 768, 787, 806, 820, 834, 850, 873, 891, 911, 931, 945, 958, 971, 989, 1005, 1015, 1032, 1049, 1068, 1087, 1112, 1131, 1150, 1163, 1179, 1198, 1217, 1233, 1249, 1267, 1285, 1300, 1315, 1329, 1343, 1354, 1367, 1378, 1390, 1400, 1412, 1423, 1437, 1451, 1465, 1479}
++var _RelocType_index = [...]uint16{0, 6, 17, 28, 38, 47, 53, 59, 68, 79, 88, 99, 109, 116, 123, 131, 139, 147, 155, 161, 167, 173, 183, 192, 202, 218, 234, 245, 251, 262, 272, 281, 294, 308, 322, 336, 352, 363, 376, 395, 415, 435, 455, 468, 482, 496, 510, 525, 539, 553, 564, 586, 608, 622, 636, 651, 674, 691, 709, 730, 745, 764, 775, 792, 804, 823, 842, 856, 870, 884, 900, 923, 941, 961, 981, 995, 1008, 1021, 1039, 1055, 1065, 1082, 1099, 1118, 1137, 1162, 1181, 1200, 1213, 1229, 1248, 1267, 1286, 1305, 1321, 1337, 1355, 1373, 1388, 1403, 1417, 1431, 1442, 1455, 1466, 1478, 1488, 1500, 1511, 1525, 1539, 1553, 1567}
+ 
+ func (i RelocType) String() string {
+ 	idx := int(i) - 1
+diff --git a/src/cmd/link/internal/arm64/asm.go b/src/cmd/link/internal/arm64/asm.go
+index 9864788e..ecc84cac 100644
+--- a/src/cmd/link/internal/arm64/asm.go
++++ b/src/cmd/link/internal/arm64/asm.go
+@@ -567,6 +567,19 @@ func elfreloc1(ctxt *ld.Link, out *ld.OutBuf, ldr *loader.Loader, s loader.Sym,
+ 		out.Write64(uint64(r.Xadd))
+ 		out.Write64(uint64(sectoff + 4))
+ 		out.Write64(uint64(elf.R_AARCH64_TLSIE_LD64_GOTTPREL_LO12_NC) | uint64(elfsym)<<32)
++	case objabi.R_ARM64_TLS_GD:
++		// TLSDESC sequence: adrp x0; ldr x1,[x0]; add x0,x0; blr x1
++		// Emit 4 relocations for the 4-instruction sequence.
++		out.Write64(uint64(elf.R_AARCH64_TLSDESC_ADR_PAGE21) | uint64(elfsym)<<32)
++		out.Write64(uint64(r.Xadd))
++		out.Write64(uint64(sectoff + 4))
++		out.Write64(uint64(elf.R_AARCH64_TLSDESC_LD64_LO12_NC) | uint64(elfsym)<<32)
++		out.Write64(uint64(r.Xadd))
++		out.Write64(uint64(sectoff + 8))
++		out.Write64(uint64(elf.R_AARCH64_TLSDESC_ADD_LO12_NC) | uint64(elfsym)<<32)
++		out.Write64(uint64(r.Xadd))
++		out.Write64(uint64(sectoff + 12))
++		out.Write64(uint64(elf.R_AARCH64_TLSDESC_CALL) | uint64(elfsym)<<32)
+ 	case objabi.R_ARM64_GOTPCREL:
+ 		out.Write64(uint64(elf.R_AARCH64_ADR_GOT_PAGE) | uint64(elfsym)<<32)
+ 		out.Write64(uint64(r.Xadd))
+@@ -877,6 +890,10 @@ func archreloc(target *ld.Target, ldr *loader.Loader, syms *ld.ArchSyms, r loade
+ 			nExtReloc = 2 // need two ELF relocations. see elfreloc1
+ 			return val, nExtReloc, isOk
+ 
++		case objabi.R_ARM64_TLS_GD:
++			nExtReloc = 4 // TLSDESC needs four ELF relocations. see elfreloc1
++			return val, nExtReloc, isOk
++
+ 		case objabi.R_ADDR:
+ 			if target.IsWindows() && r.Add() != 0 {
+ 				if r.Siz() == 8 {
+@@ -995,6 +1012,9 @@ func archreloc(target *ld.Target, ldr *loader.Loader, syms *ld.ArchSyms, r loade
+ 			log.Fatalf("cannot handle R_ARM64_TLS_IE (sym %s) when linking internally", ldr.SymName(s))
+ 		}
+ 
++	case objabi.R_ARM64_TLS_GD:
++		log.Fatalf("cannot handle R_ARM64_TLS_GD (sym %s) when linking internally", ldr.SymName(s))
++
+ 	case objabi.R_CALLARM64:
+ 		var t int64
+ 		if ldr.SymType(rs) == sym.SDYNIMPORT {
+@@ -1137,7 +1157,8 @@ func extreloc(target *ld.Target, ldr *loader.Loader, r loader.Reloc, s loader.Sy
+ 		return rr, true
+ 	case objabi.R_CALLARM64,
+ 		objabi.R_ARM64_TLS_LE,
+-		objabi.R_ARM64_TLS_IE:
++		objabi.R_ARM64_TLS_IE,
++		objabi.R_ARM64_TLS_GD:
+ 		return ld.ExtrelocSimple(ldr, r), true
+ 	}
+ 	return loader.ExtReloc{}, false
+diff --git a/src/cmd/link/internal/ld/data.go b/src/cmd/link/internal/ld/data.go
+index bf2bac18..76c40df2 100644
+--- a/src/cmd/link/internal/ld/data.go
++++ b/src/cmd/link/internal/ld/data.go
+@@ -327,6 +327,26 @@ func (st *relocSymState) relocsym(s loader.Sym, P []byte) {
+ 			} else {
+ 				log.Fatalf("unexpected R_TLS_LE relocation for %v", target.HeadType)
+ 			}
++		case objabi.R_ARM64_TLS_GD:
++			if target.IsExternal() && target.IsElf() {
++				nExtReloc += 4 // TLSDESC needs four ELF relocations
++				continue
++			}
++			log.Fatalf("cannot handle R_ARM64_TLS_GD (sym %s) when linking internally", ldr.SymName(s))
++		case objabi.R_TLS_GD:
++			if target.IsExternal() && target.IsElf() {
++				if target.IsAMD64() {
++					nExtReloc += 2 // TLSDESC: GOTPC32_TLSDESC + TLSDESC_CALL
++				} else {
++					nExtReloc++ // __tls_get_addr: single GD relocation
++				}
++				o = 0
++				if !target.IsAMD64() {
++					o = r.Add()
++				}
++				break
++			}
++			log.Fatalf("cannot handle R_TLS_GD (sym %s) when linking internally", ldr.SymName(s))
+ 		case objabi.R_TLS_IE:
+ 			if target.IsExternal() && target.IsElf() {
+ 				nExtReloc++
+@@ -666,7 +686,7 @@ func extreloc(ctxt *Link, ldr *loader.Loader, s loader.Sym, r loader.Reloc) (loa
+ 	default:
+ 		return thearch.Extreloc(target, ldr, r, s)
+ 
+-	case objabi.R_TLS_LE, objabi.R_TLS_IE:
++	case objabi.R_TLS_LE, objabi.R_TLS_IE, objabi.R_TLS_GD:
+ 		if target.IsElf() {
+ 			rs := r.Sym()
+ 			rr.Xsym = rs
+diff --git a/src/runtime/cgo.go b/src/runtime/cgo.go
+index 60f2403d..ca423b0a 100644
+--- a/src/runtime/cgo.go
++++ b/src/runtime/cgo.go
+@@ -22,6 +22,7 @@ import "unsafe"
+ //go:linkname _cgo_pthread_key_created _cgo_pthread_key_created
+ //go:linkname _cgo_bindm _cgo_bindm
+ //go:linkname _cgo_getstackbound _cgo_getstackbound
++//go:linkname _cgo_isglibc _cgo_isglibc
+ 
+ var (
+ 	_cgo_init                     unsafe.Pointer
+@@ -36,6 +37,7 @@ var (
+ 	_cgo_pthread_key_created      unsafe.Pointer
+ 	_cgo_bindm                    unsafe.Pointer
+ 	_cgo_getstackbound            unsafe.Pointer
++	_cgo_isglibc                  unsafe.Pointer
+ )
+ 
+ // iscgo is set to true by the runtime/cgo package
+diff --git a/src/runtime/cgo/callbacks.go b/src/runtime/cgo/callbacks.go
+--- a/src/runtime/cgo/callbacks.go
++++ b/src/runtime/cgo/callbacks.go
+@@ -163,6 +163,16 @@ var _cgo_call_symbolizer_function = &x_cgo_call_symbolizer_function
+ //go:cgo_import_static _cgo_yield
+ //go:linkname _cgo_yield _cgo_yield
+ var _cgo_yield unsafe.Pointer
++
++// x_cgo_isglibc is set to 1 during _cgo_init if running on glibc.
++// Used to determine if .init_array argc/argv are reliable.
++// See go.dev/issue/13492.
++
++//go:cgo_import_static x_cgo_isglibc
++//go:linkname x_cgo_isglibc x_cgo_isglibc
++//go:linkname _cgo_isglibc _cgo_isglibc
++var x_cgo_isglibc byte
++var _cgo_isglibc = &x_cgo_isglibc
+ 
+ //go:cgo_export_static _cgo_topofstack
+ //go:cgo_export_dynamic _cgo_topofstack
+diff --git a/src/runtime/cgo/gcc_unix.c b/src/runtime/cgo/gcc_unix.c
+--- a/src/runtime/cgo/gcc_unix.c
++++ b/src/runtime/cgo/gcc_unix.c
+@@ -11,6 +11,19 @@
+ void (*x_cgo_inittls)(void **tlsg, void **tlsbase) __attribute__((weak));
+ void (*x_cgo_threadentry_platform)(void) __attribute__((weak));
+ 
++#ifdef __linux__
++// Weak reference to glibc-specific function. Resolves to the actual
++// function on glibc, NULL on musl/bionic/other libc implementations.
++// Used by the Go runtime to determine whether .init_array functions
++// receive argc/argv (glibc extension) or garbage (ELF ABI standard).
++extern const char *gnu_get_libc_version(void) __attribute__((weak));
++
++// Set to 1 during x_cgo_init if running on glibc.
++// Accessed by the Go runtime as _cgo_isglibc.
++// Use uint8 to match the Go-side byte declaration.
++uint8_t x_cgo_isglibc;
++#endif
++
+ static void (*setg_gcc)(void*);
+ 
+ // _cgo_set_stacklo sets g->stacklo based on the stack size.
+@@ -40,6 +53,10 @@ x_cgo_init(G *g, void (*setg)(void*), void **tlsg, void **tlsbase)
+ 	setg_gcc = setg;
+ 	_cgo_set_stacklo(g);
+ 
++#ifdef __linux__
++	x_cgo_isglibc = (gnu_get_libc_version != nil) ? 1 : 0;
++#endif
++
+ 	if (x_cgo_inittls) {
+ 		x_cgo_inittls(tlsg, tlsbase);
+ 	}
+diff --git a/src/runtime/os_linux.go b/src/runtime/os_linux.go
+index 493567b5..d1e4bd36 100644
+--- a/src/runtime/os_linux.go
++++ b/src/runtime/os_linux.go
+@@ -234,7 +234,30 @@ func mincore(addr unsafe.Pointer, n uintptr, dst *byte) int32
+ 
+ var auxvreadbuf [128]uintptr
+ 
++// libinitArgvSafe reports whether argc/argv from .init_array are safe
++// to dereference. On glibc, .init_array functions receive (argc, argv,
++// envp) as a non-standard extension. On musl/bionic/other libc, they
++// receive no arguments per the ELF ABI, so argv contains garbage.
++// Detection uses a weak reference to gnu_get_libc_version set during
++// _cgo_init (which runs before sysargs). See go.dev/issue/13492.
++func libinitArgvSafe() bool {
++	return _cgo_isglibc != nil && *(*byte)(unsafe.Pointer(_cgo_isglibc)) != 0
++}
++
+ func sysargs(argc int32, argv **byte) {
++	if islibrary || isarchive {
++		// In library/archive mode, argc/argv from .init_array may be
++		// garbage. On glibc, .init_array functions receive (argc, argv,
++		// envp) as a non-standard extension. On musl/bionic, they
++		// receive nothing (registers contain garbage per ELF ABI).
++		// Even on glibc, validate argc as a sanity check.
++		// See go.dev/issue/13492.
++		if !libinitArgvSafe() || argc < 0 || argc > 1<<16 {
++			sysargsFromProc()
++			return
++		}
++	}
++
+ 	n := argc + 1
+ 
+ 	// skip over argv, envp to get to auxv
+@@ -255,6 +278,13 @@ func sysargs(argc int32, argv **byte) {
+ 	// In some situations we don't get a loader-provided
+ 	// auxv, such as when loaded as a library on Android.
+ 	// Fall back to /proc/self/auxv.
++	sysargsFromProc()
++}
++
++// sysargsFromProc reads auxiliary vector data from /proc/self/auxv.
++// Used when argv-based auxv discovery is not possible (library mode)
++// or when the loader did not provide auxv via argv.
++func sysargsFromProc() {
+ 	fd := open(&procAuxv[0], 0 /* O_RDONLY */, 0)
+ 	if fd < 0 {
+ 		// On Android, /proc/self/auxv might be unreadable (issue 9229), so we fallback to
+@@ -280,7 +310,7 @@ func sysargs(argc int32, argv **byte) {
+ 		return
+ 	}
+ 
+-	n = read(fd, noescape(unsafe.Pointer(&auxvreadbuf[0])), int32(unsafe.Sizeof(auxvreadbuf)))
++	n := read(fd, noescape(unsafe.Pointer(&auxvreadbuf[0])), int32(unsafe.Sizeof(auxvreadbuf)))
+ 	closefd(fd)
+ 	if n < 0 {
+ 		return
+@@ -369,9 +399,57 @@ func readRandom(r []byte) int {
+ }
+ 
+ func goenvs() {
++	if (islibrary || isarchive) && !libinitArgvSafe() {
++		// In library/archive mode on non-glibc systems, argv contains
++		// garbage so we cannot walk argv to find envp. Read from
++		// /proc/self/environ instead. See go.dev/issue/13492.
++		goenvs_lib()
++		return
++	}
+ 	goenvs_unix()
+ }
+ 
++var procEnviron = []byte("/proc/self/environ\x00")
++
++// goenvs_lib reads environment variables from /proc/self/environ for use
++// in library/archive mode where argv-based environment discovery is unsafe.
++func goenvs_lib() {
++	// /proc/self/environ contains NUL-separated KEY=VALUE pairs.
++	const bufSize = 8 << 10 // 8KB; we are on the system stack (64KB)
++	var buf [bufSize]byte
++
++	fd := open(&procEnviron[0], 0 /* O_RDONLY */, 0)
++	if fd < 0 {
++		envs = make([]string, 0)
++		return
++	}
++	n := read(fd, noescape(unsafe.Pointer(&buf[0])), int32(bufSize))
++	closefd(fd)
++	if n <= 0 {
++		envs = make([]string, 0)
++		return
++	}
++
++	// Count NUL-separated entries.
++	count := 0
++	for i := int32(0); i < n; i++ {
++		if buf[i] == 0 {
++			count++
++		}
++	}
++
++	envs = make([]string, 0, count)
++	start := 0
++	for i := int32(0); i < n; i++ {
++		if buf[i] == 0 {
++			if i > int32(start) {
++				envs = append(envs, gostring(&buf[start]))
++			}
++			start = int(i) + 1
++		}
++	}
++}
++
+ // Called to do synchronous initialization of Go code built with
+ // -buildmode=c-archive or -buildmode=c-shared.
+ // None of the Go runtime is initialized.
+diff --git a/src/runtime/proc.go b/src/runtime/proc.go
+index 7e177c72..cbc4befb 100644
+--- a/src/runtime/proc.go
++++ b/src/runtime/proc.go
+@@ -802,6 +802,13 @@ func getGodebugEarly() (string, bool) {
+ 		// Similar to goenv_unix but extracts the environment value for
+ 		// GODEBUG directly.
+ 		// TODO(moehrmann): remove when general goenvs() can be called before cpuinit()
++		if (islibrary || isarchive) && GOOS == "linux" {
++			// In library/archive mode on Linux, argv may contain
++			// garbage on non-glibc systems. Skip early GODEBUG
++			// parsing; it will be picked up later via goenvs().
++			// See go.dev/issue/13492.
++			return "", false
++		}
+ 		n := int32(0)
+ 		for argv_index(argv, argc+1+n) != nil {
+ 			n++
+diff --git a/src/runtime/runtime1.go b/src/runtime/runtime1.go
+index 8da36822..0f763959 100644
+--- a/src/runtime/runtime1.go
++++ b/src/runtime/runtime1.go
+@@ -75,6 +75,13 @@ func goargs() {
+ 	if GOOS == "windows" {
+ 		return
+ 	}
++	if islibrary || isarchive {
++		// In library/archive mode, argc/argv may contain garbage.
++		// The library does not own the process arguments.
++		// See go.dev/issue/13492.
++		argslice = make([]string, 0)
++		return
++	}
+ 	argslice = make([]string, argc)
+ 	for i := int32(0); i < argc; i++ {
+ 		argslice[i] = gostringnocopy(argv_index(argv, i))
+diff --git a/src/runtime/tls_arm64.s b/src/runtime/tls_arm64.s
+index 52b3e8f2..7493fe15 100644
+--- a/src/runtime/tls_arm64.s
++++ b/src/runtime/tls_arm64.s
+@@ -18,6 +18,21 @@ TEXT runtime·load_g(SB),NOSPLIT,$0
+ #endif
+ #endif
+ 
++#ifdef TLS_GD
++	// General Dynamic TLS model (TLSDESC).
++	// The MOVD below generates: adrp x0; ldr x1; add x0; blr x1
++	// TLSDESC ABI clobbers X0, X1, and LR (X30).
++	// Callers expect save_g/load_g to only clobber R0 and R27,
++	// so we save R1 and LR to scratch registers R10 and R11.
++	MOVD	R1, R10
++	MOVD	R30, R11
++	MOVD	runtime·tls_g(SB), R0
++	MOVD	R10, R1
++	MOVD	R11, R30
++	MOVD	R0, R27
++	MRS_TPIDR_R0
++	MOVD	(R0)(R27), g
++#else
+ 	MRS_TPIDR_R0
+ #ifdef TLS_darwin
+ 	// Darwin sometimes returns unaligned pointers
+@@ -25,6 +40,7 @@ TEXT runtime·load_g(SB),NOSPLIT,$0
+ #endif
+ 	MOVD	runtime·tls_g(SB), R27
+ 	MOVD	(R0)(R27), g
++#endif
+ 
+ nocgo:
+ 	RET
+@@ -39,6 +55,18 @@ TEXT runtime·save_g(SB),NOSPLIT,$0
+ #endif
+ #endif
+ 
++#ifdef TLS_GD
++	// General Dynamic TLS model (TLSDESC).
++	// Save R1 and LR — callers may have live values in these regs.
++	MOVD	R1, R10
++	MOVD	R30, R11
++	MOVD	runtime·tls_g(SB), R0
++	MOVD	R10, R1
++	MOVD	R11, R30
++	MOVD	R0, R27
++	MRS_TPIDR_R0
++	MOVD	g, (R0)(R27)
++#else
+ 	MRS_TPIDR_R0
+ #ifdef TLS_darwin
+ 	// Darwin sometimes returns unaligned pointers
+@@ -46,6 +74,7 @@ TEXT runtime·save_g(SB),NOSPLIT,$0
+ #endif
+ 	MOVD	runtime·tls_g(SB), R27
+ 	MOVD	g, (R0)(R27)
++#endif
+ 
+ nocgo:
+ 	RET
