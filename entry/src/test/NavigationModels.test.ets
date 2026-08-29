@@ -17,6 +17,11 @@ export default function navigationModelsTest() {
         .assertEqual(NavigationLayout.SIDE);
     });
 
+    it('usesBottomNavigationInExpandedFloatingWindow', 0, () => {
+      expect(resolveNavigationLayout(true, true, true))
+        .assertEqual(NavigationLayout.BOTTOM);
+    });
+
     it('usesBottomNavigationOnFoldedScreen', 0, () => {
       expect(resolveNavigationLayout(true, false))
         .assertEqual(NavigationLayout.BOTTOM);
@@ -26,6 +31,8 @@ export default function navigationModelsTest() {
       expect(resolveNavigationLayout(false, true))
         .assertEqual(NavigationLayout.BOTTOM);
       expect(resolveNavigationLayout(false, false))
+        .assertEqual(NavigationLayout.BOTTOM);
+      expect(resolveNavigationLayout(false, true, true))
         .assertEqual(NavigationLayout.BOTTOM);
     });
 

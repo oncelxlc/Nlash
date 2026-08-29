@@ -28,8 +28,9 @@ export const BOTTOM_NAV_PAGES: AppPage[] = [
   AppPage.SETTINGS
 ];
 
-export function resolveNavigationLayout(isFoldable: boolean, isExpanded: boolean): NavigationLayout {
-  if (isFoldable && isExpanded) {
+export function resolveNavigationLayout(isFoldable: boolean, isExpanded: boolean,
+  isSmallWindow: boolean = false): NavigationLayout {
+  if (isFoldable && isExpanded && !isSmallWindow) {
     return NavigationLayout.SIDE;
   }
   return NavigationLayout.BOTTOM;

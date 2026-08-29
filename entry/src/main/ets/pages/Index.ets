@@ -1,4 +1,4 @@
-import { display } from '@kit.ArkUI';
+import { display, window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { FeedbackEvent, FeedbackLevel } from '../models/FeedbackModels';
 import { ConfigurationPage } from '../components/ConfigurationPage';
@@ -26,11 +26,19 @@ struct Index {
   @State navigationLayout: NavigationLayout = NavigationLayout.BOTTOM;
   @State isFoldable: boolean = false;
   @State foldStatus: display.FoldStatus = display.FoldStatus.FOLD_STATUS_UNKNOWN;
+  @State windowStatus: window.WindowStatusType = window.WindowStatusType.UNDEFINED;
   private foldListenerRegistered: boolean = false;
+  private windowStatusListenerRegistered: boolean = false;
+  private mainWindow: window.Window | undefined = undefined;
   private unsubscribeFeedback: (() => void) | undefined = undefined;
 
   private readonly foldStatusChangeHandler = (status: display.FoldStatus): void => {
     this.foldStatus = status;
+    this.updateNavigationLayout();
+  };
+
+  private readonly windowStatusChangeHandler = (status: window.WindowStatusType): void => {
+    this.windowStatus = status;
     this.updateNavigationLayout();
   };
 
@@ -62,7 +70,24 @@ struct Index {
       this.isFoldable = false;
       this.foldStatus = display.FoldStatus.FOLD_STATUS_UNKNOWN;
     }
+    this.registerWindowStatusListener();
     this.updateNavigationLayout();
+  }
+
+  private registerWindowStatusListener(): void {
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext | undefined;
+      if (context === undefined) {
+        return;
+      }
+      this.mainWindow = context.windowStage.getMainWindowSync();
+      this.windowStatus = this.mainWindow.getWindowStatus();
+      this.mainWindow.on('windowStatusChange', this.windowStatusChangeHandler);
+      this.windowStatusListenerRegistered = true;
+    } catch (error) {
+      this.mainWindow = undefined;
+      this.windowStatus = window.WindowStatusType.UNDEFINED;
+    }
   }
 
   private unregisterResponsiveListeners(): void {
@@ -73,15 +98,28 @@ struct Index {
       }
       this.foldListenerRegistered = false;
     }
+    if (this.windowStatusListenerRegistered && this.mainWindow !== undefined) {
+      try {
+        this.mainWindow.off('windowStatusChange', this.windowStatusChangeHandler);
+      } catch (error) {
+      }
+    }
+    this.windowStatusListenerRegistered = false;
+    this.mainWindow = undefined;
   }
 
   private updateNavigationLayout(): void {
-    this.navigationLayout = resolveNavigationLayout(this.isFoldable, this.isExpandedFold());
+    this.navigationLayout = resolveNavigationLayout(this.isFoldable, this.isExpandedFold(), this.isSmallWindow());
   }
 
   private isExpandedFold(): boolean {
     return this.foldStatus === display.FoldStatus.FOLD_STATUS_EXPANDED ||
       this.foldStatus === display.FoldStatus.FOLD_STATUS_EXPANDED_WITH_SECOND_EXPANDED;
+  }
+
+  private isSmallWindow(): boolean {
+    return this.windowStatus === window.WindowStatusType.FLOATING ||
+      this.windowStatus === window.WindowStatusType.SPLIT_SCREEN;
   }
 
   private selectPage(page: AppPage): void {
@@ -151,14 +189,14 @@ struct Index {
       .onBackPressed((): boolean => this.handlePrimaryBack(AppPage.DASHBOARD))
     } else if (name === AppRoute.PROXY) {
       NavDestination() {
-        ProxyPage({ forceExpanded: this.isFoldable && this.isExpandedFold() })
+        ProxyPage({ forceExpanded: this.navigationLayout === NavigationLayout.SIDE })
       }
       .hideTitleBar(true)
       .backgroundColor($r('app.color.app_background'))
       .onBackPressed((): boolean => this.handlePrimaryBack(AppPage.PROXY))
     } else if (name === AppRoute.CONFIGURATION) {
       NavDestination() {
-        ConfigurationPage({ forceExpanded: this.isFoldable && this.isExpandedFold() })
+        ConfigurationPage({ forceExpanded: this.navigationLayout === NavigationLayout.SIDE })
       }
       .hideTitleBar(true)
       .backgroundColor($r('app.color.app_background'))

@@ -26,7 +26,8 @@ Nlash is a HarmonyOS VPN application built with ArkTS and a C++ native bridge (`
 | `entry/src/main/ets/models/NavigationModels.ets` | `AppPage` enum (6 pages), `NavigationLayout` enum, layout-resolution logic (foldable/portrait/wide) |
 
 **Navigation layout rules** (`resolveNavigationLayout`):
-- Foldable + expanded → **Side** nav (all 6 pages)
+- Foldable + expanded + fullscreen/maximized → **Side** nav (all 6 pages)
+- Foldable + expanded + floating/split-screen window → folded-style **Bottom** nav
 - Foldable + folded + portrait → **Bottom** nav (DASHBOARD, PROXY, CONFIGURATION, SETTINGS)
 - Non-foldable + portrait → **Bottom** nav
 - Non-foldable + wide → **Side** nav (REQUESTS, CONNECTIONS visible only in side nav)
