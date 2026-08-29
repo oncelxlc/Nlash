@@ -14,6 +14,8 @@ import (
 	"github.com/metacubex/mihomo/config"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/hub/executor"
+	"github.com/metacubex/mihomo/listener"
+	coreLog "github.com/metacubex/mihomo/log"
 )
 
 type coreRuntimeState int32
@@ -142,10 +144,40 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	configureHarmonyTun(cfg, options.tunFD, options.mtu)
 	runtime.protect = protect
 	dialer.DefaultSocketHook = runtime.protectSocket
-	executor.ApplyConfig(cfg, true)
+	if err = applyConfigAndVerifyTun(cfg); err != nil {
+		dialer.DefaultSocketHook = nil
+		executor.Shutdown()
+		runtime.protect = nil
+		return runtime.setFailure(coreStartFailed, err)
+	}
 	runtime.state = coreRunning
 	emitCoreEvent(coreEventLifecycle, runtime.state, coreOK, "core is running")
 	return coreOK
+}
+
+func applyConfigAndVerifyTun(cfg *config.Config) error {
+	logSubscription := coreLog.Subscribe()
+	tunErrorChannel := make(chan string, 1)
+	go func() {
+		tunError := ""
+		for event := range logSubscription {
+			if strings.HasPrefix(event.Payload, "Start TUN listening error:") {
+				tunError = event.Payload
+			}
+		}
+		tunErrorChannel <- tunError
+	}()
+
+	executor.ApplyConfig(cfg, true)
+	coreLog.UnSubscribe(logSubscription)
+	tunError := <-tunErrorChannel
+	if !listener.GetTunConf().Enable {
+		if tunError == "" {
+			tunError = "TUN listener did not start"
+		}
+		return errors.New(tunError)
+	}
+	return nil
 }
 
 const (
@@ -202,7 +234,7 @@ func configureHarmonyTun(cfg *config.Config, tunFD int, mtu int) {
 	cfg.General.Tun.Device = "nlash0"
 	cfg.General.Tun.FileDescriptor = tunFD
 	cfg.General.Tun.MTU = uint32(mtu)
-	cfg.General.Tun.Stack = C.TunGvisor
+	cfg.General.Tun.Stack = C.TunSystem
 	cfg.General.Tun.Inet4Address = []netip.Prefix{netip.MustParsePrefix("172.19.0.1/30")}
 	cfg.General.Tun.Inet6Address = nil
 	cfg.General.Tun.DNSHijack = []string{"any:53"}

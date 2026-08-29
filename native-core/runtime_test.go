@@ -24,7 +24,7 @@ func TestConfigureHarmonyTunOverridesUnsafeRouting(t *testing.T) {
 		len(cfg.General.Tun.DNSHijack) != 1 || cfg.General.Tun.DNSHijack[0] != "any:53" {
 		t.Fatalf("unexpected IPv4 TUN settings: %+v", cfg.General.Tun)
 	}
-	if cfg.General.Tun.Stack != C.TunGvisor {
+	if cfg.General.Tun.Stack != C.TunSystem {
 		t.Fatalf("unexpected TUN stack: %v", cfg.General.Tun.Stack)
 	}
 	if cfg.General.Tun.AutoRoute || cfg.General.Tun.AutoDetectInterface ||

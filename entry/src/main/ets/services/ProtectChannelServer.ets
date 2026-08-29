@@ -67,14 +67,13 @@ export class ProtectChannelServer {
   private readonly errorListener: ProtectChannelErrorListener;
   private server: socket.LocalSocketServer | undefined;
   private readonly clients: Map<number, socket.LocalSocketConnection> = new Map<number, socket.LocalSocketConnection>();
-  private readonly decoders: Map<number, ProtectFrameDecoder> = new Map<number, ProtectFrameDecoder>();
   private readonly operations: Map<number, Promise<void>> = new Map<number, Promise<void>>();
 
   private readonly connectHandler = (connection: socket.LocalSocketConnection): void => {
+    const decoder = new ProtectFrameDecoder();
     this.clients.set(connection.clientId, connection);
-    this.decoders.set(connection.clientId, new ProtectFrameDecoder());
     connection.on('message', (info: socket.LocalSocketMessageInfo): void => {
-      this.enqueueMessage(connection, info.message);
+      this.enqueueMessage(connection, decoder, info.message);
     });
     connection.on('close', (): void => {
       this.removeClient(connection.clientId);
@@ -118,7 +117,6 @@ export class ProtectChannelServer {
   async stop(): Promise<void> {
     const clients = Array.from(this.clients.values());
     this.clients.clear();
-    this.decoders.clear();
     this.operations.clear();
     for (const client of clients) {
       client.off('message');
@@ -142,10 +140,11 @@ export class ProtectChannelServer {
     }
   }
 
-  private enqueueMessage(connection: socket.LocalSocketConnection, data: ArrayBuffer): void {
+  private enqueueMessage(connection: socket.LocalSocketConnection, decoder: ProtectFrameDecoder,
+    data: ArrayBuffer): void {
     const previous = this.operations.get(connection.clientId) ?? Promise.resolve();
     const operation = previous.then(async (): Promise<void> => {
-      await this.handleMessage(connection, data);
+      await this.handleMessage(connection, decoder, data);
     });
     this.operations.set(connection.clientId, operation);
     operation.then((): void => {
@@ -161,11 +160,8 @@ export class ProtectChannelServer {
     });
   }
 
-  private async handleMessage(connection: socket.LocalSocketConnection, data: ArrayBuffer): Promise<void> {
-    const decoder = this.decoders.get(connection.clientId);
-    if (decoder === undefined) {
-      throw new Error('Protect decoder is unavailable');
-    }
+  private async handleMessage(connection: socket.LocalSocketConnection, decoder: ProtectFrameDecoder,
+    data: ArrayBuffer): Promise<void> {
     const messages = decoder.append(data);
     for (const message of messages) {
       const ack = await this.coordinator.handle(message);
@@ -180,7 +176,6 @@ export class ProtectChannelServer {
 
   private removeClient(clientId: number): void {
     this.clients.delete(clientId);
-    this.decoders.delete(clientId);
     this.operations.delete(clientId);
   }
 }

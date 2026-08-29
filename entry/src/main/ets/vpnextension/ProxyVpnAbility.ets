@@ -222,7 +222,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     });
     if (!coreResult.ok || coreClient.getState() !== CoreRuntimeState.RUNNING) {
       await this.cleanup();
-      throw new Error(`Core start failed: ${coreResult.code}`);
+      throw new Error(`Core start failed: ${coreResult.code}: ${coreResult.message}`);
     }
 
     await this.applyRuntimeSelections();
