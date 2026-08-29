@@ -586,15 +586,6 @@ export struct ConfigurationPage {
 
       Blank()
       Row({ space: 12 }) {
-        Button('取消')
-          .type(ButtonType.Normal)
-          .layoutWeight(1)
-          .height(48)
-          .borderRadius(BUTTON_RADIUS)
-          .enabled(this.busyProfileId.length === 0)
-          .onClick((): void => {
-            this.requestCloseEditor();
-          })
         Button(this.editingProfile()?.type === ProfileType.SUBSCRIPTION ? '保存并更新' : '保存')
           .type(ButtonType.Normal)
           .layoutWeight(1)
@@ -770,7 +761,6 @@ export struct ConfigurationPage {
           }
           .width(420)
           .height('100%')
-          .shadow({ radius: 24, color: '#33000000', offsetX: -8, offsetY: 0 })
         }
       }
     }
