@@ -47,7 +47,8 @@ const CORE_EVENT_TYPES: CoreEventType[] = [
   CoreEventType.LIFECYCLE,
   CoreEventType.LOG,
   CoreEventType.UNEXPECTED_EXIT,
-  CoreEventType.PROTECT_FAILURE
+  CoreEventType.PROTECT_FAILURE,
+  CoreEventType.PROXY_DELAY_PROGRESS
 ];
 
 class NativeCoreClient implements CoreClient {

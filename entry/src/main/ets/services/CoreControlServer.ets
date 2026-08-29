@@ -3,12 +3,16 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import {
   CORE_COMMAND_EVENT,
   CORE_CONTROL_VERSION,
+  CORE_PROGRESS_EVENT,
   CORE_RESPONSE_EVENT,
   CoreCommandEnvelope,
   decodeCoreCommandEnvelope,
+  decodeProxyDelayProgress,
+  encodeProxyDelayProgress,
   encodeCoreResponseEnvelope,
   MAX_CORE_RESPONSE_LENGTH
 } from '../models/CoreControlProtocol';
+import { CoreEvent, CoreEventType } from '../models/CoreModels';
 import { VPN_BUNDLE_NAME } from '../models/VpnModels';
 import { coreClient } from './CoreClient';
 
@@ -18,6 +22,7 @@ const TAG = 'NlashCoreControl';
 class CoreControlServer {
   private subscriber: commonEventManager.CommonEventSubscriber | undefined;
   private startOperation: Promise<void> | undefined;
+  private unsubscribeCore: (() => void) | undefined;
 
   start(): Promise<void> {
     if (this.subscriber !== undefined) {
@@ -36,6 +41,8 @@ class CoreControlServer {
   }
 
   stop(): void {
+    this.unsubscribeCore?.();
+    this.unsubscribeCore = undefined;
     const subscriber = this.subscriber;
     this.subscriber = undefined;
     if (subscriber !== undefined) {
@@ -69,6 +76,15 @@ class CoreControlServer {
             '{"ok":false,"code":"INTERNAL_ERROR","message":"command execution failed"}');
         });
       });
+    this.unsubscribeCore = coreClient.subscribe((event: CoreEvent): void => {
+      if (event.type !== CoreEventType.PROXY_DELAY_PROGRESS) {
+        return;
+      }
+      const progress = decodeProxyDelayProgress(event.message);
+      if (progress !== undefined) {
+        this.publishProgress(encodeProxyDelayProgress(progress));
+      }
+    });
   }
 
   private async handleCommand(envelope: CoreCommandEnvelope): Promise<void> {
@@ -97,7 +113,21 @@ class CoreControlServer {
       hilog.error(DOMAIN, TAG, 'response publish threw');
     }
   }
+
+  private publishProgress(data: string): void {
+    try {
+      commonEventManager.publish(CORE_PROGRESS_EVENT, {
+        bundleName: VPN_BUNDLE_NAME,
+        data: data
+      }, (error: BusinessError): void => {
+        if (error) {
+          hilog.error(DOMAIN, TAG, 'progress publish failed code=%{public}d', error.code);
+        }
+      });
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, 'progress publish threw');
+    }
+  }
 }
 
 export const coreControlServer = new CoreControlServer();
-

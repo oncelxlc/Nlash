@@ -209,6 +209,74 @@ export function mergeGroupDelay(groups: ProxyGroupSnapshot[], groupName: string,
   });
 }
 
+export function resetGroupDelay(groups: ProxyGroupSnapshot[], groupName: string,
+  proxyName: string = ''): ProxyGroupSnapshot[] {
+  return groups.map((group: ProxyGroupSnapshot): ProxyGroupSnapshot => {
+    if (group.name !== groupName) {
+      return group;
+    }
+    return {
+      name: group.name,
+      type: group.type,
+      selected: group.selected,
+      selectable: group.selectable,
+      hidden: group.hidden,
+      nodes: group.nodes.map((node: ProxyNodeSnapshot): ProxyNodeSnapshot => {
+        if (proxyName.length > 0 && node.name !== proxyName) {
+          return node;
+        }
+        return {
+          name: node.name,
+          type: node.type,
+          alive: false,
+          tested: false,
+          delay: 0,
+          udp: node.udp
+        };
+      })
+    };
+  });
+}
+
+export function failPendingGroupDelay(groups: ProxyGroupSnapshot[], groupName: string,
+  proxyName: string = ''): ProxyGroupSnapshot[] {
+  return groups.map((group: ProxyGroupSnapshot): ProxyGroupSnapshot => {
+    if (group.name !== groupName) {
+      return group;
+    }
+    return {
+      name: group.name,
+      type: group.type,
+      selected: group.selected,
+      selectable: group.selectable,
+      hidden: group.hidden,
+      nodes: group.nodes.map((node: ProxyNodeSnapshot): ProxyNodeSnapshot => {
+        if ((proxyName.length > 0 && node.name !== proxyName) || node.tested) {
+          return node;
+        }
+        return {
+          name: node.name,
+          type: node.type,
+          alive: false,
+          tested: true,
+          delay: -1,
+          udp: node.udp
+        };
+      })
+    };
+  });
+}
+
+export function proxyDelayLabel(node: ProxyNodeSnapshot, testing: boolean): string {
+  if (testing) {
+    return '…';
+  }
+  if (!node.tested) {
+    return '⚡';
+  }
+  return node.alive && node.delay > 0 ? `${node.delay}ms` : 'Error';
+}
+
 export function pruneProxySelections(groups: ProxyGroupSnapshot[],
   selections: ProxySelection[]): ProxySelection[] {
   return selections.filter((selection: ProxySelection): boolean => {

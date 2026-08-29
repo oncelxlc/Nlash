@@ -1,8 +1,10 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
   decodeCoreCommandEnvelope,
+  decodeProxyDelayProgress,
   decodeCoreResponseEnvelope,
   encodeCoreCommandEnvelope,
+  encodeProxyDelayProgress,
   encodeCoreResponseEnvelope,
   MAX_CORE_COMMAND_LENGTH
 } from '../main/ets/models/CoreControlProtocol';
@@ -34,6 +36,21 @@ export default function coreControlProtocolTest() {
         version: 1,
         requestId: 'request-1234',
         command: oversized
+      }))).assertUndefined();
+    });
+
+    it('validatesProxyDelayProgress', 0, () => {
+      const progress = decodeProxyDelayProgress(encodeProxyDelayProgress({
+        operationId: 'operation-1234', group: 'Auto', proxy: 'Node A', delay: 86, alive: true
+      }));
+      expect(progress?.proxy).assertEqual('Node A');
+      expect(progress?.delay).assertEqual(86);
+      expect(decodeProxyDelayProgress('{')).assertUndefined();
+      expect(decodeProxyDelayProgress(JSON.stringify({
+        operationId: 'short', group: 'Auto', proxy: 'Node A', delay: 86, alive: true
+      }))).assertUndefined();
+      expect(decodeProxyDelayProgress(JSON.stringify({
+        operationId: 'operation-1234', group: 'Auto', proxy: 'Node A', delay: -2, alive: false
       }))).assertUndefined();
     });
   });

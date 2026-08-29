@@ -1,10 +1,10 @@
 {
   "app": {
     "bundleName": "com.zhexian.nlash",
-    "patchVersionCode": 2000047,
+    "patchVersionCode": 2000090,
     "versionCode": 1000000,
     "versionName": "1.0.0",
-    "patchVersionName": "2000047"
+    "patchVersionName": "2000090"
   },
   "module": {
     "name": "entry",

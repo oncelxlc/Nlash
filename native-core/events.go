@@ -2,6 +2,8 @@ package main
 
 import "sync"
 
+const maxCoreProgressBytes = 8 * 1024
+
 type coreEventType int32
 
 const (
@@ -9,6 +11,7 @@ const (
 	coreEventLog
 	coreEventUnexpectedExit
 	coreEventProtectFailure
+	coreEventProxyDelayProgress
 )
 
 type coreEventHandler func(eventType coreEventType, state coreRuntimeState, code coreErrorCode, message string)
@@ -25,10 +28,21 @@ func setCoreEventHandler(handler coreEventHandler) {
 }
 
 func emitCoreEvent(eventType coreEventType, state coreRuntimeState, code coreErrorCode, message string) {
+	dispatchCoreEvent(eventType, state, code, sanitizeCoreErrorText(message))
+}
+
+func emitCoreProgressEvent(state coreRuntimeState, message string) {
+	if len(message) == 0 || len(message) > maxCoreProgressBytes {
+		return
+	}
+	dispatchCoreEvent(coreEventProxyDelayProgress, state, coreOK, message)
+}
+
+func dispatchCoreEvent(eventType coreEventType, state coreRuntimeState, code coreErrorCode, message string) {
 	coreEvents.RLock()
 	handler := coreEvents.handler
 	coreEvents.RUnlock()
 	if handler != nil {
-		handler(eventType, state, code, sanitizeCoreErrorText(message))
+		handler(eventType, state, code, message)
 	}
 }

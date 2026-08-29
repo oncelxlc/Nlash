@@ -1,6 +1,7 @@
 import {
   ProxyGroupSnapshot,
   ProxyNodeSnapshot,
+  proxyDelayLabel,
   ProxySelection,
   ProxySnapshotSource,
   RuntimeStoreSnapshot
@@ -11,6 +12,7 @@ import { runtimeStore } from '../stores/RuntimeStore';
 import { settingsStore } from '../stores/SettingsStore';
 import { ResponsiveMetrics, resolveResponsiveMetrics } from '../ui/ResponsiveMetrics';
 import { BUTTON_RADIUS } from '../ui/UiConstants';
+import { LengthMetrics, LengthUnit } from '@kit.ArkUI';
 
 @Component
 export struct ProxyPage {
@@ -68,23 +70,24 @@ export struct ProxyPage {
     return this.selections.find((selection: ProxySelection): boolean => selection.group === group)?.proxy ?? '';
   }
 
-  private statusLabel(node: ProxyNodeSnapshot): string {
+  private isNodeSelected(node: ProxyNodeSnapshot): boolean {
     const group = this.currentGroup();
-    if (this.available && group?.selected === node.name) {
-      return '当前';
+    if (this.available) {
+      return group?.selected === node.name;
     }
-    return this.preselectedNode(group?.name ?? '') === node.name ? '预选' : '';
+    return this.preselectedNode(group?.name ?? '') === node.name;
   }
 
-  private delayLabel(node: ProxyNodeSnapshot): string {
-    if (!node.tested) {
-      return '未测试';
+  private isNodeTesting(node: ProxyNodeSnapshot): boolean {
+    const groupName = this.currentGroup()?.name ?? '';
+    if (this.busyKey === `delay-group:${groupName}`) {
+      return !node.tested;
     }
-    return node.alive && node.delay > 0 ? `${node.delay} ms` : '不可用';
+    return this.busyKey === `delay:${groupName}:${node.name}` && !node.tested;
   }
 
-  private delayColor(node: ProxyNodeSnapshot): ResourceColor {
-    if (!node.tested) {
+  private delayColor(node: ProxyNodeSnapshot, testing: boolean): ResourceColor {
+    if (testing || !node.tested) {
       return $r('app.color.content_secondary');
     }
     return node.alive ? $r('app.color.status_success') : $r('app.color.status_error');
@@ -106,12 +109,7 @@ export struct ProxyPage {
     const group = this.currentGroup();
     if (group !== undefined) {
       try {
-        const delay = await runtimeStore.testDelay(group.name, node.name, this.settings.delayTestUrl);
-        if (delay > 0) {
-          feedbackService.success(`${node.name} 延迟 ${delay} ms`);
-        } else {
-          feedbackService.warning(`${node.name} 当前不可用`);
-        }
+        await runtimeStore.testDelay(group.name, node.name, this.settings.delayTestUrl);
       } catch (error) {
         feedbackService.error(this.errorMessage(error));
       }
@@ -125,7 +123,6 @@ export struct ProxyPage {
     }
     try {
       await runtimeStore.testGroupDelay(group.name, this.settings.delayTestUrl);
-      feedbackService.success(`${group.name} 延迟测试完成`);
     } catch (error) {
       feedbackService.error(this.errorMessage(error));
     }
@@ -140,8 +137,8 @@ export struct ProxyPage {
   @Builder
   private nodeCard(node: ProxyNodeSnapshot) {
     Stack({ alignContent: Alignment.BottomEnd }) {
-      Column({ space: 10 }) {
-        Row({ space: 8 }) {
+      Column({ space: 4 }) {
+        Row() {
           Text(node.name)
             .fontSize(15)
             .fontWeight(FontWeight.Medium)
@@ -149,46 +146,40 @@ export struct ProxyPage {
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .layoutWeight(1)
-          if (this.statusLabel(node).length > 0) {
-            Text(this.statusLabel(node))
-              .fontSize(11)
-              .fontColor($r('app.color.status_success'))
-          }
         }
         .width('100%')
-        Row({ space: 8 }) {
-          Text(`${node.type} · ${node.udp ? 'UDP' : 'TCP'}`)
+        Row({ space: 4 }) {
+          Text(`${node.type} ${node.udp ? 'UDP' : 'TCP'}`)
             .fontSize(11)
             .fontColor($r('app.color.content_secondary'))
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .layoutWeight(1)
-          Text(this.delayLabel(node))
-            .fontSize(11)
-            .fontColor(this.delayColor(node))
+          Text(proxyDelayLabel(node, this.isNodeTesting(node)))
+            .fontSize(12)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.delayColor(node, this.isNodeTesting(node)))
             .textAlign(TextAlign.End)
+            .accessibilityText(`测试 ${node.name} 延迟`)
+            .onTouch((event: TouchEvent): void => {
+              event.stopPropagation();
+            })
+            .onClick((): void => {
+              if (this.busyKey.length === 0) {
+                this.testNode(node);
+              }
+            })
         }
         .width('100%')
-        .padding({ right: 44 })
       }
       .alignItems(HorizontalAlign.Start)
       .width('100%')
-      .padding(14)
-      .border({ width: this.statusLabel(node).length > 0 ? 1 : 0,
+      .padding({ top: 12, bottom: 10, left: 12, right: 10 })
+      .border({ width: this.isNodeSelected(node) ? 1 : 0,
         color: $r('app.color.status_success') })
       .borderRadius(14)
       .backgroundColor($r('app.color.card_background'))
       .onClick((): void => { this.selectNode(node); })
-      Button('⚡')
-        .type(ButtonType.Normal)
-        .borderRadius(BUTTON_RADIUS)
-        .fontSize(14)
-        .width(38)
-        .height(30)
-        .zIndex(1)
-        .margin({ right: 14, bottom: 14 })
-        .enabled(this.busyKey.length === 0)
-        .onClick((): void => { this.testNode(node); })
     }
     .width(this.metrics.proxyCardWidth)
     .margin({ bottom: this.metrics.cardGap })
@@ -287,7 +278,7 @@ export struct ProxyPage {
   @Builder
   private floatingDelayButton() {
     if (this.currentGroup() !== undefined) {
-      Button(this.busyKey.length > 0 ? '测速中…' : '⚡ 测试')
+      Button(this.busyKey.length > 0 ? '测速中…' : '⚡ 测试全部')
         .type(ButtonType.Normal)
         .borderRadius(BUTTON_RADIUS)
         .height(52)

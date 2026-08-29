@@ -7,7 +7,6 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
@@ -20,6 +19,7 @@ import (
 )
 
 const maxCoreCommandBytes = 16 * 1024
+const groupDelayConcurrency = 8
 
 type coreCommand struct {
 	Type    string          `json:"type"`
@@ -71,18 +71,20 @@ type previewProxyPayload struct {
 }
 
 type previewGroupDelayPayload struct {
-	ConfigPath string `json:"configPath"`
-	Group      string `json:"group"`
-	Proxy      string `json:"proxy,omitempty"`
-	URL        string `json:"url"`
-	Timeout    int64  `json:"timeout"`
+	ConfigPath  string `json:"configPath"`
+	Group       string `json:"group"`
+	Proxy       string `json:"proxy,omitempty"`
+	URL         string `json:"url"`
+	Timeout     int64  `json:"timeout"`
+	OperationID string `json:"operationId,omitempty"`
 }
 
 type groupDelayPayload struct {
-	Group   string `json:"group"`
-	Proxy   string `json:"proxy,omitempty"`
-	URL     string `json:"url"`
-	Timeout int64  `json:"timeout"`
+	Group       string `json:"group"`
+	Proxy       string `json:"proxy,omitempty"`
+	URL         string `json:"url"`
+	Timeout     int64  `json:"timeout"`
+	OperationID string `json:"operationId,omitempty"`
 }
 
 type proxyDelayResult struct {
@@ -94,6 +96,14 @@ type proxyDelayResult struct {
 type groupDelayResult struct {
 	Group   string             `json:"group"`
 	Results []proxyDelayResult `json:"results"`
+}
+
+type proxyDelayProgress struct {
+	OperationID string `json:"operationId"`
+	Group       string `json:"group"`
+	Proxy       string `json:"proxy"`
+	Delay       int32  `json:"delay"`
+	Alive       bool   `json:"alive"`
 }
 
 type connectionSnapshot struct {
@@ -417,15 +427,21 @@ func previewGroupDelay(payload previewGroupDelayPayload) (groupDelayResult, erro
 	if !ok {
 		return groupDelayResult{}, errors.New("proxy group is invalid")
 	}
-	result := runGroupDelay(payload.Group, group.Proxies(), payload.Proxy, testURL, timeout)
+	result := runGroupDelay(payload.Group, group.Proxies(), payload.Proxy, testURL, timeout,
+		buildDelayProgressReporter(payload.OperationID, payload.Group, coreStopped))
 	if payload.Proxy != "" && len(result.Results) == 0 {
 		return groupDelayResult{}, errors.New("proxy was not found in group")
 	}
 	return result, nil
 }
 
+type indexedProxyDelayResult struct {
+	index  int
+	result proxyDelayResult
+}
+
 func runGroupDelay(groupName string, nodes []C.Proxy, proxyName string, testURL string,
-	timeout int64) groupDelayResult {
+	timeout int64, progress func(proxyDelayResult)) groupDelayResult {
 	selected := make([]C.Proxy, 0, len(nodes))
 	for _, node := range nodes {
 		if proxyName == "" || node.Name() == proxyName {
@@ -434,14 +450,12 @@ func runGroupDelay(groupName string, nodes []C.Proxy, proxyName string, testURL 
 	}
 	nodes = selected
 	results := make([]proxyDelayResult, len(nodes))
-	var wait sync.WaitGroup
-	semaphore := make(chan struct{}, 8)
+	semaphore := make(chan struct{}, groupDelayConcurrency)
+	completed := make(chan indexedProxyDelayResult, len(nodes))
 	for index, node := range nodes {
 		index := index
 		node := node
-		wait.Add(1)
 		go func() {
-			defer wait.Done()
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Millisecond)
@@ -453,11 +467,39 @@ func runGroupDelay(groupName string, nodes []C.Proxy, proxyName string, testURL 
 			if alive {
 				value = int32(delay)
 			}
-			results[index] = proxyDelayResult{Proxy: node.Name(), Delay: value, Alive: alive}
+			completed <- indexedProxyDelayResult{
+				index:  index,
+				result: proxyDelayResult{Proxy: node.Name(), Delay: value, Alive: alive},
+			}
 		}()
 	}
-	wait.Wait()
+	for range nodes {
+		completedResult := <-completed
+		results[completedResult.index] = completedResult.result
+		if progress != nil {
+			progress(completedResult.result)
+		}
+	}
 	return groupDelayResult{Group: groupName, Results: results}
+}
+
+func buildDelayProgressReporter(operationID string, groupName string,
+	state coreRuntimeState) func(proxyDelayResult) {
+	if strings.TrimSpace(operationID) == "" {
+		return nil
+	}
+	return func(result proxyDelayResult) {
+		payload, err := json.Marshal(proxyDelayProgress{
+			OperationID: operationID,
+			Group:       groupName,
+			Proxy:       result.Proxy,
+			Delay:       result.Delay,
+			Alive:       result.Alive,
+		})
+		if err == nil {
+			emitCoreProgressEvent(state, string(payload))
+		}
+	}
 }
 
 func normalizeDelayRequest(value string, timeout int64) (string, int64, error) {
@@ -562,7 +604,8 @@ func testRuntimeGroupDelay(payload groupDelayPayload) (groupDelayResult, error) 
 	if err != nil {
 		return groupDelayResult{}, err
 	}
-	result := runGroupDelay(payload.Group, group.Proxies(), payload.Proxy, testURL, timeout)
+	result := runGroupDelay(payload.Group, group.Proxies(), payload.Proxy, testURL, timeout,
+		buildDelayProgressReporter(payload.OperationID, payload.Group, coreRunning))
 	if payload.Proxy != "" && len(result.Results) == 0 {
 		return groupDelayResult{}, errors.New("proxy was not found in group")
 	}

@@ -106,6 +106,41 @@ func TestNormalizeDelayRequest(t *testing.T) {
 	}
 }
 
+func TestDelayProgressReporterEmitsTypedPayload(t *testing.T) {
+	if groupDelayConcurrency != 8 {
+		t.Fatalf("unexpected group delay concurrency: %d", groupDelayConcurrency)
+	}
+	defer setCoreEventHandler(nil)
+	var eventType coreEventType
+	var state coreRuntimeState
+	var message string
+	setCoreEventHandler(func(currentType coreEventType, currentState coreRuntimeState,
+		_ coreErrorCode, currentMessage string) {
+		eventType = currentType
+		state = currentState
+		message = currentMessage
+	})
+	reporter := buildDelayProgressReporter("operation-1234", "Auto", coreRunning)
+	if reporter == nil {
+		t.Fatal("expected delay progress reporter")
+	}
+	reporter(proxyDelayResult{Proxy: "Node A", Delay: 86, Alive: true})
+	if eventType != coreEventProxyDelayProgress || state != coreRunning {
+		t.Fatalf("unexpected progress event: type=%v state=%v", eventType, state)
+	}
+	var progress proxyDelayProgress
+	if err := json.Unmarshal([]byte(message), &progress); err != nil {
+		t.Fatalf("invalid progress JSON: %v", err)
+	}
+	if progress.OperationID != "operation-1234" || progress.Group != "Auto" ||
+		progress.Proxy != "Node A" || progress.Delay != 86 || !progress.Alive {
+		t.Fatalf("unexpected progress payload: %+v", progress)
+	}
+	if buildDelayProgressReporter("", "Auto", coreRunning) != nil {
+		t.Fatal("empty operation id must disable progress events")
+	}
+}
+
 func TestExternalConfigWhenRequested(t *testing.T) {
 	path := strings.TrimSpace(os.Getenv("NLASH_TEST_CONFIG_PATH"))
 	if path == "" {

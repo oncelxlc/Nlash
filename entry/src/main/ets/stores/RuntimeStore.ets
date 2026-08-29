@@ -1,9 +1,12 @@
+import { util } from '@kit.ArkTS';
+import { ProxyDelayProgress, ProxyDelayProgressListener } from '../models/CoreControlProtocol';
 import { Profile, ProfileStoreSnapshot } from '../models/ProfileModels';
 import {
   appendTrafficSample,
   ConnectionSnapshot,
   ConnectionsSnapshot,
   DashboardSnapshot,
+  failPendingGroupDelay,
   GroupDelayResult,
   mergeGroupDelay,
   ProxyGroupSnapshot,
@@ -12,6 +15,7 @@ import {
   ProxySnapshotSource,
   pruneProxySelections,
   RequestRecord,
+  resetGroupDelay,
   RuntimeCommandResponse,
   RuntimeMode,
   RuntimeStoreListener,
@@ -28,9 +32,19 @@ import { profileStore } from './ProfileStore';
 
 const POLL_INTERVAL_MS = 1000;
 const MAX_REQUEST_HISTORY = 200;
+const DELAY_TEST_TIMEOUT_MS = 5000;
+const DELAY_TEST_CONCURRENCY = 8;
+const DELAY_COMMAND_MARGIN_MS = 7000;
+const MIN_DELAY_COMMAND_TIMEOUT_MS = 12000;
 
 interface SelectProxyCommandPayload { group: string; proxy: string; }
-interface GroupDelayCommandPayload { group: string; proxy: string; url: string; timeout: number; }
+interface GroupDelayCommandPayload {
+  group: string;
+  proxy: string;
+  url: string;
+  timeout: number;
+  operationId: string;
+}
 interface CloseConnectionCommandPayload { id: string; }
 interface SetModeCommandPayload { mode: RuntimeMode; }
 
@@ -57,6 +71,10 @@ class RuntimeStore {
   private configPath: string = '';
   private profileSignature: string = '';
   private previewGeneration: number = 0;
+  private activeDelayOperationId: string = '';
+  private activeDelayGroup: string = '';
+  private activeDelayGeneration: number = 0;
+  private activeDelayProfileSignature: string = '';
 
   initialize(): void {
     if (this.vpnUnsubscribe !== undefined) {
@@ -79,6 +97,7 @@ class RuntimeStore {
         this.refresh();
       } else if (state === VpnState.IDLE || state === VpnState.DISCONNECTED || state === VpnState.ERROR) {
         this.available = false;
+        this.invalidateDelayOperation();
         this.stopPolling();
         this.finishActiveRequests();
         this.dashboard = undefined;
@@ -145,8 +164,26 @@ class RuntimeStore {
 
   async testDelay(group: string, proxy: string, testUrl: string): Promise<number> {
     let delay = -1;
-    await this.runAction(`delay:${proxy}`, async (): Promise<void> => {
-      const result = await this.executeGroupDelay(group, proxy, testUrl);
+    const generation = this.previewGeneration;
+    const profileSignature = this.profileSignature;
+    const actionKey = `delay:${group}:${proxy}`;
+    await this.runAction(actionKey, async (): Promise<void> => {
+      this.proxies = resetGroupDelay(this.proxies, group, proxy);
+      this.publish();
+      let result: GroupDelayResult;
+      try {
+        result = await this.executeGroupDelay(group, proxy, testUrl, '', 1);
+      } catch (error) {
+        if (this.isDelayContextCurrent(generation, profileSignature)) {
+          this.proxies = failPendingGroupDelay(this.proxies, group, proxy);
+          this.publish();
+          throw new Error(this.errorMessage(error));
+        }
+        return;
+      }
+      if (!this.isDelayContextCurrent(generation, profileSignature)) {
+        return;
+      }
       this.proxies = mergeGroupDelay(this.proxies, group, result.results);
       const nodeResult = result.results.find((item): boolean => item.proxy === proxy);
       delay = nodeResult?.delay ?? -1;
@@ -155,10 +192,47 @@ class RuntimeStore {
   }
 
   async testGroupDelay(group: string, testUrl: string): Promise<void> {
-    await this.runAction(`delay-group:${group}`, async (): Promise<void> => {
-      const result = await this.executeGroupDelay(group, '', testUrl);
-      this.proxies = mergeGroupDelay(this.proxies, group, result.results);
-    });
+    if (this.busyKey.length > 0) {
+      throw new Error('已有 Core 操作正在执行');
+    }
+    const targetGroup = this.proxies.find((item: ProxyGroupSnapshot): boolean => item.name === group);
+    if (targetGroup === undefined || targetGroup.nodes.length === 0) {
+      throw new Error('当前代理组没有可测试节点');
+    }
+    const operationId = util.generateRandomUUID();
+    const generation = this.previewGeneration;
+    const profileSignature = this.profileSignature;
+    this.activeDelayOperationId = operationId;
+    this.activeDelayGroup = group;
+    this.activeDelayGeneration = generation;
+    this.activeDelayProfileSignature = profileSignature;
+    this.busyKey = `delay-group:${group}`;
+    this.proxies = resetGroupDelay(this.proxies, group);
+    this.publish();
+    const progressListener: ProxyDelayProgressListener = (progress: ProxyDelayProgress): void => {
+      this.applyDelayProgress(progress);
+    };
+    try {
+      const result = await this.executeGroupDelay(group, '', testUrl, operationId,
+        targetGroup.nodes.length, progressListener);
+      if (this.isActiveDelayOperation(operationId, group, generation, profileSignature)) {
+        this.proxies = mergeGroupDelay(this.proxies, group, result.results);
+      }
+    } catch (error) {
+      if (!this.isActiveDelayOperation(operationId, group, generation, profileSignature)) {
+        return;
+      }
+      this.proxies = failPendingGroupDelay(this.proxies, group);
+      throw new Error(this.errorMessage(error));
+    } finally {
+      if (this.activeDelayOperationId === operationId) {
+        this.invalidateDelayOperation();
+        if (this.busyKey === `delay-group:${group}`) {
+          this.busyKey = '';
+        }
+        this.publish();
+      }
+    }
   }
 
   async closeConnection(id: string): Promise<void> {
@@ -205,6 +279,10 @@ class RuntimeStore {
     const signature = active === undefined ? '' : `${active.id}:${active.localPath}:${active.updatedAt}`;
     if (signature === this.profileSignature) {
       return;
+    }
+    this.invalidateDelayOperation();
+    if (this.isDelayBusy()) {
+      this.busyKey = '';
     }
     this.profileSignature = signature;
     this.profileId = active?.id ?? '';
@@ -278,18 +356,30 @@ class RuntimeStore {
     }
   }
 
-  private async executeGroupDelay(group: string, proxy: string, testUrl: string): Promise<GroupDelayResult> {
+  private async executeGroupDelay(group: string, proxy: string, testUrl: string,
+    operationId: string, nodeCount: number,
+    progressListener: ProxyDelayProgressListener | undefined = undefined): Promise<GroupDelayResult> {
     if (this.available) {
+      await runtimeControlService.initialize();
       const payload: GroupDelayCommandPayload = {
-        group: group, proxy: proxy, url: testUrl, timeout: 5000
+        group: group, proxy: proxy, url: testUrl, timeout: DELAY_TEST_TIMEOUT_MS,
+        operationId: operationId
       };
-      return this.requireSuccess<GroupDelayResult>(
-        await runtimeControlService.execute<GroupDelayResult>('testGroupDelay', payload));
+      const unsubscribe = progressListener === undefined ? undefined :
+        runtimeControlService.subscribeDelayProgress(progressListener);
+      try {
+        return this.requireSuccess<GroupDelayResult>(
+          await runtimeControlService.execute<GroupDelayResult>('testGroupDelay', payload,
+            this.delayCommandTimeout(nodeCount)));
+      } finally {
+        unsubscribe?.();
+      }
     }
     if (this.configPath.length === 0) {
       throw new Error('请先选择活动配置');
     }
-    return profilePreviewService.testGroup(this.configPath, group, proxy, testUrl);
+    return profilePreviewService.testGroup(this.configPath, group, proxy, testUrl,
+      operationId, progressListener);
   }
 
   private async refreshInternal(): Promise<void> {
@@ -299,7 +389,7 @@ class RuntimeStore {
       await this.refreshDashboard();
       await this.refreshConnections();
       this.pollCount += 1;
-      if (this.proxies.length === 0 || this.pollCount % 5 === 0) {
+      if (!this.isDelayBusy() && (this.proxies.length === 0 || this.pollCount % 5 === 0)) {
         await this.refreshProxies();
       }
       this.clearBackgroundError();
@@ -388,9 +478,52 @@ class RuntimeStore {
     } catch (error) {
       throw new Error(this.errorMessage(error));
     } finally {
-      this.busyKey = '';
-      this.publish();
+      if (this.busyKey === key) {
+        this.busyKey = '';
+        this.publish();
+      }
     }
+  }
+
+  private applyDelayProgress(progress: ProxyDelayProgress): void {
+    if (!this.isActiveDelayOperation(progress.operationId, progress.group,
+      this.activeDelayGeneration, this.activeDelayProfileSignature)) {
+      return;
+    }
+    this.proxies = mergeGroupDelay(this.proxies, progress.group, [{
+      proxy: progress.proxy,
+      delay: progress.delay,
+      alive: progress.alive
+    }]);
+    this.publish();
+  }
+
+  private isActiveDelayOperation(operationId: string, group: string, generation: number,
+    profileSignature: string): boolean {
+    return this.activeDelayOperationId === operationId && this.activeDelayGroup === group &&
+      this.activeDelayGeneration === generation && this.activeDelayProfileSignature === profileSignature &&
+      this.isDelayContextCurrent(generation, profileSignature);
+  }
+
+  private isDelayContextCurrent(generation: number, profileSignature: string): boolean {
+    return this.previewGeneration === generation && this.profileSignature === profileSignature;
+  }
+
+  private invalidateDelayOperation(): void {
+    this.activeDelayOperationId = '';
+    this.activeDelayGroup = '';
+    this.activeDelayGeneration = 0;
+    this.activeDelayProfileSignature = '';
+  }
+
+  private isDelayBusy(): boolean {
+    return this.busyKey.startsWith('delay:') || this.busyKey.startsWith('delay-group:');
+  }
+
+  private delayCommandTimeout(nodeCount: number): number {
+    const rounds = Math.ceil(Math.max(1, nodeCount) / DELAY_TEST_CONCURRENCY);
+    return Math.max(MIN_DELAY_COMMAND_TIMEOUT_MS,
+      rounds * DELAY_TEST_TIMEOUT_MS + DELAY_COMMAND_MARGIN_MS);
   }
 
   private requireRuntime(): void {

@@ -39,12 +39,12 @@ export default function profileFeaturesTest() {
       expect(shouldApplyNetworkResult(2, 2, 0)).assertFalse();
     });
 
-    it('usesTwoAndFourProxyColumns', 0, () => {
+    it('usesTwoAndThreeProxyColumns', 0, () => {
       expect(resolveResponsiveMetrics(639).proxyCardWidth).assertEqual('48%');
       expect(resolveResponsiveMetrics(640).proxyCardWidth).assertEqual('48%');
       expect(resolveResponsiveMetrics(899).proxyCardWidth).assertEqual('48%');
-      expect(resolveResponsiveMetrics(900).proxyCardWidth).assertEqual('23.5%');
-      expect(resolveResponsiveMetrics(640, true).proxyCardWidth).assertEqual('23.5%');
+      expect(resolveResponsiveMetrics(900).proxyCardWidth).assertEqual('31%');
+      expect(resolveResponsiveMetrics(640, true).proxyCardWidth).assertEqual('31%');
       const compact = resolveResponsiveMetrics(320);
       const expanded = resolveResponsiveMetrics(900);
       expect(resolveDashboardSpeedCardHeight(compact))

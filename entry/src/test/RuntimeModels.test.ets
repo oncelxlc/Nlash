@@ -6,9 +6,12 @@ import {
   DEFAULT_RUNTIME_MODE,
   formatBytes,
   formatSpeed,
+  failPendingGroupDelay,
   mergeGroupDelay,
+  proxyDelayLabel,
   ProxyGroupSnapshot,
   pruneProxySelections,
+  resetGroupDelay,
   RuntimeMode,
   TrafficSample
 } from '../main/ets/models/RuntimeModels';
@@ -62,6 +65,24 @@ export default function runtimeModelsTest() {
       ]);
       expect(selections.length).assertEqual(1);
       expect(selections[0].proxy).assertEqual('A');
+    });
+
+    it('tracksProgressiveDelayStates', 0, () => {
+      const groups: ProxyGroupSnapshot[] = [{
+        name: 'Auto', type: 'Selector', selected: 'A', selectable: true, hidden: false,
+        nodes: [
+          { name: 'A', type: 'Vless', alive: true, tested: true, delay: 42, udp: true },
+          { name: 'B', type: 'Vless', alive: true, tested: true, delay: 64, udp: false }
+        ]
+      }];
+      const reset = resetGroupDelay(groups, 'Auto');
+      expect(proxyDelayLabel(reset[0].nodes[0], true)).assertEqual('…');
+      expect(proxyDelayLabel(reset[0].nodes[0], false)).assertEqual('⚡');
+      const partial = mergeGroupDelay(reset, 'Auto', [{ proxy: 'B', delay: 88, alive: true }]);
+      expect(proxyDelayLabel(partial[0].nodes[1], false)).assertEqual('88 ms');
+      const failed = failPendingGroupDelay(partial, 'Auto');
+      expect(proxyDelayLabel(failed[0].nodes[0], false)).assertEqual('Error');
+      expect(proxyDelayLabel(failed[0].nodes[1], false)).assertEqual('88 ms');
     });
   });
 }

@@ -1,4 +1,10 @@
 import {
+  decodeProxyDelayProgress,
+  ProxyDelayProgress,
+  ProxyDelayProgressListener
+} from '../models/CoreControlProtocol';
+import { CoreEvent, CoreEventType } from '../models/CoreModels';
+import {
   GroupDelayResult,
   ProxySnapshot,
   RuntimeCommandResponse
@@ -15,6 +21,7 @@ interface PreviewGroupDelayPayload {
   proxy: string;
   url: string;
   timeout: number;
+  operationId: string;
 }
 
 interface CoreCommandEnvelope<T> {
@@ -29,15 +36,33 @@ class ProfilePreviewService {
   }
 
   async testGroup(configPath: string, group: string, proxy: string,
-    url: string): Promise<GroupDelayResult> {
+    url: string, operationId: string = '',
+    progressListener: ProxyDelayProgressListener | undefined = undefined): Promise<GroupDelayResult> {
     const payload: PreviewGroupDelayPayload = {
       configPath: configPath,
       group: group,
       proxy: proxy,
       url: url,
-      timeout: 5000
+      timeout: 5000,
+      operationId: operationId
     };
-    return this.execute<PreviewGroupDelayPayload, GroupDelayResult>('previewGroupDelay', payload);
+    let unsubscribe: (() => void) | undefined = undefined;
+    if (operationId.length > 0 && progressListener !== undefined) {
+      unsubscribe = coreClient.subscribe((event: CoreEvent): void => {
+        if (event.type !== CoreEventType.PROXY_DELAY_PROGRESS) {
+          return;
+        }
+        const progress: ProxyDelayProgress | undefined = decodeProxyDelayProgress(event.message);
+        if (progress?.operationId === operationId) {
+          progressListener(progress);
+        }
+      });
+    }
+    try {
+      return await this.execute<PreviewGroupDelayPayload, GroupDelayResult>('previewGroupDelay', payload);
+    } finally {
+      unsubscribe?.();
+    }
   }
 
   private async execute<P, T>(type: string, payload: P): Promise<T> {

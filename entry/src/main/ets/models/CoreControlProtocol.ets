@@ -1,8 +1,10 @@
 export const CORE_COMMAND_EVENT = 'com.zhexian.nlash.event.CORE_COMMAND';
 export const CORE_RESPONSE_EVENT = 'com.zhexian.nlash.event.CORE_RESPONSE';
+export const CORE_PROGRESS_EVENT = 'com.zhexian.nlash.event.CORE_PROGRESS';
 export const CORE_CONTROL_VERSION = 1;
 export const MAX_CORE_COMMAND_LENGTH = 16 * 1024;
 export const MAX_CORE_RESPONSE_LENGTH = 1024 * 1024;
+export const MAX_CORE_PROGRESS_LENGTH = 8 * 1024;
 
 export interface CoreCommandEnvelope {
   version: number;
@@ -15,6 +17,16 @@ export interface CoreResponseEnvelope {
   requestId: string;
   response: string;
 }
+
+export interface ProxyDelayProgress {
+  operationId: string;
+  group: string;
+  proxy: string;
+  delay: number;
+  alive: boolean;
+}
+
+export type ProxyDelayProgressListener = (progress: ProxyDelayProgress) => void;
 
 export function encodeCoreCommandEnvelope(envelope: CoreCommandEnvelope): string {
   return JSON.stringify(envelope);
@@ -54,7 +66,33 @@ export function decodeCoreResponseEnvelope(value: string): CoreResponseEnvelope 
   return envelope;
 }
 
+export function encodeProxyDelayProgress(progress: ProxyDelayProgress): string {
+  return JSON.stringify(progress);
+}
+
+export function decodeProxyDelayProgress(value: string): ProxyDelayProgress | undefined {
+  if (typeof value !== 'string' || value.length === 0 || value.length > MAX_CORE_PROGRESS_LENGTH) {
+    return undefined;
+  }
+  let progress: ProxyDelayProgress;
+  try {
+    progress = JSON.parse(value) as ProxyDelayProgress;
+  } catch (error) {
+    return undefined;
+  }
+  if (!isRequestId(progress.operationId) || !isProgressName(progress.group) ||
+    !isProgressName(progress.proxy) || !Number.isFinite(progress.delay) ||
+    progress.delay % 1 !== 0 || progress.delay < -1 || progress.delay > 10000 ||
+    typeof progress.alive !== 'boolean') {
+    return undefined;
+  }
+  return progress;
+}
+
 function isRequestId(value: string): boolean {
   return typeof value === 'string' && value.length >= 8 && value.length <= 64;
 }
 
+function isProgressName(value: string): boolean {
+  return typeof value === 'string' && value.length > 0 && value.length <= 512;
+}
