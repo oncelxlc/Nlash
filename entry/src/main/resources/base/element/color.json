@@ -57,8 +57,12 @@
       "value": "#C92A2A"
     },
     {
+      "name": "mode_unselected_background",
+      "value": "#8C8C8C"
+    },
+    {
       "name": "mode_rule_background",
-      "value": "#E8F1FF"
+      "value": "#A8DADC"
     },
     {
       "name": "mode_rule_foreground",
@@ -66,7 +70,7 @@
     },
     {
       "name": "mode_global_background",
-      "value": "#0A59F7"
+      "value": "#F4A261"
     },
     {
       "name": "mode_global_foreground",
@@ -74,7 +78,7 @@
     },
     {
       "name": "mode_direct_background",
-      "value": "#3B4352"
+      "value": "#642AB5"
     },
     {
       "name": "mode_direct_foreground",

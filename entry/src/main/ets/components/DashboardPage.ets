@@ -399,11 +399,10 @@ export struct DashboardPage {
             .fontColor(mode === RuntimeMode.RULE ? $r('app.color.mode_rule_foreground') :
               (mode === RuntimeMode.GLOBAL ? $r('app.color.mode_global_foreground') :
                 $r('app.color.mode_direct_foreground')))
-            .backgroundColor(mode === RuntimeMode.RULE ? $r('app.color.mode_rule_background') :
-              (mode === RuntimeMode.GLOBAL ? $r('app.color.mode_global_background') :
-                $r('app.color.mode_direct_background')))
-            .border({ width: this.selectedMode === mode ? 2 : 0, color: $r('app.color.content_primary') })
-            .opacity(this.selectedMode === mode ? 1 : 0.62)
+            .backgroundColor(this.selectedMode !== mode ? $r('app.color.mode_unselected_background') :
+              (mode === RuntimeMode.RULE ? $r('app.color.mode_rule_background') :
+                (mode === RuntimeMode.GLOBAL ? $r('app.color.mode_global_background') :
+                  $r('app.color.mode_direct_background'))))
             .enabled(this.vpnState === VpnState.CONNECTED && this.runtimeBusyKey.length === 0)
             .onClick((): void => { this.setMode(mode); })
         }, (mode: RuntimeMode): string => mode)
