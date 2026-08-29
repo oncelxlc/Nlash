@@ -17,6 +17,7 @@ const PROFILE_DIRECTORY = 'profiles';
 const MAX_PROFILE_BYTES = 5 * 1024 * 1024;
 const HTTP_TIMEOUT_MS = 15000;
 const DEFAULT_IMPORT_FILE_NAME = 'BygCloud.ymal';
+export const SUBSCRIPTION_USER_AGENT = 'clash.meta Nlash/1.0';
 
 export function buildDefaultImportPath(downloadDirectory: string): string {
   const separator = downloadDirectory.endsWith('/') ? '' : '/';
@@ -407,7 +408,7 @@ class SubscriptionService {
           connectTimeout: HTTP_TIMEOUT_MS,
           readTimeout: HTTP_TIMEOUT_MS,
           header: {
-            'User-Agent': 'Nlash/1.0',
+            'User-Agent': SUBSCRIPTION_USER_AGENT,
             'Accept': 'text/yaml,text/plain,application/yaml,application/octet-stream'
           }
         });

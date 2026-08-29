@@ -21,7 +21,8 @@ import {
 import {
   buildDefaultImportPath,
   inferSubscriptionName,
-  parseSubscriptionMetadata
+  parseSubscriptionMetadata,
+  SUBSCRIPTION_USER_AGENT
 } from '../main/ets/services/SubscriptionService';
 import { resolveDashboardSpeedCardHeight, resolveResponsiveMetrics } from '../main/ets/ui/ResponsiveMetrics';
 
@@ -76,6 +77,11 @@ export default function profileFeaturesTest() {
       expect(inferSubscriptionName('https://example.com/path/Named.yaml?token=secret', undefined))
         .assertEqual('Named');
       expect(inferSubscriptionName('https://sub.example.com', undefined)).assertEqual('sub.example.com');
+    });
+
+    it('requestsMihomoSubscriptionFormat', 0, () => {
+      expect(SUBSCRIPTION_USER_AGENT.toLowerCase().includes('clash.meta')).assertTrue();
+      expect(SUBSCRIPTION_USER_AGENT.includes('Nlash/1.0')).assertTrue();
     });
 
     it('calculatesAutoUpdateAndProfileUsage', 0, () => {
