@@ -346,26 +346,43 @@ export struct DashboardPage {
   @Builder
   private trafficCard(cardWidth: Length) {
     Column({ space: 8 }) {
-      this.cardTitle('累计流量')
+      this.cardTitle('流量统计')
       Row({ space: 14 }) {
         DataPanel({
           values: [this.runtime?.uploadTotal ?? 0, this.runtime?.downloadTotal ?? 0],
           max: Math.max(1, (this.runtime?.uploadTotal ?? 0) + (this.runtime?.downloadTotal ?? 0)),
           type: DataPanelType.Circle
         })
-          .width(56)
-          .height(56)
+          .width(80)
+          .height(80)
+          .strokeWidth(10)
         Column({ space: 7 }) {
-          Text(`↑  ${formatBytes(this.runtime?.uploadTotal ?? 0)}`)
-            .fontSize(15)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.content_primary'))
-          Text(`↓  ${formatBytes(this.runtime?.downloadTotal ?? 0)}`)
-            .fontSize(15)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.content_primary'))
+          Row({space: 0}) {
+            Text('上传')
+            Text(formatBytes(this.runtime?.uploadTotal ?? 0).split(' ')[0])
+              .width('40%')
+              .textAlign(TextAlign.End)
+            Text(formatBytes(this.runtime?.uploadTotal ?? 0).split(' ')[1])
+              .padding({left: '5%', right: '5%'})
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+          .justifyContent(FlexAlign.Start)
+          Row({space: 0}) {
+            Text('下载')
+            Text(formatBytes(this.runtime?.downloadTotal ?? 0).split(' ')[0])
+              .width('40%')
+              .textAlign(TextAlign.End)
+            Text(formatBytes(this.runtime?.downloadTotal ?? 0).split(' ')[1])
+              .padding({left: '5%', right: '5%'})
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+          .justifyContent(FlexAlign.Start)
         }
         .alignItems(HorizontalAlign.Start)
+        .flexGrow(1)
+        .layoutWeight(1)
       }
       .width('100%')
       .layoutWeight(1)
