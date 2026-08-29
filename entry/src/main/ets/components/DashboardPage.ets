@@ -3,6 +3,8 @@ import {
   DashboardSnapshot,
   DEFAULT_RUNTIME_MODE,
   formatBytes,
+  FormattedBytes,
+  formatBytesParts,
   formatSpeed,
   PublicNetworkSnapshot,
   RuntimeMode,
@@ -41,6 +43,7 @@ export struct DashboardPage {
   @State restarting: boolean = false;
   @State selectedMode: RuntimeMode = DEFAULT_RUNTIME_MODE;
   @State runtimeBusyKey: string = '';
+  @State connectedAt: number = vpnService.getConnectedAt();
   @State elapsedSeconds: number = 0;
   @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
   private chartSettings: RenderingContextSettings = new RenderingContextSettings(true);
@@ -57,6 +60,7 @@ export struct DashboardPage {
     this.unsubscribeVpn = vpnService.subscribe((state: VpnState, message: string): void => {
       this.vpnState = state;
       this.message = message;
+      this.connectedAt = vpnService.getConnectedAt();
       if (this.unsubscribeNetwork !== undefined &&
         (state === VpnState.CONNECTED || state === VpnState.DISCONNECTED || state === VpnState.ERROR)) {
         publicNetworkService.refresh();
@@ -223,7 +227,7 @@ export struct DashboardPage {
 
   private syncElapsedTimer(): void {
     this.updateElapsedSeconds();
-    if (vpnService.getConnectedAt() > 0) {
+    if (this.connectedAt > 0) {
       if (this.elapsedTimer === undefined) {
         this.elapsedTimer = setInterval((): void => this.updateElapsedSeconds(), 1000);
       }
@@ -233,8 +237,8 @@ export struct DashboardPage {
   }
 
   private updateElapsedSeconds(): void {
-    const connectedAt = vpnService.getConnectedAt();
-    this.elapsedSeconds = connectedAt > 0 ? Math.max(0, Math.floor((Date.now() - connectedAt) / 1000)) : 0;
+    this.elapsedSeconds = this.connectedAt > 0 ?
+      Math.max(0, Math.floor((Date.now() - this.connectedAt) / 1000)) : 0;
   }
 
   private stopElapsedTimer(): void {
@@ -245,7 +249,7 @@ export struct DashboardPage {
   }
 
   private hasRunStarted(): boolean {
-    return vpnService.getConnectedAt() > 0;
+    return this.connectedAt > 0;
   }
 
   private hasTrafficData(): boolean {
@@ -344,6 +348,21 @@ export struct DashboardPage {
   }
 
   @Builder
+  private trafficTotal(label: string, formatted: FormattedBytes) {
+    Row({ space: 0 }) {
+      Text(label)
+      Text(formatted.value)
+        .width('40%')
+        .textAlign(TextAlign.End)
+      Text(formatted.unit)
+        .padding({ left: '5%', right: '5%' })
+    }
+    .width('100%')
+    .alignItems(VerticalAlign.Center)
+    .justifyContent(FlexAlign.Start)
+  }
+
+  @Builder
   private trafficCard(cardWidth: Length) {
     Column({ space: 8 }) {
       this.cardTitle('流量统计')
@@ -357,28 +376,8 @@ export struct DashboardPage {
           .height(80)
           .strokeWidth(10)
         Column({ space: 7 }) {
-          Row({space: 0}) {
-            Text('上传')
-            Text(formatBytes(this.runtime?.uploadTotal ?? 0).split(' ')[0])
-              .width('40%')
-              .textAlign(TextAlign.End)
-            Text(formatBytes(this.runtime?.uploadTotal ?? 0).split(' ')[1])
-              .padding({left: '5%', right: '5%'})
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
-          .justifyContent(FlexAlign.Start)
-          Row({space: 0}) {
-            Text('下载')
-            Text(formatBytes(this.runtime?.downloadTotal ?? 0).split(' ')[0])
-              .width('40%')
-              .textAlign(TextAlign.End)
-            Text(formatBytes(this.runtime?.downloadTotal ?? 0).split(' ')[1])
-              .padding({left: '5%', right: '5%'})
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
-          .justifyContent(FlexAlign.Start)
+          this.trafficTotal('上传', formatBytesParts(this.runtime?.uploadTotal ?? 0))
+          this.trafficTotal('下载', formatBytesParts(this.runtime?.downloadTotal ?? 0))
         }
         .alignItems(HorizontalAlign.Start)
         .flexGrow(1)
@@ -438,15 +437,20 @@ export struct DashboardPage {
   private floatingVpnButton() {
     Button({ type: ButtonType.Normal }) {
       Row({ space: 8 }) {
-        Text(this.hasRunStarted() ? 'Ⅱ' : '▶')
-          .fontSize(this.hasRunStarted() ? 19 : 17)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.vpn_fab_foreground'))
         if (this.hasRunStarted()) {
+          Image($r('app.media.ic_public_pause'))
+            .width(20)
+            .height(20)
+            .colorFilter($r('app.color.vpn_fab_foreground'))
           Text(formatVpnRunDuration(this.elapsedSeconds))
             .fontSize(14)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.vpn_fab_foreground'))
+        } else {
+          Image($r('app.media.ic_public_play'))
+            .width(20)
+            .height(20)
+            .colorFilter($r('app.color.vpn_fab_foreground'))
         }
       }
       .justifyContent(FlexAlign.Center)

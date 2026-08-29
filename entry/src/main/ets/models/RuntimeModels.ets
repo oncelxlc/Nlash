@@ -144,9 +144,14 @@ export interface RuntimeStoreSnapshot {
 
 export type RuntimeStoreListener = (snapshot: RuntimeStoreSnapshot) => void;
 
-export function formatBytes(value: number): string {
+export interface FormattedBytes {
+  value: string;
+  unit: string;
+}
+
+export function formatBytesParts(value: number): FormattedBytes {
   if (!Number.isFinite(value) || value <= 0) {
-    return '0 B';
+    return { value: '0', unit: 'B' };
   }
   const units: string[] = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
   let size = value;
@@ -156,7 +161,12 @@ export function formatBytes(value: number): string {
     unit += 1;
   }
   const digits = unit === 0 || size >= 100 ? 0 : 1;
-  return `${size.toFixed(digits)} ${units[unit]}`;
+  return { value: size.toFixed(digits), unit: units[unit] };
+}
+
+export function formatBytes(value: number): string {
+  const formatted = formatBytesParts(value);
+  return `${formatted.value} ${formatted.unit}`;
 }
 
 export function formatSpeed(value: number): string {

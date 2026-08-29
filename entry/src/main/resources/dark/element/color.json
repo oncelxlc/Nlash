@@ -66,7 +66,7 @@
     },
     {
       "name": "mode_rule_foreground",
-      "value": "#8AB4FF"
+      "value": "#DBEBFF"
     },
     {
       "name": "mode_global_background",
@@ -90,7 +90,7 @@
     },
     {
       "name": "vpn_fab_foreground",
-      "value": "#344047"
+      "value": "#434343"
     }
   ]
 }

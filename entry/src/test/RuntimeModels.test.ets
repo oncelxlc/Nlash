@@ -5,6 +5,7 @@ import {
   connectionTitle,
   DEFAULT_RUNTIME_MODE,
   formatBytes,
+  formatBytesParts,
   formatSpeed,
   failPendingGroupDelay,
   mergeGroupDelay,
@@ -23,6 +24,8 @@ export default function runtimeModelsTest() {
     it('formatsTrafficValues', 0, () => {
       expect(formatBytes(0)).assertEqual('0 B');
       expect(formatBytes(1536)).assertEqual('1.5 KiB');
+      expect(formatBytesParts(1536).value).assertEqual('1.5');
+      expect(formatBytesParts(1536).unit).assertEqual('KiB');
       expect(formatSpeed(1024)).assertEqual('1.0 KiB/s');
     });
 
