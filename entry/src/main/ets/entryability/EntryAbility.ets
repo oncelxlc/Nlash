@@ -22,6 +22,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onDestroy(): void {
+    profileStore.shutdown();
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onDestroy');
   }
 
@@ -44,6 +45,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onForeground(): void {
+    profileStore.onForeground();
     // Ability has brought to foreground
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');
   }

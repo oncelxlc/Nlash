@@ -8,7 +8,9 @@ import {
   formatSpeed,
   failPendingGroupDelay,
   mergeGroupDelay,
+  preserveTestedProxyDelays,
   proxyDelayLabel,
+  proxyNodeRenderKey,
   ProxyGroupSnapshot,
   pruneProxySelections,
   resetGroupDelay,
@@ -79,10 +81,21 @@ export default function runtimeModelsTest() {
       expect(proxyDelayLabel(reset[0].nodes[0], true)).assertEqual('…');
       expect(proxyDelayLabel(reset[0].nodes[0], false)).assertEqual('⚡');
       const partial = mergeGroupDelay(reset, 'Auto', [{ proxy: 'B', delay: 88, alive: true }]);
-      expect(proxyDelayLabel(partial[0].nodes[1], false)).assertEqual('88 ms');
+      expect(proxyDelayLabel(partial[0].nodes[1], false)).assertEqual('88ms');
+      expect(proxyNodeRenderKey(partial[0].nodes[1]) === proxyNodeRenderKey(reset[0].nodes[1])).assertFalse();
       const failed = failPendingGroupDelay(partial, 'Auto');
       expect(proxyDelayLabel(failed[0].nodes[0], false)).assertEqual('Error');
-      expect(proxyDelayLabel(failed[0].nodes[1], false)).assertEqual('88 ms');
+      expect(proxyDelayLabel(failed[0].nodes[1], false)).assertEqual('88ms');
+      const refreshed: ProxyGroupSnapshot[] = [{
+        name: 'Auto', type: 'Selector', selected: 'A', selectable: true, hidden: false,
+        nodes: [
+          { name: 'A', type: 'Vless', alive: false, tested: false, delay: 0, udp: true },
+          { name: 'B', type: 'Vless', alive: false, tested: false, delay: 0, udp: false }
+        ]
+      }];
+      const preserved = preserveTestedProxyDelays(refreshed, failed);
+      expect(proxyDelayLabel(preserved[0].nodes[0], false)).assertEqual('Error');
+      expect(proxyDelayLabel(preserved[0].nodes[1], false)).assertEqual('88ms');
     });
   });
 }

@@ -1,6 +1,10 @@
 import { common } from '@kit.AbilityKit';
 import { relationalStore } from '@kit.ArkData';
-import { Profile, ProfileType } from '../models/ProfileModels';
+import {
+  DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES,
+  Profile,
+  ProfileType
+} from '../models/ProfileModels';
 
 const DATABASE_NAME = 'nlash.db';
 const PROFILE_TABLE = 'profiles';
@@ -16,8 +20,13 @@ const CREATE_PROFILE_TABLE = `CREATE TABLE IF NOT EXISTS ${PROFILE_TABLE} (
   expire_at INTEGER,
   upload_bytes INTEGER,
   download_bytes INTEGER,
-  total_bytes INTEGER
+  total_bytes INTEGER,
+  auto_update_enabled INTEGER NOT NULL DEFAULT 0,
+  update_interval_minutes INTEGER NOT NULL DEFAULT ${DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES}
 )`;
+
+const PROFILE_COLUMN_AUTO_UPDATE = 'auto_update_enabled';
+const PROFILE_COLUMN_UPDATE_INTERVAL = 'update_interval_minutes';
 
 class ProfileRepository {
   private store: relationalStore.RdbStore | undefined;
@@ -85,7 +94,29 @@ class ProfileRepository {
       securityLevel: relationalStore.SecurityLevel.S2
     });
     await store.executeSql(CREATE_PROFILE_TABLE);
+    await this.migrateProfileTable(store);
     this.store = store;
+  }
+
+  private async migrateProfileTable(store: relationalStore.RdbStore): Promise<void> {
+    const result = await store.querySql(`PRAGMA table_info(${PROFILE_TABLE})`);
+    const columns = new Set<string>();
+    try {
+      while (result.goToNextRow()) {
+        columns.add(result.getString(result.getColumnIndex('name')));
+      }
+    } finally {
+      result.close();
+    }
+    if (!columns.has(PROFILE_COLUMN_AUTO_UPDATE)) {
+      await store.executeSql(
+        `ALTER TABLE ${PROFILE_TABLE} ADD COLUMN ${PROFILE_COLUMN_AUTO_UPDATE} INTEGER NOT NULL DEFAULT 0`);
+    }
+    if (!columns.has(PROFILE_COLUMN_UPDATE_INTERVAL)) {
+      await store.executeSql(
+        `ALTER TABLE ${PROFILE_TABLE} ADD COLUMN ${PROFILE_COLUMN_UPDATE_INTERVAL} INTEGER NOT NULL ` +
+          `DEFAULT ${DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES}`);
+    }
   }
 
   private readProfile(result: relationalStore.ResultSet): Profile {
@@ -96,7 +127,9 @@ class ProfileRepository {
       sourceUrl: this.readNullableString(result, 'source_url'),
       localPath: result.getString(result.getColumnIndex('local_path')),
       createdAt: result.getLong(result.getColumnIndex('created_at')),
-      updatedAt: result.getLong(result.getColumnIndex('updated_at'))
+      updatedAt: result.getLong(result.getColumnIndex('updated_at')),
+      autoUpdateEnabled: result.getLong(result.getColumnIndex(PROFILE_COLUMN_AUTO_UPDATE)) === 1,
+      updateIntervalMinutes: result.getLong(result.getColumnIndex(PROFILE_COLUMN_UPDATE_INTERVAL))
     };
     this.assignOptionalNumber(result, 'last_update_at', (value: number): void => {
       profile.lastUpdateAt = value;
@@ -124,7 +157,9 @@ class ProfileRepository {
       source_url: profile.sourceUrl,
       local_path: profile.localPath,
       created_at: profile.createdAt,
-      updated_at: profile.updatedAt
+      updated_at: profile.updatedAt,
+      auto_update_enabled: profile.autoUpdateEnabled ? 1 : 0,
+      update_interval_minutes: profile.updateIntervalMinutes
     };
     if (profile.lastUpdateAt !== undefined) {
       values.last_update_at = profile.lastUpdateAt;
@@ -170,4 +205,3 @@ class ProfileRepository {
 }
 
 export const profileRepository = new ProfileRepository();
-

@@ -24,6 +24,7 @@ export interface ProxyDelayProgress {
   proxy: string;
   delay: number;
   alive: boolean;
+  errorCode?: string;
 }
 
 export type ProxyDelayProgressListener = (progress: ProxyDelayProgress) => void;
@@ -83,10 +84,16 @@ export function decodeProxyDelayProgress(value: string): ProxyDelayProgress | un
   if (!isRequestId(progress.operationId) || !isProgressName(progress.group) ||
     !isProgressName(progress.proxy) || !Number.isFinite(progress.delay) ||
     progress.delay % 1 !== 0 || progress.delay < -1 || progress.delay > 10000 ||
-    typeof progress.alive !== 'boolean') {
+    typeof progress.alive !== 'boolean' ||
+    (progress.errorCode !== undefined && !isDelayErrorCode(progress.errorCode))) {
     return undefined;
   }
   return progress;
+}
+
+function isDelayErrorCode(value: string): boolean {
+  return value === 'TIMEOUT' || value === 'DNS' || value === 'TLS' || value === 'PROTECT' ||
+    value === 'CONNECT' || value === 'UNKNOWN';
 }
 
 function isRequestId(value: string): boolean {

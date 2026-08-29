@@ -2,6 +2,7 @@ import { common, Want } from '@kit.AbilityKit';
 import { BusinessError, commonEventManager } from '@kit.BasicServicesKit';
 import { vpnExtension } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { preferenceRepository } from '../repository/PreferenceRepository';
 import {
   decodeVpnStateEnvelope,
   CoreRestartAction,
@@ -182,7 +183,16 @@ class VpnService {
     await this.stateChannelReady;
     this.updateState(VpnState.REQUESTING_PERMISSION, 'Waiting for VPN authorization');
     try {
-      await vpnExtension.startVpnExtensionAbility(VPN_WANT);
+      const configPath = await preferenceRepository.getActiveProfilePath();
+      if (configPath.length === 0) {
+        throw new Error('Active profile configuration is unavailable');
+      }
+      const startWant: Want = {
+        bundleName: VPN_WANT.bundleName,
+        abilityName: VPN_WANT.abilityName,
+        parameters: { configPath: configPath }
+      };
+      await vpnExtension.startVpnExtensionAbility(startWant);
       if (this.state === VpnState.REQUESTING_PERMISSION) {
         this.updateState(VpnState.STARTING, 'VPN extension started');
       }

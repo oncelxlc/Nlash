@@ -57,6 +57,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
   private recoveryPolicy: CoreRecoveryPolicy = new CoreRecoveryPolicy();
   private recoveryOperation: Promise<void> | undefined;
   private runtimeConfigPath: string = '';
+  private requestedConfigPath: string = '';
   private runtimeProfileId: string = '';
   private runtimeSelections: ProxySelection[] = [];
   private runtimeMtu: number = DEFAULT_MTU;
@@ -64,6 +65,8 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
 
   onCreate(want: Want): void {
     this.destroying = false;
+    const requestedConfigPath = want.parameters?.['configPath'];
+    this.requestedConfigPath = typeof requestedConfigPath === 'string' ? requestedConfigPath : '';
     this.controlReady = coreControlServer.start();
     this.recoveryPolicy.reset();
     this.unsubscribeCore = coreClient.subscribe((event: CoreEvent): void => {
@@ -419,6 +422,9 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
   }
 
   private async resolveRuntimeConfigPath(): Promise<string> {
+    if (this.requestedConfigPath.length > 0) {
+      return this.requestedConfigPath;
+    }
     await preferenceRepository.initialize(this.context.getApplicationContext());
     const activeProfilePath = await preferenceRepository.getActiveProfilePath();
     if (activeProfilePath.length > 0) {

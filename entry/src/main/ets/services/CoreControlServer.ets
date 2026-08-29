@@ -19,10 +19,17 @@ import { coreClient } from './CoreClient';
 const DOMAIN = 0x4E4C;
 const TAG = 'NlashCoreControl';
 
+interface CoreCommandTypeOnly {
+  type?: string;
+}
+
 class CoreControlServer {
   private subscriber: commonEventManager.CommonEventSubscriber | undefined;
   private startOperation: Promise<void> | undefined;
   private unsubscribeCore: (() => void) | undefined;
+  private loggedFirstCommand: boolean = false;
+  private loggedFirstResponse: boolean = false;
+  private commandCount: number = 0;
 
   start(): Promise<void> {
     if (this.subscriber !== undefined) {
@@ -60,22 +67,29 @@ class CoreControlServer {
       publisherBundleName: VPN_BUNDLE_NAME
     });
     this.subscriber = subscriber;
-    commonEventManager.subscribe(subscriber,
-      (error: BusinessError, data: commonEventManager.CommonEventData): void => {
-        if (error) {
-          hilog.error(DOMAIN, TAG, 'command receive failed code=%{public}d', error.code);
-          return;
-        }
+    await commonEventManager.subscribeToEvent(subscriber,
+      (data: commonEventManager.CommonEventData): void => {
         const envelope = decodeCoreCommandEnvelope(data.data ?? '');
         if (envelope === undefined) {
           hilog.warn(DOMAIN, TAG, 'ignored invalid core command');
           return;
         }
-        this.handleCommand(envelope).catch((): void => {
+        if (!this.loggedFirstCommand) {
+          this.loggedFirstCommand = true;
+          hilog.info(DOMAIN, TAG, 'received first control command');
+        }
+        this.commandCount += 1;
+        const commandIndex = this.commandCount;
+        const commandType = this.safeCommandType(envelope.command);
+        if (commandIndex <= 3) {
+          hilog.info(DOMAIN, TAG, 'command begin index=%{public}d type=%{public}s', commandIndex, commandType);
+        }
+        this.handleCommand(envelope, commandIndex, commandType).catch((): void => {
           this.publishResponse(envelope.requestId,
             '{"ok":false,"code":"INTERNAL_ERROR","message":"command execution failed"}');
         });
       });
+    hilog.info(DOMAIN, TAG, 'command subscriber ready');
     this.unsubscribeCore = coreClient.subscribe((event: CoreEvent): void => {
       if (event.type !== CoreEventType.PROXY_DELAY_PROGRESS) {
         return;
@@ -87,12 +101,25 @@ class CoreControlServer {
     });
   }
 
-  private async handleCommand(envelope: CoreCommandEnvelope): Promise<void> {
+  private async handleCommand(envelope: CoreCommandEnvelope, commandIndex: number, commandType: string): Promise<void> {
     let response = await coreClient.executeCommand(envelope.command);
+    if (commandIndex <= 3) {
+      hilog.info(DOMAIN, TAG, 'command end index=%{public}d type=%{public}s', commandIndex, commandType);
+    }
     if (response.length === 0 || response.length > MAX_CORE_RESPONSE_LENGTH) {
       response = '{"ok":false,"code":"RESPONSE_TOO_LARGE","message":"command response is too large"}';
     }
     this.publishResponse(envelope.requestId, response);
+  }
+
+  private safeCommandType(command: string): string {
+    try {
+      const parsed = JSON.parse(command) as CoreCommandTypeOnly;
+      const type = parsed.type ?? '';
+      return /^[A-Za-z]+$/.test(type) ? type.substring(0, 32) : 'invalid';
+    } catch (error) {
+      return 'invalid';
+    }
   }
 
   private publishResponse(requestId: string, response: string): void {
@@ -107,6 +134,9 @@ class CoreControlServer {
       }, (error: BusinessError): void => {
         if (error) {
           hilog.error(DOMAIN, TAG, 'response publish failed code=%{public}d', error.code);
+        } else if (!this.loggedFirstResponse) {
+          this.loggedFirstResponse = true;
+          hilog.info(DOMAIN, TAG, 'published first control response');
         }
       });
     } catch (error) {

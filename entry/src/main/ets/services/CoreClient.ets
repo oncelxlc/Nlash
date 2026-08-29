@@ -11,6 +11,7 @@ import {
   stopCore,
   validateConfig
 } from 'proxy_core';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import {
   CoreClient,
   CoreErrorCode,
@@ -30,6 +31,9 @@ const CORE_STATES: CoreRuntimeState[] = [
   CoreRuntimeState.STOPPING,
   CoreRuntimeState.FAILED
 ];
+
+const DELAY_LOG_DOMAIN = 0xD001;
+const DELAY_LOG_TAG = 'NlashDelay';
 
 const CORE_ERRORS: CoreErrorCode[] = [
   CoreErrorCode.OK,
@@ -66,6 +70,9 @@ class NativeCoreClient implements CoreClient {
       code: code,
       message: event.message
     };
+    if (type === CoreEventType.LOG && event.message.startsWith('delay operation=')) {
+      hilog.info(DELAY_LOG_DOMAIN, DELAY_LOG_TAG, '%{public}s', event.message);
+    }
     this.listeners.forEach((listener: CoreEventListener): void => listener(coreEvent));
   };
 

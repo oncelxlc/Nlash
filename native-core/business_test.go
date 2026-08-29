@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -106,6 +108,26 @@ func TestNormalizeDelayRequest(t *testing.T) {
 	}
 }
 
+func TestClassifyDelayError(t *testing.T) {
+	tests := []struct {
+		err  error
+		want string
+	}{
+		{context.DeadlineExceeded, "TIMEOUT"},
+		{errors.New("lookup example.com: no such host"), "DNS"},
+		{errors.New("tls: failed to verify certificate"), "TLS"},
+		{errors.New("outbound socket protect failed"), "PROTECT"},
+		{errors.New("connect: network is unreachable"), "CONNECT"},
+		{errors.New("unexpected failure"), "UNKNOWN"},
+		{nil, "UNKNOWN"},
+	}
+	for _, test := range tests {
+		if got := classifyDelayError(test.err); got != test.want {
+			t.Fatalf("classifyDelayError(%v) = %s, want %s", test.err, got, test.want)
+		}
+	}
+}
+
 func TestDelayProgressReporterEmitsTypedPayload(t *testing.T) {
 	if groupDelayConcurrency != 8 {
 		t.Fatalf("unexpected group delay concurrency: %d", groupDelayConcurrency)
@@ -124,7 +146,7 @@ func TestDelayProgressReporterEmitsTypedPayload(t *testing.T) {
 	if reporter == nil {
 		t.Fatal("expected delay progress reporter")
 	}
-	reporter(proxyDelayResult{Proxy: "Node A", Delay: 86, Alive: true})
+	reporter(proxyDelayResult{Proxy: "Node A", Delay: -1, Alive: false, ErrorCode: "TIMEOUT"})
 	if eventType != coreEventProxyDelayProgress || state != coreRunning {
 		t.Fatalf("unexpected progress event: type=%v state=%v", eventType, state)
 	}
@@ -133,7 +155,8 @@ func TestDelayProgressReporterEmitsTypedPayload(t *testing.T) {
 		t.Fatalf("invalid progress JSON: %v", err)
 	}
 	if progress.OperationID != "operation-1234" || progress.Group != "Auto" ||
-		progress.Proxy != "Node A" || progress.Delay != 86 || !progress.Alive {
+		progress.Proxy != "Node A" || progress.Delay != -1 || progress.Alive ||
+		progress.ErrorCode != "TIMEOUT" {
 		t.Fatalf("unexpected progress payload: %+v", progress)
 	}
 	if buildDelayProgressReporter("", "Auto", coreRunning) != nil {

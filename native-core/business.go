@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"sort"
 	"strings"
@@ -88,9 +89,10 @@ type groupDelayPayload struct {
 }
 
 type proxyDelayResult struct {
-	Proxy string `json:"proxy"`
-	Delay int32  `json:"delay"`
-	Alive bool   `json:"alive"`
+	Proxy     string `json:"proxy"`
+	Delay     int32  `json:"delay"`
+	Alive     bool   `json:"alive"`
+	ErrorCode string `json:"errorCode,omitempty"`
 }
 
 type groupDelayResult struct {
@@ -104,6 +106,7 @@ type proxyDelayProgress struct {
 	Proxy       string `json:"proxy"`
 	Delay       int32  `json:"delay"`
 	Alive       bool   `json:"alive"`
+	ErrorCode   string `json:"errorCode,omitempty"`
 }
 
 type connectionSnapshot struct {
@@ -460,16 +463,31 @@ func runGroupDelay(groupName string, nodes []C.Proxy, proxyName string, testURL 
 			defer func() { <-semaphore }()
 			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Millisecond)
 			defer cancel()
-			expectedStatus, _ := utils.NewUnsignedRanges[uint16]("")
-			delay, testErr := node.URLTest(ctx, testURL, expectedStatus)
-			alive := testErr == nil && delay > 0
-			value := int32(-1)
-			if alive {
-				value = int32(delay)
+			testCompleted := make(chan proxyDelayResult, 1)
+			go func() {
+				expectedStatus, _ := utils.NewUnsignedRanges[uint16]("")
+				delay, testErr := node.URLTest(ctx, testURL, expectedStatus)
+				alive := testErr == nil && delay > 0
+				value := int32(-1)
+				errorCode := ""
+				if alive {
+					value = int32(delay)
+				} else {
+					errorCode = classifyDelayError(testErr)
+				}
+				testCompleted <- proxyDelayResult{
+					Proxy: node.Name(), Delay: value, Alive: alive, ErrorCode: errorCode,
+				}
+			}()
+			var result proxyDelayResult
+			select {
+			case result = <-testCompleted:
+			case <-ctx.Done():
+				result = proxyDelayResult{Proxy: node.Name(), Delay: -1, Alive: false, ErrorCode: "TIMEOUT"}
 			}
 			completed <- indexedProxyDelayResult{
 				index:  index,
-				result: proxyDelayResult{Proxy: node.Name(), Delay: value, Alive: alive},
+				result: result,
 			}
 		}()
 	}
@@ -489,12 +507,23 @@ func buildDelayProgressReporter(operationID string, groupName string,
 		return nil
 	}
 	return func(result proxyDelayResult) {
+		mode := "preview"
+		if state == coreRunning {
+			mode = "runtime"
+		}
+		errorCode := result.ErrorCode
+		if errorCode == "" {
+			errorCode = "OK"
+		}
+		emitCoreEvent(coreEventLog, state, coreOK,
+			fmt.Sprintf("delay operation=%s mode=%s errorCode=%s", operationID, mode, errorCode))
 		payload, err := json.Marshal(proxyDelayProgress{
 			OperationID: operationID,
 			Group:       groupName,
 			Proxy:       result.Proxy,
 			Delay:       result.Delay,
 			Alive:       result.Alive,
+			ErrorCode:   result.ErrorCode,
 		})
 		if err == nil {
 			emitCoreProgressEvent(state, string(payload))
@@ -586,9 +615,47 @@ func testProxyDelay(payload delayTestPayload) (int32, error) {
 	defer cancel()
 	delay, err := proxy.URLTest(ctx, testURL, expectedStatus)
 	if err != nil || delay == 0 {
-		return -1, errors.New("delay test failed")
+		return -1, &delayTestError{code: classifyDelayError(err)}
 	}
 	return int32(delay), nil
+}
+
+type delayTestError struct {
+	code string
+}
+
+func (failure *delayTestError) Error() string {
+	return fmt.Sprintf("delay test failed (%s)", failure.code)
+}
+
+func classifyDelayError(err error) string {
+	if err == nil {
+		return "UNKNOWN"
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return "TIMEOUT"
+	}
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "deadline") || strings.Contains(message, "timeout") ||
+		strings.Contains(message, "timed out") {
+		return "TIMEOUT"
+	}
+	if strings.Contains(message, "protect") {
+		return "PROTECT"
+	}
+	if strings.Contains(message, "lookup") || strings.Contains(message, "dns") ||
+		strings.Contains(message, "no such host") {
+		return "DNS"
+	}
+	if strings.Contains(message, "tls") || strings.Contains(message, "x509") ||
+		strings.Contains(message, "certificate") {
+		return "TLS"
+	}
+	if strings.Contains(message, "connect") || strings.Contains(message, "connection") ||
+		strings.Contains(message, "network is unreachable") || strings.Contains(message, "no route") {
+		return "CONNECT"
+	}
+	return "UNKNOWN"
 }
 
 func testRuntimeGroupDelay(payload groupDelayPayload) (groupDelayResult, error) {

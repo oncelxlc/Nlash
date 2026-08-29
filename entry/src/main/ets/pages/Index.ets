@@ -17,6 +17,7 @@ import {
 } from '../models/NavigationModels';
 import { AppNavigationState, AppRoute } from '../navigation/AppNavigationState';
 import { feedbackService } from '../services/FeedbackService';
+import { configurationEditorService } from '../services/ConfigurationEditorService';
 
 @Entry
 @Component
@@ -157,11 +158,16 @@ struct Index {
       .onBackPressed((): boolean => this.handlePrimaryBack(AppPage.PROXY))
     } else if (name === AppRoute.CONFIGURATION) {
       NavDestination() {
-        ConfigurationPage()
+        ConfigurationPage({ forceExpanded: this.isFoldable && this.isExpandedFold() })
       }
       .hideTitleBar(true)
       .backgroundColor($r('app.color.app_background'))
-      .onBackPressed((): boolean => this.handlePrimaryBack(AppPage.CONFIGURATION))
+      .onBackPressed((): boolean => {
+        if (configurationEditorService.handleBack()) {
+          return true;
+        }
+        return this.handlePrimaryBack(AppPage.CONFIGURATION);
+      })
     } else if (name === AppRoute.REQUESTS) {
       NavDestination() {
         RequestsPage()

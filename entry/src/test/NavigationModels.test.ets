@@ -65,11 +65,11 @@ export default function navigationModelsTest() {
       expect(navigationState.pathStack.getAllPathName()[0]).assertEqual(AppRoute.DASHBOARD);
     });
 
-    it('usesTwoOrThreeProxyColumns', 0, () => {
-      expect(resolveResponsiveMetrics(360).proxyCardWidth).assertEqual('48%');
-      expect(resolveResponsiveMetrics(700).proxyCardWidth).assertEqual('48%');
-      expect(resolveResponsiveMetrics(360, true).proxyCardWidth).assertEqual('31%');
-      expect(resolveResponsiveMetrics(1000).proxyCardWidth).assertEqual('31%');
+    it('usesCurrentProxyColumns', 0, () => {
+      expect(resolveResponsiveMetrics(360).proxyCardWidth).assertEqual('49%');
+      expect(resolveResponsiveMetrics(700).proxyCardWidth).assertEqual('49%');
+      expect(resolveResponsiveMetrics(360, true).proxyCardWidth).assertEqual('24%');
+      expect(resolveResponsiveMetrics(1000).proxyCardWidth).assertEqual('24%');
     });
 
     it('keepsDashboardCardsEqualHeight', 0, () => {

@@ -1,5 +1,6 @@
 import { util } from '@kit.ArkTS';
 import { BusinessError, commonEventManager } from '@kit.BasicServicesKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import {
   CORE_COMMAND_EVENT,
   CORE_CONTROL_VERSION,
@@ -14,6 +15,8 @@ import { RuntimeCommandResponse } from '../models/RuntimeModels';
 import { VPN_BUNDLE_NAME } from '../models/VpnModels';
 
 const COMMAND_TIMEOUT_MS = 12000;
+const DOMAIN = 0x4E4C;
+const TAG = 'NlashRuntimeControl';
 
 interface PendingCommand {
   resolve: (response: string) => void;
@@ -26,6 +29,8 @@ class RuntimeControlService {
   private initializeOperation: Promise<void> | undefined;
   private pending: Map<string, PendingCommand> = new Map<string, PendingCommand>();
   private progressListeners: Set<ProxyDelayProgressListener> = new Set<ProxyDelayProgressListener>();
+  private loggedFirstPublish: boolean = false;
+  private loggedFirstResponse: boolean = false;
 
   initialize(): Promise<void> {
     if (this.subscriber !== undefined) {
@@ -76,13 +81,14 @@ class RuntimeControlService {
       publisherBundleName: VPN_BUNDLE_NAME
     });
     this.subscriber = subscriber;
-    commonEventManager.subscribe(subscriber,
-      (error: BusinessError, data: commonEventManager.CommonEventData): void => {
-        if (error) {
-          return;
-        }
+    await commonEventManager.subscribeToEvent(subscriber,
+      (data: commonEventManager.CommonEventData): void => {
         const envelope = decodeCoreResponseEnvelope(data.data ?? '');
         if (envelope !== undefined) {
+          if (!this.loggedFirstResponse) {
+            this.loggedFirstResponse = true;
+            hilog.info(DOMAIN, TAG, 'received first control response');
+          }
           const pending = this.pending.get(envelope.requestId);
           if (pending === undefined) {
             return;
@@ -97,12 +103,14 @@ class RuntimeControlService {
           this.progressListeners.forEach((listener: ProxyDelayProgressListener): void => listener(progress));
         }
       });
+    hilog.info(DOMAIN, TAG, 'response subscriber ready');
   }
 
   private send(requestId: string, command: string, timeoutMs: number): Promise<string> {
     return new Promise<string>((resolve: (response: string) => void, reject: (error: Error) => void): void => {
       const timeoutId = setTimeout((): void => {
         this.pending.delete(requestId);
+        hilog.warn(DOMAIN, TAG, 'control request timed out request=%{public}s', requestId.substring(0, 8));
         reject(new Error('Core 控制请求超时'));
       }, timeoutMs);
       this.pending.set(requestId, {
@@ -120,6 +128,10 @@ class RuntimeControlService {
           })
         }, (error: BusinessError): void => {
           if (!error) {
+            if (!this.loggedFirstPublish) {
+              this.loggedFirstPublish = true;
+              hilog.info(DOMAIN, TAG, 'published first control request');
+            }
             return;
           }
           this.rejectPending(requestId, new Error(`Core 控制请求发送失败 code=${error.code}`));

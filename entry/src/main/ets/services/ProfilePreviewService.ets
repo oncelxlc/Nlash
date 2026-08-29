@@ -43,7 +43,7 @@ class ProfilePreviewService {
       group: group,
       proxy: proxy,
       url: url,
-      timeout: 5000,
+      timeout: 10000,
       operationId: operationId
     };
     let unsubscribe: (() => void) | undefined = undefined;

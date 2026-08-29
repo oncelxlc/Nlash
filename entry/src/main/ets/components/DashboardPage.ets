@@ -4,14 +4,14 @@ import {
   DEFAULT_RUNTIME_MODE,
   formatBytes,
   formatSpeed,
-  LocalNetworkSnapshot,
+  PublicNetworkSnapshot,
   RuntimeMode,
   RuntimeStoreSnapshot,
   TrafficSample
 } from '../models/RuntimeModels';
 import { formatVpnRunDuration, VpnState } from '../models/VpnModels';
 import { feedbackService } from '../services/FeedbackService';
-import { localNetworkService } from '../services/LocalNetworkService';
+import { countryCodeFlag, publicNetworkService } from '../services/LocalNetworkService';
 import { vpnService } from '../services/VpnService';
 import { profileStore } from '../stores/ProfileStore';
 import { runtimeStore } from '../stores/RuntimeStore';
@@ -33,7 +33,11 @@ export struct DashboardPage {
   @State activeProfileId: string = '';
   @State runtime: DashboardSnapshot | undefined = undefined;
   @State history: TrafficSample[] = [];
-  @State localNetwork: LocalNetworkSnapshot = { localIpv4: '未知', checking: true };
+  @State publicIpv4: string = '未知';
+  @State publicCountry: string = '未知地区';
+  @State publicCountryCode: string = '';
+  @State publicNetworkChecking: boolean = true;
+  @State publicNetworkError: string = '';
   @State restarting: boolean = false;
   @State selectedMode: RuntimeMode = DEFAULT_RUNTIME_MODE;
   @State runtimeBusyKey: string = '';
@@ -53,6 +57,10 @@ export struct DashboardPage {
     this.unsubscribeVpn = vpnService.subscribe((state: VpnState, message: string): void => {
       this.vpnState = state;
       this.message = message;
+      if (this.unsubscribeNetwork !== undefined &&
+        (state === VpnState.CONNECTED || state === VpnState.DISCONNECTED || state === VpnState.ERROR)) {
+        publicNetworkService.refresh();
+      }
       if (state === VpnState.IDLE || state === VpnState.DISCONNECTED || state === VpnState.ERROR) {
         this.selectedMode = DEFAULT_RUNTIME_MODE;
       }
@@ -71,8 +79,12 @@ export struct DashboardPage {
       }
       setTimeout((): void => this.drawTrafficChart(), 0);
     });
-    this.unsubscribeNetwork = localNetworkService.subscribe((snapshot: LocalNetworkSnapshot): void => {
-      this.localNetwork = snapshot;
+    this.unsubscribeNetwork = publicNetworkService.subscribe((snapshot: PublicNetworkSnapshot): void => {
+      this.publicIpv4 = snapshot.publicIpv4;
+      this.publicCountry = snapshot.country;
+      this.publicCountryCode = snapshot.countryCode;
+      this.publicNetworkChecking = snapshot.checking;
+      this.publicNetworkError = snapshot.errorMessage;
     });
   }
 
@@ -90,6 +102,18 @@ export struct DashboardPage {
 
   private getActiveProfile(): Profile | undefined {
     return this.profiles.find((profile: Profile): boolean => profile.id === this.activeProfileId);
+  }
+
+  private publicNetworkDetail(): string {
+    const location = `${countryCodeFlag(this.publicCountryCode)} ${this.publicCountry}`;
+    if (this.publicNetworkChecking) {
+      return this.publicIpv4 === '未知' ? '正在查询公网 IPv4…' : `${location} · 正在刷新`;
+    }
+    if (this.publicNetworkError.length > 0) {
+      return this.publicIpv4 === '未知' ? this.publicNetworkError :
+        `${location} · 刷新失败`;
+    }
+    return location;
   }
 
   private updateWidth(width: Length): void {
@@ -447,6 +471,30 @@ export struct DashboardPage {
   }
 
   @Builder
+  private publicNetworkCard(cardWidth: Length) {
+    Column({ space: 5 }) {
+      this.cardTitle('公网出口')
+      Text(this.publicIpv4)
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.content_primary'))
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+      Text(this.publicNetworkDetail())
+        .fontSize(12)
+        .fontColor($r('app.color.content_secondary'))
+        .maxLines(2)
+    }
+    .alignItems(HorizontalAlign.Start)
+    .justifyContent(FlexAlign.Center)
+    .width(cardWidth)
+    .height(this.metrics.dashboardInfoCardHeight)
+    .padding(12)
+    .borderRadius(16)
+    .backgroundColor($r('app.color.card_background'))
+  }
+
+  @Builder
   private dashboardCards() {
     if (this.metrics.sizeClass === ResponsiveSizeClass.COMPACT) {
       Column({ space: this.metrics.cardGap }) {
@@ -455,9 +503,7 @@ export struct DashboardPage {
         this.vpnCard('100%')
         this.infoCard('运行状态', `${this.runtime?.connectionCount ?? 0} 个活动连接`,
           `Core 内存 ${formatBytes(this.runtime?.memoryBytes ?? 0)}`, '100%')
-        this.infoCard('本机网络', this.localNetwork.localIpv4,
-          this.localNetwork.checking ? '正在检测本机网络…' :
-            (this.localNetwork.localIpv4 === '未知' ? '未检测到可用 IPv4 地址' : '已自动检测本机 IPv4'), '100%')
+        this.publicNetworkCard('100%')
       }
       .width('100%')
     } else {
@@ -476,10 +522,7 @@ export struct DashboardPage {
         Row() {
           this.infoCard('运行状态', `${this.runtime?.connectionCount ?? 0} 个活动连接`,
             `Core 内存 ${formatBytes(this.runtime?.memoryBytes ?? 0)}`, this.metrics.dashboardCardWidth)
-          this.infoCard('本机网络', this.localNetwork.localIpv4,
-            this.localNetwork.checking ? '正在检测本机网络…' :
-              (this.localNetwork.localIpv4 === '未知' ? '未检测到可用 IPv4 地址' : '已自动检测本机 IPv4'),
-            this.metrics.dashboardCardWidth)
+          this.publicNetworkCard(this.metrics.dashboardCardWidth)
         }
         .width('100%')
         .justifyContent(FlexAlign.SpaceBetween)

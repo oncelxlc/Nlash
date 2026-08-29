@@ -55,6 +55,7 @@ export interface ProxyDelayResult {
   proxy: string;
   delay: number;
   alive: boolean;
+  errorCode?: string;
 }
 
 export interface GroupDelayResult {
@@ -67,9 +68,13 @@ export interface ProxySelection {
   proxy: string;
 }
 
-export interface LocalNetworkSnapshot {
-  localIpv4: string;
+export interface PublicNetworkSnapshot {
+  publicIpv4: string;
+  country: string;
+  countryCode: string;
   checking: boolean;
+  lastSuccessAt?: number;
+  errorMessage: string;
 }
 
 export interface ConnectionSnapshot {
@@ -209,6 +214,23 @@ export function mergeGroupDelay(groups: ProxyGroupSnapshot[], groupName: string,
   });
 }
 
+export function preserveTestedProxyDelays(freshGroups: ProxyGroupSnapshot[],
+  currentGroups: ProxyGroupSnapshot[]): ProxyGroupSnapshot[] {
+  let merged = freshGroups;
+  currentGroups.forEach((group: ProxyGroupSnapshot): void => {
+    const tested = group.nodes.filter((node: ProxyNodeSnapshot): boolean => node.tested)
+      .map((node: ProxyNodeSnapshot): ProxyDelayResult => ({
+        proxy: node.name,
+        delay: node.delay,
+        alive: node.alive
+      }));
+    if (tested.length > 0) {
+      merged = mergeGroupDelay(merged, group.name, tested);
+    }
+  });
+  return merged;
+}
+
 export function resetGroupDelay(groups: ProxyGroupSnapshot[], groupName: string,
   proxyName: string = ''): ProxyGroupSnapshot[] {
   return groups.map((group: ProxyGroupSnapshot): ProxyGroupSnapshot => {
@@ -275,6 +297,10 @@ export function proxyDelayLabel(node: ProxyNodeSnapshot, testing: boolean): stri
     return '⚡';
   }
   return node.alive && node.delay > 0 ? `${node.delay}ms` : 'Error';
+}
+
+export function proxyNodeRenderKey(node: ProxyNodeSnapshot): string {
+  return `${node.name.length}:${node.name}:${node.tested ? 1 : 0}:${node.alive ? 1 : 0}:${node.delay}`;
 }
 
 export function pruneProxySelections(groups: ProxyGroupSnapshot[],

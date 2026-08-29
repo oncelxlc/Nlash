@@ -2,7 +2,14 @@ import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
 import { Environment, fileIo, picker } from '@kit.CoreFileKit';
 import { http } from '@kit.NetworkKit';
-import { Profile, ProfileType, ProfileUpdateStage } from '../models/ProfileModels';
+import {
+  DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES,
+  normalizeProfileUpdateInterval,
+  Profile,
+  ProfileEditDraft,
+  ProfileType,
+  ProfileUpdateStage
+} from '../models/ProfileModels';
 import { profileRepository } from '../repository/ProfileRepository';
 import { coreClient } from './CoreClient';
 
@@ -17,6 +24,119 @@ export function buildDefaultImportPath(downloadDirectory: string): string {
 }
 
 export type ProfileStageListener = (stage: ProfileUpdateStage) => void;
+
+export interface SubscriptionMetadata {
+  title?: string;
+  uploadBytes?: number;
+  downloadBytes?: number;
+  totalBytes?: number;
+  expireAt?: number;
+}
+
+interface SubscriptionDownload {
+  content: ArrayBuffer;
+  metadata: SubscriptionMetadata;
+}
+
+function extractSubscriptionHeader(headers: Object, target: string): string {
+  const serialized = JSON.stringify(headers);
+  const pattern = new RegExp(`"${target}"\\s*:\\s*("(?:\\\\.|[^"])*"|\\[[^\\]]*\\])`, 'i');
+  const match = pattern.exec(serialized);
+  if (match === null || match.length < 2) {
+    return '';
+  }
+  try {
+    const value = JSON.parse(match[1]) as string | string[];
+    return Array.isArray(value) ? value.join(',') : value;
+  } catch (error) {
+    return '';
+  }
+}
+
+function cleanSubscriptionTitle(value: string): string {
+  let decoded = value.trim();
+  if (decoded.length === 0) {
+    return '';
+  }
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch (error) {
+  }
+  return decoded.replace(/[\u0000-\u001f\u007f]/g, '').trim().substring(0, 64);
+}
+
+function subscriptionDispositionFilename(disposition: string): string {
+  if (disposition.length === 0) {
+    return '';
+  }
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  if (utf8Match !== null && utf8Match.length > 1) {
+    return utf8Match[1].trim();
+  }
+  const filenameMatch = /filename="?([^";]+)"?/i.exec(disposition);
+  return filenameMatch !== null && filenameMatch.length > 1 ? filenameMatch[1].trim() : '';
+}
+
+export function parseSubscriptionMetadata(headers: Object): SubscriptionMetadata {
+  const metadata: SubscriptionMetadata = {};
+  const title = extractSubscriptionHeader(headers, 'profile-title');
+  const disposition = extractSubscriptionHeader(headers, 'content-disposition');
+  const decodedTitle = cleanSubscriptionTitle(title.length > 0 ?
+    title : subscriptionDispositionFilename(disposition));
+  if (decodedTitle.length > 0) {
+    metadata.title = decodedTitle;
+  }
+  extractSubscriptionHeader(headers, 'subscription-userinfo').split(';').forEach((part: string): void => {
+    const separator = part.indexOf('=');
+    if (separator <= 0) {
+      return;
+    }
+    const key = part.substring(0, separator).trim().toLowerCase();
+    const value = Number(part.substring(separator + 1).trim());
+    if (!Number.isFinite(value) || value < 0) {
+      return;
+    }
+    if (key === 'upload') {
+      metadata.uploadBytes = value;
+    } else if (key === 'download') {
+      metadata.downloadBytes = value;
+    } else if (key === 'total') {
+      metadata.totalBytes = value;
+    } else if (key === 'expire' && value > 0) {
+      metadata.expireAt = value * 1000;
+    }
+  });
+  return metadata;
+}
+
+export function inferSubscriptionName(sourceUrl: string, headerTitle: string | undefined): string {
+  const cleanTitle = cleanSubscriptionTitle(headerTitle ?? '');
+  if (cleanTitle.length > 0) {
+    return cleanTitle;
+  }
+  const withoutFragment = sourceUrl.split('#')[0].split('?')[0];
+  const lastSlash = withoutFragment.lastIndexOf('/');
+  if (lastSlash >= 0 && lastSlash < withoutFragment.length - 1) {
+    const fileName = cleanSubscriptionTitle(withoutFragment.substring(lastSlash + 1))
+      .replace(/\.(yaml|yml|ymal)$/i, '');
+    if (fileName.length > 0) {
+      return fileName;
+    }
+  }
+  const schemeEnd = sourceUrl.indexOf('://');
+  const authorityStart = schemeEnd >= 0 ? schemeEnd + 3 : 0;
+  let authorityEnd = sourceUrl.indexOf('/', authorityStart);
+  if (authorityEnd < 0) {
+    authorityEnd = sourceUrl.length;
+  }
+  const authority = sourceUrl.substring(authorityStart, authorityEnd);
+  const credentialsEnd = authority.lastIndexOf('@');
+  const hostWithPort = credentialsEnd >= 0 ? authority.substring(credentialsEnd + 1) : authority;
+  const colon = hostWithPort.indexOf(':');
+  const host = colon >= 0 ? hostWithPort.substring(0, colon) : hostWithPort;
+  const cleanHost = cleanSubscriptionTitle(host);
+  return cleanHost.length > 0 ? cleanHost : '订阅配置';
+}
 
 class SubscriptionService {
   private context: common.UIAbilityContext | undefined;
@@ -76,7 +196,9 @@ class SubscriptionService {
         localPath: targetPath,
         createdAt: now,
         updatedAt: now,
-        lastUpdateAt: now
+        lastUpdateAt: now,
+        autoUpdateEnabled: false,
+        updateIntervalMinutes: DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES
       };
       listener(ProfileUpdateStage.PERSISTING);
       try {
@@ -102,7 +224,6 @@ class SubscriptionService {
   }
 
   async add(name: string, sourceUrl: string, listener: ProfileStageListener): Promise<Profile> {
-    const cleanName = this.validateName(name);
     const cleanSourceUrl = sourceUrl.trim();
     this.validateSourceUrl(cleanSourceUrl);
     const context = this.requireContext();
@@ -113,8 +234,8 @@ class SubscriptionService {
 
     try {
       listener(ProfileUpdateStage.DOWNLOADING);
-      const content = await this.download(cleanSourceUrl);
-      await this.writeFile(temporaryPath, content);
+      const downloaded = await this.download(cleanSourceUrl);
+      await this.writeFile(temporaryPath, downloaded.content);
       listener(ProfileUpdateStage.DOWNLOADED);
       listener(ProfileUpdateStage.VALIDATING);
       await this.validateTemporaryFile(temporaryPath);
@@ -123,6 +244,8 @@ class SubscriptionService {
       listener(ProfileUpdateStage.APPLIED);
 
       const now = Date.now();
+      const cleanName = name.trim().length > 0 ? this.validateName(name) :
+        this.validateName(inferSubscriptionName(cleanSourceUrl, downloaded.metadata.title));
       const profile: Profile = {
         id: id,
         name: cleanName,
@@ -131,7 +254,13 @@ class SubscriptionService {
         localPath: targetPath,
         createdAt: now,
         updatedAt: now,
-        lastUpdateAt: now
+        lastUpdateAt: now,
+        expireAt: downloaded.metadata.expireAt,
+        uploadBytes: downloaded.metadata.uploadBytes,
+        downloadBytes: downloaded.metadata.downloadBytes,
+        totalBytes: downloaded.metadata.totalBytes,
+        autoUpdateEnabled: false,
+        updateIntervalMinutes: DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES
       };
       listener(ProfileUpdateStage.PERSISTING);
       try {
@@ -150,18 +279,31 @@ class SubscriptionService {
   }
 
   async update(profile: Profile, listener: ProfileStageListener): Promise<Profile> {
+    return this.editAndUpdate(profile, {
+      name: profile.name,
+      sourceUrl: profile.sourceUrl,
+      autoUpdateEnabled: profile.autoUpdateEnabled,
+      updateIntervalMinutes: profile.updateIntervalMinutes
+    }, listener);
+  }
+
+  async editAndUpdate(profile: Profile, draft: ProfileEditDraft,
+    listener: ProfileStageListener): Promise<Profile> {
     if (profile.type !== ProfileType.SUBSCRIPTION || profile.sourceUrl.length === 0) {
       throw new Error('该配置不支持订阅更新');
     }
-    this.validateSourceUrl(profile.sourceUrl);
+    const cleanName = this.validateName(draft.name);
+    const cleanSourceUrl = draft.sourceUrl.trim();
+    this.validateSourceUrl(cleanSourceUrl);
+    const updateIntervalMinutes = this.validateUpdateInterval(draft.updateIntervalMinutes);
     const temporaryPath = `${profile.localPath}.tmp`;
     const backupPath = `${profile.localPath}.bak`;
     let backupCreated = false;
 
     try {
       listener(ProfileUpdateStage.DOWNLOADING);
-      const content = await this.download(profile.sourceUrl);
-      await this.writeFile(temporaryPath, content);
+      const downloaded = await this.download(cleanSourceUrl);
+      await this.writeFile(temporaryPath, downloaded.content);
       listener(ProfileUpdateStage.DOWNLOADED);
       listener(ProfileUpdateStage.VALIDATING);
       await this.validateTemporaryFile(temporaryPath);
@@ -178,17 +320,19 @@ class SubscriptionService {
       const now = Date.now();
       const updated: Profile = {
         id: profile.id,
-        name: profile.name,
+        name: cleanName,
         type: profile.type,
-        sourceUrl: profile.sourceUrl,
+        sourceUrl: cleanSourceUrl,
         localPath: profile.localPath,
         createdAt: profile.createdAt,
         updatedAt: now,
         lastUpdateAt: now,
-        expireAt: profile.expireAt,
-        uploadBytes: profile.uploadBytes,
-        downloadBytes: profile.downloadBytes,
-        totalBytes: profile.totalBytes
+        expireAt: downloaded.metadata.expireAt ?? profile.expireAt,
+        uploadBytes: downloaded.metadata.uploadBytes ?? profile.uploadBytes,
+        downloadBytes: downloaded.metadata.downloadBytes ?? profile.downloadBytes,
+        totalBytes: downloaded.metadata.totalBytes ?? profile.totalBytes,
+        autoUpdateEnabled: draft.autoUpdateEnabled,
+        updateIntervalMinutes: updateIntervalMinutes
       };
       listener(ProfileUpdateStage.PERSISTING);
       try {
@@ -223,7 +367,9 @@ class SubscriptionService {
       expireAt: profile.expireAt,
       uploadBytes: profile.uploadBytes,
       downloadBytes: profile.downloadBytes,
-      totalBytes: profile.totalBytes
+      totalBytes: profile.totalBytes,
+      autoUpdateEnabled: profile.autoUpdateEnabled,
+      updateIntervalMinutes: profile.updateIntervalMinutes
     };
     await profileRepository.save(renamed);
     return renamed;
@@ -249,7 +395,7 @@ class SubscriptionService {
     await this.safeUnlink(`${profile.localPath}.tmp`);
   }
 
-  private async download(sourceUrl: string): Promise<ArrayBuffer> {
+  private async download(sourceUrl: string): Promise<SubscriptionDownload> {
     const request = http.createHttp();
     try {
       let response: http.HttpResponse;
@@ -285,7 +431,10 @@ class SubscriptionService {
       if (this.looksLikeHtml(content)) {
         throw new Error('订阅服务器返回了网页而不是 YAML');
       }
-      return content;
+      return {
+        content: content,
+        metadata: parseSubscriptionMetadata(response.header)
+      };
     } finally {
       request.destroy();
     }
@@ -347,6 +496,13 @@ class SubscriptionService {
       throw new Error('配置名称长度必须为 1–64 个字符');
     }
     return cleanName;
+  }
+
+  private validateUpdateInterval(value: number): number {
+    if (!Number.isFinite(value) || value < 15 || value > 10080) {
+      throw new Error('自动更新间隔必须为 15–10080 分钟');
+    }
+    return normalizeProfileUpdateInterval(value);
   }
 
   private async ensureProfileDirectory(): Promise<void> {

@@ -1,7 +1,10 @@
 import {
+  failPendingGroupDelay,
+  mergeGroupDelay,
   ProxyGroupSnapshot,
   ProxyNodeSnapshot,
   proxyDelayLabel,
+  proxyNodeRenderKey,
   ProxySelection,
   ProxySnapshotSource,
   RuntimeStoreSnapshot
@@ -109,8 +112,20 @@ export struct ProxyPage {
     const group = this.currentGroup();
     if (group !== undefined) {
       try {
-        await runtimeStore.testDelay(group.name, node.name, this.settings.delayTestUrl);
+        const delay = await runtimeStore.testDelay(group.name, node.name, this.settings.delayTestUrl);
+        this.groups = mergeGroupDelay(this.groups, group.name, [{
+          proxy: node.name,
+          delay: delay,
+          alive: delay > 0
+        }]);
+        runtimeStore.commitDelayResult(group.name, node.name, delay);
       } catch (error) {
+        this.groups = mergeGroupDelay(this.groups, group.name, [{
+          proxy: node.name,
+          delay: -1,
+          alive: false
+        }]);
+        runtimeStore.commitDelayResult(group.name, node.name, -1);
         feedbackService.error(this.errorMessage(error));
       }
     }
@@ -123,7 +138,11 @@ export struct ProxyPage {
     }
     try {
       await runtimeStore.testGroupDelay(group.name, this.settings.delayTestUrl);
+      this.groups = failPendingGroupDelay(this.groups, group.name);
+      runtimeStore.completePendingDelayResults(group.name);
     } catch (error) {
+      this.groups = failPendingGroupDelay(this.groups, group.name);
+      runtimeStore.completePendingDelayResults(group.name);
       feedbackService.error(this.errorMessage(error));
     }
   }
@@ -163,9 +182,7 @@ export struct ProxyPage {
             .accessibilityText(`测试 ${node.name} 延迟`)
             .onTouch((event: TouchEvent): void => {
               event.stopPropagation();
-            })
-            .onClick((): void => {
-              if (this.busyKey.length === 0) {
+              if (event.type === TouchType.Up && this.busyKey.length === 0) {
                 this.testNode(node);
               }
             })
@@ -253,7 +270,7 @@ export struct ProxyPage {
             Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
               ForEach(this.currentGroup()?.nodes ?? [], (node: ProxyNodeSnapshot) => {
                 this.nodeCard(node)
-              }, (node: ProxyNodeSnapshot): string => node.name)
+              }, (node: ProxyNodeSnapshot): string => proxyNodeRenderKey(node))
             }
             .width('100%')
           }
