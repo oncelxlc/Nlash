@@ -276,6 +276,7 @@ export struct ProxyPage {
             .columnsGap(this.metrics.cardGap)
             .rowsGap(this.metrics.cardGap)
             .width('100%')
+            .scrollBar(BarState.Off)
           }
         }
 
@@ -283,6 +284,7 @@ export struct ProxyPage {
       .justifyContent(FlexAlign.Start)
       .alignItems(HorizontalAlign.Start)
       .width('100%')
+      .height('100%')
       .constraintSize({ minHeight: '100%' })
       .padding({
         top: this.metrics.pagePadding,
