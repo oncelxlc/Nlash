@@ -15,11 +15,14 @@ import {
   StoredProxySelection
 } from '../main/ets/repository/PreferenceRepository';
 import { RuntimeMode } from '../main/ets/models/RuntimeModels';
+import { ProxyState } from '../main/ets/models/VpnModels';
 import {
   countryCodeFlag,
   isValidIpv4,
   parseGeoIpResponse,
-  shouldApplyNetworkResult
+  shouldApplyNetworkResult,
+  shouldRefreshPublicNetworkAfterProxySelection,
+  shouldRefreshPublicNetworkAfterProxyStateChange
 } from '../main/ets/services/LocalNetworkService';
 import {
   buildDefaultImportPath,
@@ -76,9 +79,18 @@ export default function profileFeaturesTest() {
     });
 
     it('rejectsStaleNetworkResults', 0, () => {
-      expect(shouldApplyNetworkResult(2, 2, 1)).assertTrue();
-      expect(shouldApplyNetworkResult(1, 2, 1)).assertFalse();
-      expect(shouldApplyNetworkResult(2, 2, 0)).assertFalse();
+      expect(shouldApplyNetworkResult(2, 2, true)).assertTrue();
+      expect(shouldApplyNetworkResult(1, 2, true)).assertFalse();
+      expect(shouldApplyNetworkResult(2, 2, false)).assertFalse();
+    });
+
+    it('refreshesPublicNetworkOnlyForRelevantProxyChanges', 0, () => {
+      expect(shouldRefreshPublicNetworkAfterProxyStateChange(ProxyState.ENABLING, ProxyState.ENABLED)).assertTrue();
+      expect(shouldRefreshPublicNetworkAfterProxyStateChange(ProxyState.ENABLED, ProxyState.ENABLED)).assertFalse();
+      expect(shouldRefreshPublicNetworkAfterProxyStateChange(ProxyState.ENABLED, ProxyState.DISABLED)).assertFalse();
+      expect(shouldRefreshPublicNetworkAfterProxySelection('Node A', 'Node B', true, true)).assertTrue();
+      expect(shouldRefreshPublicNetworkAfterProxySelection('Node A', 'Node A', true, true)).assertFalse();
+      expect(shouldRefreshPublicNetworkAfterProxySelection('Node A', 'Node B', true, false)).assertFalse();
     });
 
     it('parsesSubscriptionHeadersAndNames', 0, () => {

@@ -160,9 +160,11 @@ struct RuntimeTrafficCard {
           max: Math.max(1, (this.runtime?.uploadTotal ?? 0) + (this.runtime?.downloadTotal ?? 0)),
           type: DataPanelType.Circle
         })
+          .valueColors(['#65ffe600', '#650099ff'])
           .width(80)
           .height(80)
           .strokeWidth(10)
+          .closeEffect(true)
         Column({ space: 7 }) {
           Row({ space: 0 }) {
             Text('上传')
@@ -251,6 +253,7 @@ export struct DashboardPage {
   @State publicCountryCode: string = '';
   @State publicNetworkChecking: boolean = true;
   @State publicNetworkError: string = '';
+  @State publicNetworkCardPressed: boolean = false;
   @State restarting: boolean = false;
   @State selectedMode: RuntimeMode = DEFAULT_RUNTIME_MODE;
   @State runtimeBusyKey: string = '';
@@ -262,7 +265,8 @@ export struct DashboardPage {
   private lastTrafficSampleTimestamp: number = 0;
 
   aboutToAppear(): void {
-    this.unsubscribeNetwork = publicNetworkService.subscribe((_snapshot: PublicNetworkSnapshot): void => {
+    this.unsubscribeNetwork = publicNetworkService.subscribe((snapshot: PublicNetworkSnapshot): void => {
+      this.applyPublicNetworkSnapshot(snapshot);
     });
     this.syncViewState();
     this.viewSyncTimer = setInterval((): void => this.syncViewState(), VIEW_SYNC_INTERVAL_MS);
@@ -279,18 +283,11 @@ export struct DashboardPage {
   }
 
   private syncViewState(): void {
-    const previousProxyState = this.proxyState;
     const lifecycle = vpnService.getLifecycleSnapshot();
     this.coreState = lifecycle.coreState;
     this.proxyState = lifecycle.proxyState;
     this.message = lifecycle.message;
     this.connectedAt = vpnService.getConnectedAt();
-    if (this.unsubscribeNetwork !== undefined && previousProxyState !== lifecycle.proxyState &&
-      (lifecycle.proxyState === ProxyState.ENABLED || lifecycle.proxyState === ProxyState.DISABLED ||
-        lifecycle.proxyState === ProxyState.ERROR)) {
-      publicNetworkService.refresh();
-    }
-
     const profileSnapshot = profileStore.getSnapshot();
     this.profiles = profileSnapshot.profiles;
     this.activeProfileId = profileSnapshot.activeProfileId;
@@ -311,13 +308,16 @@ export struct DashboardPage {
       this.history = runtimeSnapshot.trafficHistory;
     }
 
-    const networkSnapshot = publicNetworkService.getSnapshot();
-    this.publicIpv4 = networkSnapshot.publicIpv4;
-    this.publicCountry = networkSnapshot.country;
-    this.publicCountryCode = networkSnapshot.countryCode;
-    this.publicNetworkChecking = networkSnapshot.checking;
-    this.publicNetworkError = networkSnapshot.errorMessage;
+    this.applyPublicNetworkSnapshot(publicNetworkService.getSnapshot());
     this.updateElapsedSeconds();
+  }
+
+  private applyPublicNetworkSnapshot(snapshot: PublicNetworkSnapshot): void {
+    this.publicIpv4 = snapshot.publicIpv4;
+    this.publicCountry = snapshot.country;
+    this.publicCountryCode = snapshot.countryCode;
+    this.publicNetworkChecking = snapshot.checking;
+    this.publicNetworkError = snapshot.errorMessage;
   }
 
   private getActiveProfile(): Profile | undefined {
@@ -586,6 +586,20 @@ export struct DashboardPage {
     .padding(12)
     .borderRadius(16)
     .backgroundColor($r('app.color.card_background'))
+    .scale({ x: this.publicNetworkCardPressed ? 0.98 : 1, y: this.publicNetworkCardPressed ? 0.98 : 1 })
+    .opacity(this.publicNetworkCardPressed ? 0.86 : 1)
+    .animation({ duration: 120, curve: Curve.EaseOut })
+    .accessibilityText('刷新公网出口')
+    .onTouch((event: TouchEvent): void => {
+      if (event.type === TouchType.Down) {
+        this.publicNetworkCardPressed = true;
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.publicNetworkCardPressed = false;
+      }
+    })
+    .onClick((): void => {
+      publicNetworkService.refresh();
+    })
   }
 
   build() {

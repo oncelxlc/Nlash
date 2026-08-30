@@ -2,6 +2,11 @@ import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { Profile } from '../models/ProfileModels';
+import { ProxyState, RuntimeLifecycleSnapshot } from '../models/VpnModels';
+import {
+  publicNetworkService,
+  shouldRefreshPublicNetworkAfterProxyStateChange
+} from '../services/LocalNetworkService';
 import { vpnService } from '../services/VpnService';
 import { profileStore } from '../stores/ProfileStore';
 import { runtimeStore } from '../stores/RuntimeStore';
@@ -10,8 +15,20 @@ import { settingsStore } from '../stores/SettingsStore';
 const DOMAIN = 0x0000;
 
 export default class EntryAbility extends UIAbility {
+  private proxyState: ProxyState = ProxyState.DISABLED;
+  private unsubscribeVpnLifecycle: (() => void) | undefined = undefined;
+
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     vpnService.initialize(this.context.getApplicationContext());
+    publicNetworkService.initialize();
+    this.proxyState = vpnService.getProxyState();
+    this.unsubscribeVpnLifecycle = vpnService.subscribeLifecycle((snapshot: RuntimeLifecycleSnapshot): void => {
+      const previousProxyState = this.proxyState;
+      this.proxyState = snapshot.proxyState;
+      if (shouldRefreshPublicNetworkAfterProxyStateChange(previousProxyState, snapshot.proxyState)) {
+        publicNetworkService.refresh();
+      }
+    });
     const profileOperation = profileStore.initialize(this.context);
     profileOperation.catch((): void => {
       hilog.error(DOMAIN, 'NlashProfile', 'Profile data initialization failed');
@@ -40,6 +57,9 @@ export default class EntryAbility extends UIAbility {
   }
 
   onDestroy(): void {
+    this.unsubscribeVpnLifecycle?.();
+    this.unsubscribeVpnLifecycle = undefined;
+    publicNetworkService.shutdown();
     profileStore.shutdown();
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onDestroy');
   }

@@ -32,9 +32,13 @@ import {
   resolveRefreshIntervalMilliseconds,
   SettingsStoreSnapshot
 } from '../models/SettingsModels';
-import { CoreServiceState, RuntimeLifecycleSnapshot } from '../models/VpnModels';
+import { CoreServiceState, ProxyState, RuntimeLifecycleSnapshot } from '../models/VpnModels';
 import { feedbackService } from '../services/FeedbackService';
 import { preferenceRepository } from '../repository/PreferenceRepository';
+import {
+  publicNetworkService,
+  shouldRefreshPublicNetworkAfterProxySelection
+} from '../services/LocalNetworkService';
 import { profilePreviewService } from '../services/ProfilePreviewService';
 import { runtimeControlService } from '../services/RuntimeControlService';
 import { vpnService } from '../services/VpnService';
@@ -213,6 +217,8 @@ class RuntimeStore {
     }
     await this.runAction(`select:${group}`, async (): Promise<void> => {
       this.requireSelectableNode(group, proxy);
+      const previousProxy = this.proxies.find((item: ProxyGroupSnapshot): boolean =>
+        item.name === group)?.selected ?? '';
       const profileId = this.profileId;
       const mode = this.proxyMode;
       if (this.coreAvailable) {
@@ -227,6 +233,10 @@ class RuntimeStore {
       this.proxies = this.replaceRuntimeSelection(this.proxies, group, proxy);
       this.proxySelections = this.replaceSelection(this.proxySelections, group, proxy);
       this.publish();
+      if (shouldRefreshPublicNetworkAfterProxySelection(previousProxy, proxy, this.coreAvailable,
+        vpnService.getProxyState() === ProxyState.ENABLED)) {
+        publicNetworkService.refresh();
+      }
     });
   }
 

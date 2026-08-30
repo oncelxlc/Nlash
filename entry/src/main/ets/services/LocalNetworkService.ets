@@ -2,6 +2,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { connection, http } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { PublicNetworkSnapshot } from '../models/RuntimeModels';
+import { ProxyState } from '../models/VpnModels';
 
 const PUBLIC_IPV4_URL = 'https://api-ipv4.ip.sb/ip';
 const GEOIP_BASE_URL = 'https://api.ip.sb/geoip/';
@@ -19,8 +20,18 @@ interface GeoIpResponse {
 export type PublicNetworkListener = (snapshot: PublicNetworkSnapshot) => void;
 
 export function shouldApplyNetworkResult(resultGeneration: number, currentGeneration: number,
-  listenerCount: number): boolean {
-  return resultGeneration === currentGeneration && listenerCount > 0;
+  serviceActive: boolean): boolean {
+  return resultGeneration === currentGeneration && serviceActive;
+}
+
+export function shouldRefreshPublicNetworkAfterProxyStateChange(previousState: ProxyState,
+  currentState: ProxyState): boolean {
+  return currentState === ProxyState.ENABLED && previousState !== ProxyState.ENABLED;
+}
+
+export function shouldRefreshPublicNetworkAfterProxySelection(previousProxy: string, currentProxy: string,
+  runtimeAvailable: boolean, proxyConnected: boolean): boolean {
+  return previousProxy !== currentProxy && runtimeAvailable && proxyConnected;
 }
 
 export function isValidIpv4(value: string): boolean {
@@ -75,15 +86,42 @@ class PublicNetworkService {
   private generation: number = 0;
   private refreshTimer: number = -1;
   private refreshInFlight: boolean = false;
+  private refreshPending: boolean = false;
+  private initialized: boolean = false;
 
   private readonly availableHandler = (_handle: connection.NetHandle): void => this.refresh();
   private readonly propertiesHandler = (_info: connection.NetConnectionPropertyInfo): void => this.refresh();
   private readonly lostHandler = (_handle: connection.NetHandle): void => this.refresh();
   private readonly unavailableHandler = (): void => {
+    if (!this.initialized) {
+      return;
+    }
     this.generation += 1;
+    this.refreshPending = false;
+    if (this.refreshTimer >= 0) {
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = -1;
+    }
     this.snapshot = this.withStatus(false, '当前网络不可用');
     this.publish();
   };
+
+  initialize(): void {
+    if (this.initialized) {
+      return;
+    }
+    this.initialized = true;
+    this.start();
+  }
+
+  shutdown(): void {
+    if (!this.initialized) {
+      return;
+    }
+    this.initialized = false;
+    this.stop();
+    this.listeners.clear();
+  }
 
   getSnapshot(): PublicNetworkSnapshot {
     return this.copySnapshot();
@@ -92,22 +130,17 @@ class PublicNetworkService {
   subscribe(listener: PublicNetworkListener): () => void {
     this.listeners.add(listener);
     listener(this.copySnapshot());
-    if (this.listeners.size === 1) {
-      this.start();
-    }
     return (): void => {
       this.listeners.delete(listener);
-      if (this.listeners.size === 0) {
-        this.stop();
-      }
     };
   }
 
   refresh(): void {
-    if (this.listeners.size === 0) {
+    if (!this.initialized) {
       return;
     }
     if (this.refreshInFlight) {
+      this.refreshPending = true;
       return;
     }
     if (this.refreshTimer >= 0) {
@@ -136,15 +169,15 @@ class PublicNetworkService {
         this.unavailableHandler();
       } else {
         hilog.info(NETWORK_LOG_DOMAIN, NETWORK_LOG_TAG, 'network monitor registered');
-        this.refresh();
       }
     });
-    // The first subscriber must not depend on a delayed network callback to see a result.
+    // Application startup must not depend on a delayed network callback to see a result.
     this.beginRefresh();
   }
 
   private stop(): void {
     this.generation += 1;
+    this.refreshPending = false;
     if (this.refreshTimer >= 0) {
       clearTimeout(this.refreshTimer);
       this.refreshTimer = -1;
@@ -158,16 +191,21 @@ class PublicNetworkService {
   }
 
   private beginRefresh(): void {
+    if (!this.initialized) {
+      return;
+    }
     if (this.refreshInFlight) {
+      this.refreshPending = true;
       return;
     }
     this.refreshInFlight = true;
+    this.refreshPending = false;
     const generation = ++this.generation;
     hilog.info(NETWORK_LOG_DOMAIN, NETWORK_LOG_TAG, 'public network refresh started generation=%{public}d', generation);
     this.snapshot = this.withStatus(true, '');
     this.publish();
     this.resolvePublicNetwork().then((snapshot: PublicNetworkSnapshot): void => {
-      if (!shouldApplyNetworkResult(generation, this.generation, this.listeners.size)) {
+      if (!shouldApplyNetworkResult(generation, this.generation, this.initialized)) {
         return;
       }
       this.snapshot = snapshot;
@@ -175,7 +213,7 @@ class PublicNetworkService {
         generation);
       this.publish();
     }, (): void => {
-      if (!shouldApplyNetworkResult(generation, this.generation, this.listeners.size)) {
+      if (!shouldApplyNetworkResult(generation, this.generation, this.initialized)) {
         return;
       }
       this.snapshot = this.withStatus(false, '公网 IP 刷新失败');
@@ -189,6 +227,10 @@ class PublicNetworkService {
 
   private finishRefresh(): void {
     this.refreshInFlight = false;
+    if (this.refreshPending && this.initialized) {
+      this.refreshPending = false;
+      this.refresh();
+    }
   }
 
   private async resolvePublicNetwork(): Promise<PublicNetworkSnapshot> {
