@@ -21,7 +21,7 @@ export struct ConnectionsPage {
 
   aboutToAppear(): void {
     this.unsubscribe = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
-      this.available = snapshot.available;
+      this.available = snapshot.coreAvailable;
       this.refreshing = snapshot.refreshing;
       this.connections = snapshot.connections;
       this.busyKey = snapshot.busyKey;

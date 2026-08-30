@@ -9,6 +9,9 @@ export interface NativeCoreResult {
 export interface NativeCoreStartOptions {
   configPath: string;
   workDir: string;
+}
+
+export interface NativeCoreProxyOptions {
   tunFd: number;
   mtu: number;
   protectSocketPath: string;
@@ -32,6 +35,18 @@ export function validateConfig(configPath: string): Promise<NativeCoreResult> {
 
 export function startCore(options: NativeCoreStartOptions): Promise<NativeCoreResult> {
   return nativeCore.startCore(options);
+}
+
+export function enableCoreProxy(options: NativeCoreProxyOptions): Promise<NativeCoreResult> {
+  return nativeCore.enableCoreProxy(options);
+}
+
+export function disableCoreProxy(): Promise<NativeCoreResult> {
+  return nativeCore.disableCoreProxy();
+}
+
+export function coreProxyEnabled(): boolean {
+  return nativeCore.coreProxyEnabled();
 }
 
 export function stopCore(): Promise<NativeCoreResult> {

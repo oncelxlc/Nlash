@@ -83,6 +83,8 @@ void ClearEventFunctionLocked()
 enum class AsyncOperation {
     VALIDATE,
     START,
+    ENABLE_PROXY,
+    DISABLE_PROXY,
     STOP,
     COMMAND,
 };
@@ -94,6 +96,7 @@ struct AsyncContext {
     AsyncOperation operation = AsyncOperation::VALIDATE;
     std::string configPath;
     CoreStartOptions startOptions;
+    CoreProxyOptions proxyOptions;
     CoreResult result {CoreErrorCode::INTERNAL_ERROR, "core operation did not run"};
     std::string command;
     std::string commandResult;
@@ -156,6 +159,12 @@ void ExecuteAsync(napi_env env, void *data)
             break;
         case AsyncOperation::START:
             context->result = StartCore(context->startOptions);
+            break;
+        case AsyncOperation::ENABLE_PROXY:
+            context->result = EnableCoreProxy(context->proxyOptions);
+            break;
+        case AsyncOperation::DISABLE_PROXY:
+            context->result = DisableCoreProxy();
             break;
         case AsyncOperation::STOP:
             context->result = StopCore();
@@ -240,12 +249,40 @@ napi_value StartCoreAsync(napi_env env, napi_callback_info info)
     if (argc == 1) {
         ReadNamedString(env, args[0], "configPath", context->startOptions.configPath);
         ReadNamedString(env, args[0], "workDir", context->startOptions.workDir);
-        ReadNamedInt32(env, args[0], "tunFd", context->startOptions.tunFd);
-        ReadNamedInt32(env, args[0], "mtu", context->startOptions.mtu);
-        ReadNamedString(env, args[0], "protectSocketPath", context->startOptions.protectSocketPath);
-        ReadNamedString(env, args[0], "generation", context->startOptions.generation);
     }
     return QueueAsync(env, std::move(context), "nlashStartCore");
+}
+
+napi_value EnableCoreProxyAsync(napi_env env, napi_callback_info info)
+{
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    auto context = std::make_unique<AsyncContext>();
+    context->operation = AsyncOperation::ENABLE_PROXY;
+    if (argc == 1) {
+        ReadNamedInt32(env, args[0], "tunFd", context->proxyOptions.tunFd);
+        ReadNamedInt32(env, args[0], "mtu", context->proxyOptions.mtu);
+        ReadNamedString(env, args[0], "protectSocketPath", context->proxyOptions.protectSocketPath);
+        ReadNamedString(env, args[0], "generation", context->proxyOptions.generation);
+    }
+    return QueueAsync(env, std::move(context), "nlashEnableCoreProxy");
+}
+
+napi_value DisableCoreProxyAsync(napi_env env, napi_callback_info info)
+{
+    (void)info;
+    auto context = std::make_unique<AsyncContext>();
+    context->operation = AsyncOperation::DISABLE_PROXY;
+    return QueueAsync(env, std::move(context), "nlashDisableCoreProxy");
+}
+
+napi_value CoreProxyEnabledValue(napi_env env, napi_callback_info info)
+{
+    (void)info;
+    napi_value value = nullptr;
+    napi_get_boolean(env, IsCoreProxyEnabled(), &value);
+    return value;
 }
 
 napi_value StopCoreAsync(napi_env env, napi_callback_info info)

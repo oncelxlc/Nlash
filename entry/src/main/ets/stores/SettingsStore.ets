@@ -3,6 +3,7 @@ import {
   AppSettings,
   AppThemeMode,
   DEFAULT_APP_SETTINGS,
+  isRefreshIntervalSeconds,
   SettingsStoreListener,
   SettingsStoreSnapshot
 } from '../models/SettingsModels';
@@ -52,7 +53,8 @@ class SettingsStore {
     await this.save({
       themeMode: mode,
       mtu: this.settings.mtu,
-      delayTestUrl: this.settings.delayTestUrl
+      delayTestUrl: this.settings.delayTestUrl,
+      refreshIntervalSeconds: this.settings.refreshIntervalSeconds
     });
     this.applyTheme(mode);
   }
@@ -64,7 +66,8 @@ class SettingsStore {
     await this.save({
       themeMode: this.settings.themeMode,
       mtu: Math.round(mtu),
-      delayTestUrl: this.settings.delayTestUrl
+      delayTestUrl: this.settings.delayTestUrl,
+      refreshIntervalSeconds: this.settings.refreshIntervalSeconds
     });
   }
 
@@ -76,7 +79,8 @@ class SettingsStore {
     await this.save({
       themeMode: this.settings.themeMode,
       mtu: this.settings.mtu,
-      delayTestUrl: value
+      delayTestUrl: value,
+      refreshIntervalSeconds: this.settings.refreshIntervalSeconds
     });
   }
 
@@ -91,7 +95,20 @@ class SettingsStore {
     await this.save({
       themeMode: this.settings.themeMode,
       mtu: Math.round(mtu),
-      delayTestUrl: value
+      delayTestUrl: value,
+      refreshIntervalSeconds: this.settings.refreshIntervalSeconds
+    });
+  }
+
+  async setRefreshIntervalSeconds(seconds: number): Promise<void> {
+    if (!isRefreshIntervalSeconds(seconds)) {
+      throw new Error('刷新间隔必须是 3、5、10 或 30 秒');
+    }
+    await this.save({
+      themeMode: this.settings.themeMode,
+      mtu: this.settings.mtu,
+      delayTestUrl: this.settings.delayTestUrl,
+      refreshIntervalSeconds: seconds
     });
   }
 
@@ -145,7 +162,8 @@ class SettingsStore {
     return {
       themeMode: settings.themeMode,
       mtu: settings.mtu,
-      delayTestUrl: settings.delayTestUrl
+      delayTestUrl: settings.delayTestUrl,
+      refreshIntervalSeconds: settings.refreshIntervalSeconds
     };
   }
 

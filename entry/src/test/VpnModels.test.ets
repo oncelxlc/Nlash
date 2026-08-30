@@ -1,12 +1,16 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
+  CoreServiceState,
   CoreRestartAction,
   decodeVpnStateEnvelope,
   encodeVpnStateEnvelope,
   formatVpnRunDuration,
   resolveVpnConnectedAt,
+  resolveProxyConnectedAt,
   resolveCoreRestartAction,
   VpnState,
+  ProxyState,
+  vpnStateFromProxyState,
   VpnStateEnvelope,
   VpnStateSequenceTracker
 } from '../main/ets/models/VpnModels';
@@ -20,6 +24,10 @@ export default function vpnModelsTest() {
         sequence: 1,
         event: {
           state: VpnState.CONNECTED,
+          coreState: CoreServiceState.RUNNING,
+          proxyState: ProxyState.ENABLED,
+          profileId: 'profile-a',
+          profileSignature: 'profile-a:path:1',
           message: 'Mihomo and TUN connected'
         }
       };
@@ -27,15 +35,19 @@ export default function vpnModelsTest() {
 
       expect(output !== undefined).assertTrue();
       expect(output?.event.state).assertEqual(VpnState.CONNECTED);
+      expect(output?.event.coreState).assertEqual(CoreServiceState.RUNNING);
+      expect(output?.event.proxyState).assertEqual(ProxyState.ENABLED);
       expect(output?.event.message).assertEqual(input.event.message);
     });
 
     it('rejectsMalformedOrUnknownStateEvent', 0, () => {
       expect(decodeVpnStateEnvelope('{')).assertUndefined();
       expect(decodeVpnStateEnvelope('{"sourceId":"a","sourceStartedAt":1,"sequence":1,' +
-        '"event":{"state":"UNKNOWN","message":"ignored"}}')).assertUndefined();
+        '"event":{"state":"UNKNOWN","coreState":"RUNNING","proxyState":"DISABLED",' +
+        '"profileId":"","profileSignature":"","message":"ignored"}}')).assertUndefined();
       expect(decodeVpnStateEnvelope('{"sourceId":"a","sourceStartedAt":1,"sequence":0,' +
-        '"event":{"state":"ERROR","message":"ignored"}}')).assertUndefined();
+        '"event":{"state":"ERROR","coreState":"ERROR","proxyState":"ERROR",' +
+        '"profileId":"","profileSignature":"","message":"ignored"}}')).assertUndefined();
     });
 
     it('rejectsLateAndPreviousProcessStateEvents', 0, () => {
@@ -44,19 +56,29 @@ export default function vpnModelsTest() {
         sourceId: 'source-a',
         sourceStartedAt: 100,
         sequence: 1,
-        event: { state: VpnState.STARTING, message: 'starting' }
+        event: {
+          state: VpnState.STARTING, coreState: CoreServiceState.RUNNING, proxyState: ProxyState.ENABLING,
+          profileId: 'profile-a', profileSignature: 'profile-a:path:1', message: 'starting'
+        }
       };
       const second: VpnStateEnvelope = {
         sourceId: 'source-a',
         sourceStartedAt: 100,
         sequence: 2,
-        event: { state: VpnState.ERROR, message: 'failed' }
+        event: {
+          state: VpnState.ERROR, coreState: CoreServiceState.RUNNING, proxyState: ProxyState.ERROR,
+          profileId: 'profile-a', profileSignature: 'profile-a:path:1', message: 'failed'
+        }
       };
       const newerProcess: VpnStateEnvelope = {
         sourceId: 'source-b',
         sourceStartedAt: 200,
         sequence: 1,
-        event: { state: VpnState.STARTING, message: 'restarted' }
+        event: {
+          state: VpnState.STARTING, coreState: CoreServiceState.RELOADING,
+          proxyState: ProxyState.DISABLED, profileId: 'profile-a',
+          profileSignature: 'profile-a:path:2', message: 'restarted'
+        }
       };
 
       expect(tracker.accept(first)).assertTrue();
@@ -92,6 +114,18 @@ export default function vpnModelsTest() {
         .assertEqual(startedAt);
       expect(resolveVpnConnectedAt(VpnState.STOPPING, VpnState.DISCONNECTED, startedAt, 4000))
         .assertEqual(0);
+    });
+
+    it('tracksProxyRunIndependentlyFromCoreState', 0, () => {
+      const startedAt = resolveProxyConnectedAt(ProxyState.ENABLING, ProxyState.ENABLED, 0, 1000);
+      expect(startedAt).assertEqual(1000);
+      expect(resolveProxyConnectedAt(ProxyState.ENABLED, ProxyState.DISABLING, startedAt, 2000))
+        .assertEqual(startedAt);
+      expect(resolveProxyConnectedAt(ProxyState.DISABLING, ProxyState.ENABLED, startedAt, 2500))
+        .assertEqual(startedAt);
+      expect(resolveProxyConnectedAt(ProxyState.DISABLING, ProxyState.DISABLED, startedAt, 3000))
+        .assertEqual(0);
+      expect(vpnStateFromProxyState(ProxyState.DISABLED)).assertEqual(VpnState.DISCONNECTED);
     });
   });
 }

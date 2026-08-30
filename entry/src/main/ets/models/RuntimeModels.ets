@@ -129,7 +129,7 @@ export interface RuntimeCommandResponse<T> {
 }
 
 export interface RuntimeStoreSnapshot {
-  available: boolean;
+  coreAvailable: boolean;
   refreshing: boolean;
   previewLoading: boolean;
   dashboard?: DashboardSnapshot;
@@ -143,6 +143,29 @@ export interface RuntimeStoreSnapshot {
 }
 
 export type RuntimeStoreListener = (snapshot: RuntimeStoreSnapshot) => void;
+
+export class RuntimeRequestMerger {
+  private operation: Promise<void> | undefined;
+
+  run(action: () => Promise<void>): Promise<void> {
+    const current = this.operation;
+    if (current !== undefined) {
+      return current;
+    }
+    const operation = action();
+    this.operation = operation;
+    operation.then((): void => {
+      if (this.operation === operation) {
+        this.operation = undefined;
+      }
+    }, (): void => {
+      if (this.operation === operation) {
+        this.operation = undefined;
+      }
+    });
+    return operation;
+  }
+}
 
 export interface FormattedBytes {
   value: string;
@@ -181,13 +204,13 @@ export function connectionTitle(connection: ConnectionSnapshot): string {
 }
 
 export function appendTrafficSample(history: TrafficSample[], sample: TrafficSample,
-  limit: number = 60): TrafficSample[] {
-  if (limit <= 0) {
+  windowMs: number = 60000): TrafficSample[] {
+  if (windowMs <= 0) {
     return [];
   }
-  const next = history.slice();
-  next.push(sample);
-  return next.slice(Math.max(0, next.length - limit));
+  const earliestTimestamp = sample.timestamp - windowMs;
+  return history.filter((item: TrafficSample): boolean =>
+    item.timestamp >= earliestTimestamp && item.timestamp <= sample.timestamp).concat([sample]);
 }
 
 export function mergeGroupDelay(groups: ProxyGroupSnapshot[], groupName: string,

@@ -2,44 +2,65 @@ import { common, Want } from '@kit.AbilityKit';
 import { BusinessError, commonEventManager } from '@kit.BasicServicesKit';
 import { vpnExtension } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { preferenceRepository } from '../repository/PreferenceRepository';
 import {
+  CoreServiceState,
   decodeVpnStateEnvelope,
-  CoreRestartAction,
-  resolveVpnConnectedAt,
-  resolveCoreRestartAction,
+  ProxyState,
+  resolveProxyConnectedAt,
+  RuntimeLifecycleListener,
+  RuntimeLifecycleSnapshot,
   VPN_BUNDLE_NAME,
   VPN_STATE_COMMON_EVENT,
   VPN_STATE_EVENT,
   VpnState,
   VpnStateEvent,
   VpnStateListener,
-  VpnStateSequenceTracker
+  VpnStateSequenceTracker,
+  vpnStateFromProxyState
 } from '../models/VpnModels';
 import { feedbackService } from './FeedbackService';
+import { runtimeControlService } from './RuntimeControlService';
 
 const DOMAIN = 0x4E4C;
 const TAG = 'NlashVpnService';
 const VPN_WANT: Want = {
-  bundleName: 'com.zhexian.nlash',
+  bundleName: VPN_BUNDLE_NAME,
   abilityName: 'ProxyVpnAbility'
 };
 
+interface ReloadCorePayload {
+  profileId: string;
+  configPath: string;
+  profileSignature: string;
+}
+
+interface SetProxyEnabledPayload {
+  enabled: boolean;
+}
+
 class VpnService {
   private applicationContext: common.ApplicationContext | undefined;
-  private state: VpnState = VpnState.IDLE;
+  private coreState: CoreServiceState = CoreServiceState.STOPPED;
+  private proxyState: ProxyState = ProxyState.DISABLED;
+  private profileId: string = '';
+  private profileSignature: string = '';
   private lastMessage: string = '';
   private connectedAt: number = 0;
   private listeners: Set<VpnStateListener> = new Set<VpnStateListener>();
+  private lifecycleListeners: Set<RuntimeLifecycleListener> = new Set<RuntimeLifecycleListener>();
   private startOperation: Promise<void> | undefined;
   private stopOperation: Promise<void> | undefined;
   private restartOperation: Promise<void> | undefined;
+  private profileOperation: Promise<void> | undefined;
+  private hostStarted: boolean = false;
+  private requestedProfileSignature: string = '';
   private commonEventSubscriber: commonEventManager.CommonEventSubscriber | undefined;
   private stateChannelReady: Promise<void> = Promise.resolve();
   private stateSequenceTracker: VpnStateSequenceTracker = new VpnStateSequenceTracker();
 
   private readonly stateEventHandler = (event: VpnStateEvent): void => {
-    this.updateState(event.state, event.message);
+    this.updateLifecycle(event.coreState, event.proxyState, event.message,
+      event.profileId, event.profileSignature);
   };
 
   initialize(applicationContext: common.ApplicationContext): void {
@@ -54,46 +75,40 @@ class VpnService {
     this.stateChannelReady = this.initializeCrossProcessStateChannel();
   }
 
-  private async initializeCrossProcessStateChannel(): Promise<void> {
-    try {
-      const subscriber = await commonEventManager.createSubscriber({
-        events: [VPN_STATE_COMMON_EVENT],
-        publisherBundleName: VPN_BUNDLE_NAME
-      });
-      this.commonEventSubscriber = subscriber;
-      commonEventManager.subscribe(subscriber,
-        (error: BusinessError, data: commonEventManager.CommonEventData): void => {
-          if (error) {
-            hilog.error(DOMAIN, TAG, 'cross-process state receive failed code=%{public}d', error.code);
-            return;
-          }
-          const envelope = decodeVpnStateEnvelope(data.data ?? '');
-          if (envelope === undefined) {
-            hilog.error(DOMAIN, TAG, 'ignored invalid cross-process state event');
-            return;
-          }
-          if (!this.stateSequenceTracker.accept(envelope)) {
-            hilog.warn(DOMAIN, TAG, 'ignored stale cross-process state sequence=%{public}d', envelope.sequence);
-            return;
-          }
-          this.updateState(envelope.event.state, envelope.event.message);
-        });
-    } catch (error) {
-      hilog.error(DOMAIN, TAG, 'cross-process state subscription failed');
+  applyProfile(profileId: string, configPath: string, profileSignature: string): Promise<void> {
+    if (this.requestedProfileSignature === profileSignature && this.hostStarted) {
+      return this.profileOperation ?? Promise.resolve();
     }
+    if (this.profileOperation !== undefined) {
+      return this.profileOperation.then(() => this.applyProfile(profileId, configPath, profileSignature));
+    }
+    const operation = this.applyProfileInternal(profileId, configPath, profileSignature);
+    this.profileOperation = operation;
+    operation.then((): void => {
+      if (this.profileOperation === operation) {
+        this.profileOperation = undefined;
+      }
+    }, (): void => {
+      if (this.profileOperation === operation) {
+        this.profileOperation = undefined;
+      }
+    });
+    return operation;
+  }
+
+  ensureHost(): Promise<void> {
+    return this.applyProfile('', '', 'waiting-config');
   }
 
   start(): Promise<void> {
-    if (this.state === VpnState.CONNECTED || this.state === VpnState.STARTING ||
-      this.state === VpnState.REQUESTING_PERMISSION) {
-      hilog.info(DOMAIN, TAG, 'start ignored for state=%{public}s', this.state);
+    if (this.proxyState === ProxyState.ENABLED || this.proxyState === ProxyState.ENABLING) {
       return this.startOperation ?? Promise.resolve();
     }
     if (this.stopOperation !== undefined) {
       return this.stopOperation.then(() => this.start());
     }
     if (this.startOperation === undefined) {
-      const operation = this.startInternal();
+      const operation = this.setProxyEnabled(true);
       this.startOperation = operation;
       operation.then((): void => {
         if (this.startOperation === operation) {
@@ -109,18 +124,14 @@ class VpnService {
   }
 
   stop(): Promise<void> {
-    if (this.state === VpnState.IDLE || this.state === VpnState.DISCONNECTED) {
-      hilog.info(DOMAIN, TAG, 'stop ignored for state=%{public}s', this.state);
+    if (this.proxyState === ProxyState.DISABLED) {
       return this.stopOperation ?? Promise.resolve();
     }
     if (this.startOperation !== undefined) {
-      const pendingStart = this.startOperation;
-      return pendingStart.then(() => this.stop(), (): void => {
-        this.updateState(VpnState.DISCONNECTED, 'VPN start failed before stop');
-      });
+      return this.startOperation.then(() => this.stop(), () => this.stop());
     }
     if (this.stopOperation === undefined) {
-      const operation = this.stopInternal();
+      const operation = this.setProxyEnabled(false);
       this.stopOperation = operation;
       operation.then((): void => {
         if (this.stopOperation === operation) {
@@ -139,28 +150,30 @@ class VpnService {
     if (this.restartOperation !== undefined) {
       return this.restartOperation;
     }
-    const action = resolveCoreRestartAction(this.state);
-    if (action === CoreRestartAction.BLOCKED) {
-      return Promise.reject(new Error('Core 正在切换，请稍候再试'));
-    }
-    if (this.restartOperation === undefined) {
-      const operation = this.restartInternal(action);
-      this.restartOperation = operation;
-      operation.then((): void => {
-        if (this.restartOperation === operation) {
-          this.restartOperation = undefined;
-        }
-      }, (): void => {
-        if (this.restartOperation === operation) {
-          this.restartOperation = undefined;
-        }
-      });
-    }
-    return this.restartOperation;
+    const operation = this.executeLifecycleCommand('restartCore').then((): void => {});
+    this.restartOperation = operation;
+    operation.then((): void => {
+      if (this.restartOperation === operation) {
+        this.restartOperation = undefined;
+      }
+    }, (): void => {
+      if (this.restartOperation === operation) {
+        this.restartOperation = undefined;
+      }
+    });
+    return operation;
   }
 
   getState(): VpnState {
-    return this.state;
+    return vpnStateFromProxyState(this.proxyState);
+  }
+
+  getCoreState(): CoreServiceState {
+    return this.coreState;
+  }
+
+  getProxyState(): ProxyState {
+    return this.proxyState;
   }
 
   getLastMessage(): string {
@@ -171,91 +184,165 @@ class VpnService {
     return this.connectedAt;
   }
 
+  getLifecycleSnapshot(): RuntimeLifecycleSnapshot {
+    return {
+      coreState: this.coreState,
+      proxyState: this.proxyState,
+      profileId: this.profileId,
+      profileSignature: this.profileSignature,
+      message: this.lastMessage
+    };
+  }
+
   subscribe(listener: VpnStateListener): () => void {
     this.listeners.add(listener);
-    listener(this.state, this.lastMessage);
+    listener(this.getState(), this.lastMessage);
     return (): void => {
       this.listeners.delete(listener);
     };
   }
 
-  private async startInternal(): Promise<void> {
-    await this.stateChannelReady;
-    this.updateState(VpnState.REQUESTING_PERMISSION, 'Waiting for VPN authorization');
+  subscribeLifecycle(listener: RuntimeLifecycleListener): () => void {
+    this.lifecycleListeners.add(listener);
+    listener(this.getLifecycleSnapshot());
+    return (): void => {
+      this.lifecycleListeners.delete(listener);
+    };
+  }
+
+  private async initializeCrossProcessStateChannel(): Promise<void> {
     try {
-      const configPath = await preferenceRepository.getActiveProfilePath();
-      if (configPath.length === 0) {
-        throw new Error('Active profile configuration is unavailable');
-      }
+      const subscriber = await commonEventManager.createSubscriber({
+        events: [VPN_STATE_COMMON_EVENT],
+        publisherBundleName: VPN_BUNDLE_NAME
+      });
+      this.commonEventSubscriber = subscriber;
+      commonEventManager.subscribe(subscriber,
+        (error: BusinessError, data: commonEventManager.CommonEventData): void => {
+          if (error) {
+            hilog.error(DOMAIN, TAG, 'cross-process state receive failed code=%{public}d', error.code);
+            return;
+          }
+          const envelope = decodeVpnStateEnvelope(data.data ?? '');
+          if (envelope === undefined || !this.stateSequenceTracker.accept(envelope)) {
+            return;
+          }
+          const event = envelope.event;
+          this.hostStarted = true;
+          this.updateLifecycle(event.coreState, event.proxyState, event.message,
+            event.profileId, event.profileSignature);
+        });
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, 'cross-process state subscription failed');
+    }
+  }
+
+  private async applyProfileInternal(profileId: string, configPath: string,
+    profileSignature: string): Promise<void> {
+    await this.stateChannelReady;
+    if (!this.hostStarted) {
       const startWant: Want = {
         bundleName: VPN_WANT.bundleName,
         abilityName: VPN_WANT.abilityName,
-        parameters: { configPath: configPath }
+        parameters: {
+          profileId: profileId,
+          configPath: configPath,
+          profileSignature: profileSignature
+        }
       };
+      this.updateLifecycle(configPath.length > 0 ? CoreServiceState.STARTING : CoreServiceState.WAITING_CONFIG,
+        ProxyState.DISABLED, configPath.length > 0 ? '正在启动 Core' : '等待活动配置', profileId, profileSignature);
       await vpnExtension.startVpnExtensionAbility(startWant);
-      if (this.state === VpnState.REQUESTING_PERMISSION) {
-        this.updateState(VpnState.STARTING, 'VPN extension started');
+      this.hostStarted = true;
+      this.requestedProfileSignature = profileSignature;
+      try {
+        const snapshot = await this.executeLifecycleCommand('lifecycleSnapshot');
+        if (snapshot !== undefined && snapshot.profileSignature !== profileSignature) {
+          await this.reloadCore(profileId, configPath, profileSignature);
+        }
+      } catch (error) {
+        hilog.warn(DOMAIN, TAG, 'initial lifecycle handshake deferred');
       }
-    } catch (error) {
-      const message = this.describeError(error as BusinessError);
-      hilog.error(DOMAIN, TAG, 'start failed: %{public}s', message);
-      this.updateState(VpnState.ERROR, message);
-      throw new Error(message);
-    }
-  }
-
-  private async stopInternal(): Promise<void> {
-    this.updateState(VpnState.STOPPING, 'Stopping VPN extension');
-    try {
-      await vpnExtension.stopVpnExtensionAbility(VPN_WANT);
-      if (this.state === VpnState.STOPPING) {
-        this.updateState(VpnState.DISCONNECTED, 'VPN extension stopped');
-      }
-    } catch (error) {
-      const message = this.describeError(error as BusinessError);
-      hilog.error(DOMAIN, TAG, 'stop failed: %{public}s', message);
-      this.updateState(VpnState.ERROR, message);
-      throw new Error(message);
-    }
-  }
-
-  private async restartInternal(action: CoreRestartAction): Promise<void> {
-    if (action === CoreRestartAction.START) {
-      await this.start();
       return;
     }
-    if (this.stopOperation !== undefined) {
-      await this.stopOperation;
-    } else {
-      await this.stop();
-    }
-    await this.start();
+    await this.reloadCore(profileId, configPath, profileSignature);
   }
 
-  private updateState(state: VpnState, message: string = ''): void {
-    const previousState = this.state;
-    const previousMessage = this.lastMessage;
-    this.connectedAt = resolveVpnConnectedAt(previousState, state, this.connectedAt, Date.now());
-    this.state = state;
-    this.lastMessage = message;
-    hilog.info(DOMAIN, TAG, 'state=%{public}s message=%{public}s', state, message);
-    if (state !== previousState || message !== previousMessage) {
-      if (state === VpnState.CONNECTED) {
-        feedbackService.success('VPN 已连接');
-      } else if (state === VpnState.DISCONNECTED && this.restartOperation === undefined) {
-        feedbackService.info('VPN 已断开');
-      } else if (state === VpnState.ERROR) {
-        feedbackService.error(message.length > 0 ? message : 'VPN 操作失败');
+  private async reloadCore(profileId: string, configPath: string, profileSignature: string): Promise<void> {
+    const payload: ReloadCorePayload = {
+      profileId: profileId,
+      configPath: configPath,
+      profileSignature: profileSignature
+    };
+    await this.executeLifecycleCommand('reloadCore', payload);
+    this.requestedProfileSignature = profileSignature;
+  }
+
+  private async setProxyEnabled(enabled: boolean): Promise<void> {
+    if (enabled && this.coreState !== CoreServiceState.RUNNING) {
+      throw new Error(this.coreState === CoreServiceState.WAITING_CONFIG ? '请先选择活动配置' : 'Core 尚未就绪');
+    }
+    this.updateLifecycle(this.coreState, enabled ? ProxyState.ENABLING : ProxyState.DISABLING,
+      enabled ? '正在开启代理' : '正在关闭代理', this.profileId, this.profileSignature);
+    const payload: SetProxyEnabledPayload = { enabled: enabled };
+    try {
+      await this.executeLifecycleCommand('setProxyEnabled', payload);
+    } catch (error) {
+      const message = this.errorMessage(error);
+      try {
+        await this.executeLifecycleCommand('lifecycleSnapshot');
+      } catch (snapshotError) {
+        this.updateLifecycle(this.coreState, ProxyState.ERROR, message, this.profileId, this.profileSignature);
       }
+      throw new Error(message);
     }
-    this.listeners.forEach((listener: VpnStateListener): void => {
-      listener(state, message);
-    });
   }
 
-  private describeError(error: BusinessError): string {
-    const code = error.code === undefined ? 'unknown' : error.code.toString();
-    return `code=${code}, message=${error.message}`;
+  private async executeLifecycleCommand(type: string,
+    payload?: Object): Promise<RuntimeLifecycleSnapshot | undefined> {
+    const response = await runtimeControlService.execute<RuntimeLifecycleSnapshot>(type, payload);
+    if (response.data !== undefined) {
+      const data = response.data;
+      this.updateLifecycle(data.coreState, data.proxyState, data.message,
+        data.profileId, data.profileSignature);
+    }
+    if (!response.ok) {
+      throw new Error(response.message.length > 0 ? response.message : response.code);
+    }
+    return response.data;
+  }
+
+  private updateLifecycle(coreState: CoreServiceState, proxyState: ProxyState, message: string,
+    profileId: string, profileSignature: string): void {
+    const previousProxyState = this.proxyState;
+    const previousCoreState = this.coreState;
+    this.connectedAt = resolveProxyConnectedAt(previousProxyState, proxyState, this.connectedAt, Date.now());
+    this.coreState = coreState;
+    this.proxyState = proxyState;
+    this.profileId = profileId;
+    this.profileSignature = profileSignature;
+    this.lastMessage = message;
+    if (previousProxyState !== proxyState) {
+      if (proxyState === ProxyState.ENABLED && previousProxyState === ProxyState.ENABLING) {
+        feedbackService.success('代理已开启');
+      } else if (proxyState === ProxyState.DISABLED && previousProxyState === ProxyState.DISABLING) {
+        feedbackService.info('代理已关闭');
+      } else if (proxyState === ProxyState.ERROR) {
+        feedbackService.error(message.length > 0 ? message : '代理操作失败');
+      }
+    } else if (previousCoreState !== coreState && coreState === CoreServiceState.ERROR) {
+      feedbackService.error(message.length > 0 ? message : 'Core 运行异常');
+    }
+    const snapshot = this.getLifecycleSnapshot();
+    this.lifecycleListeners.forEach((listener: RuntimeLifecycleListener): void => listener(snapshot));
+    const vpnState = vpnStateFromProxyState(proxyState);
+    this.listeners.forEach((listener: VpnStateListener): void => listener(vpnState, message));
+  }
+
+  private errorMessage(error: Object): string {
+    const exception = error as Error;
+    return typeof exception.message === 'string' && exception.message.length > 0 ?
+      exception.message : 'Core 控制失败';
   }
 }
 

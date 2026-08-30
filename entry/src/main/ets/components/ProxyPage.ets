@@ -20,7 +20,7 @@ import { LengthMetrics, LengthUnit } from '@kit.ArkUI';
 @Component
 export struct ProxyPage {
   @Prop forceExpanded: boolean = false;
-  @State available: boolean = false;
+  @State coreAvailable: boolean = false;
   @State refreshing: boolean = false;
   @State previewLoading: boolean = false;
   @State groups: ProxyGroupSnapshot[] = [];
@@ -35,7 +35,7 @@ export struct ProxyPage {
 
   aboutToAppear(): void {
     this.unsubscribeRuntime = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
-      this.available = snapshot.available;
+      this.coreAvailable = snapshot.coreAvailable;
       this.refreshing = snapshot.refreshing;
       this.previewLoading = snapshot.previewLoading;
       this.groups = snapshot.proxies.filter((group: ProxyGroupSnapshot): boolean => !group.hidden);
@@ -75,7 +75,7 @@ export struct ProxyPage {
 
   private isNodeSelected(node: ProxyNodeSnapshot): boolean {
     const group = this.currentGroup();
-    if (this.available) {
+    if (this.coreAvailable) {
       return group?.selected === node.name;
     }
     return this.preselectedNode(group?.name ?? '') === node.name;
@@ -198,8 +198,7 @@ export struct ProxyPage {
       .backgroundColor($r('app.color.card_background'))
       .onClick((): void => { this.selectNode(node); })
     }
-    .width(this.metrics.proxyCardWidth)
-    .margin({ bottom: this.metrics.cardGap })
+    .width('100%')
   }
 
   @Builder
@@ -218,7 +217,8 @@ export struct ProxyPage {
           Text(this.source === ProxySnapshotSource.RUNTIME ? '运行中' :
             (this.source === ProxySnapshotSource.CONFIG ? '配置预览' : '无配置'))
             .fontSize(12)
-            .fontColor(this.available ? $r('app.color.status_success') : $r('app.color.content_secondary'))
+            .fontColor(this.coreAvailable ?
+              $r('app.color.status_success') : $r('app.color.content_secondary'))
         }
         .width('100%')
 
@@ -267,11 +267,16 @@ export struct ProxyPage {
                 .fontColor($r('app.color.content_secondary'))
             }
             .width('100%')
-            Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
+            Grid() {
               ForEach(this.currentGroup()?.nodes ?? [], (node: ProxyNodeSnapshot) => {
-                this.nodeCard(node)
+                GridItem() {
+                  this.nodeCard(node)
+                }
               }, (node: ProxyNodeSnapshot): string => proxyNodeRenderKey(node))
             }
+            .columnsTemplate(this.metrics.proxyColumns)
+            .columnsGap(this.metrics.cardGap)
+            .rowsGap(this.metrics.cardGap)
             .width('100%')
           }
         }

@@ -9,7 +9,7 @@ $env:DEVECO_SDK_HOME = 'E:\Program Files\Huawei\DevEco Studio\sdk'
 & .\native-core\build-ohos.ps1
 ```
 
-输出位于 `native-core/out/arm64-v8a/`，并同步到 `proxy_core/src/main/cpp/prebuilt/arm64-v8a/` 供 HAP 链接。脚本会校验 Go 版本、Mihomo tag/module checksum、固定 commit 元数据与 API 24，并先运行 `CGO_ENABLED=0 go test ./...`。
+输出位于 `native-core/out/arm64-v8a/`，并同步到 `proxy_core/src/main/cpp/prebuilt/arm64-v8a/` 供 HAP 链接。脚本会校验 Go 版本、Mihomo tag/module checksum、固定 commit 元数据与 API 24，并先运行 `CGO_ENABLED=0 go test .`。
 
 HarmonyOS 使用 musl loader，而 Go 1.27.0 的默认 ARM64 c-shared 产物使用 Initial Exec TLS，不能由 N-API 通过 `dlopen()` 加载。首次构建会在 `.toolchains/go1.27.0-tlsgd` 创建固定 Go 1.27.0 的本地副本，并应用 `toolchain-patches/go1.27-musl-arm64-tlsgd.patch`。该补丁回移自 Go 官方评审 `97ce7c6e...`，只修改本地副本，不修改系统 Go。构建脚本要求最终 ELF 包含 `R_AARCH64_TLSDESC` 且不包含 `R_AARCH64_TLS_TPREL`。
 

@@ -33,6 +33,45 @@ func TestConfigureHarmonyTunOverridesUnsafeRouting(t *testing.T) {
 	}
 }
 
+func TestConfigureHarmonyCoreDisablesTunAndRouting(t *testing.T) {
+	cfg := &config.Config{General: &config.General{}}
+	cfg.General.Tun.Enable = true
+	cfg.General.Tun.FileDescriptor = 37
+	cfg.General.Tun.AutoRoute = true
+	cfg.General.Tun.AutoDetectInterface = true
+	cfg.General.Tun.AutoRedirect = true
+	cfg.General.Tun.StrictRoute = true
+	cfg.General.IPv6 = true
+
+	configureHarmonyCore(cfg)
+
+	if cfg.General.Tun.Enable || cfg.General.Tun.FileDescriptor != -1 {
+		t.Fatalf("core-only runtime retained TUN settings: %+v", cfg.General.Tun)
+	}
+	if cfg.General.Tun.AutoRoute || cfg.General.Tun.AutoDetectInterface ||
+		cfg.General.Tun.AutoRedirect || cfg.General.Tun.StrictRoute || cfg.General.IPv6 {
+		t.Fatal("core-only runtime retained platform routing")
+	}
+}
+
+func TestProxyLifecycleValidatesStateAndIsIdempotent(t *testing.T) {
+	stopped := &coreRuntime{state: coreStopped}
+	if code := stopped.enableProxy(coreProxyOptions{}); code != coreInvalidState {
+		t.Fatalf("unexpected stopped enable result: %v", code)
+	}
+	if stopped.isProxyEnabled() {
+		t.Fatal("stopped runtime must not report proxy enabled")
+	}
+
+	running := &coreRuntime{state: coreRunning}
+	if code := running.enableProxy(coreProxyOptions{tunFD: -1, mtu: 1400}); code != coreInvalidArgument {
+		t.Fatalf("unexpected invalid proxy options result: %v", code)
+	}
+	if code := running.disableProxy(); code != coreOK {
+		t.Fatalf("disabling an already disabled proxy must be idempotent: %v", code)
+	}
+}
+
 func TestInvalidOperationDoesNotReplaceRunningState(t *testing.T) {
 	runtime := &coreRuntime{state: coreRunning}
 	if code := runtime.validate("ignored.yaml"); code != coreInvalidState {

@@ -15,6 +15,7 @@ import {
   ProxyGroupSnapshot,
   pruneProxySelections,
   resetGroupDelay,
+  RuntimeRequestMerger,
   RuntimeMode,
   TrafficSample
 } from '../main/ets/models/RuntimeModels';
@@ -43,15 +44,42 @@ export default function runtimeModelsTest() {
       expect(connectionTitle(base)).assertEqual('1.1.1.1:443');
     });
 
-    it('keepsSixtyTrafficSamples', 0, () => {
+    it('keepsTrafficSamplesFromTheLastSixtySeconds', 0, () => {
       let history: TrafficSample[] = [];
-      for (let index = 0; index < 65; index += 1) {
+      for (let index = 0; index <= 12; index += 1) {
         history = appendTrafficSample(history, {
-          timestamp: index, uploadSpeed: index, downloadSpeed: index * 2
+          timestamp: index * 5000, uploadSpeed: index, downloadSpeed: index * 2
         });
       }
-      expect(history.length).assertEqual(60);
-      expect(history[0].timestamp).assertEqual(5);
+      history = appendTrafficSample(history, {
+        timestamp: 60001, uploadSpeed: 13, downloadSpeed: 26
+      });
+      expect(history.length).assertEqual(13);
+      expect(history[0].timestamp).assertEqual(5000);
+      expect(history[history.length - 1].timestamp).assertEqual(60001);
+    });
+
+    it('mergesOverlappingRefreshRequests', 0, async () => {
+      const merger = new RuntimeRequestMerger();
+      let requestCount = 0;
+      let release: () => void = (): void => {};
+      const first = merger.run((): Promise<void> => {
+        requestCount += 1;
+        return new Promise<void>((resolve: () => void): void => {
+          release = resolve;
+        });
+      });
+      const second = merger.run(async (): Promise<void> => {
+        requestCount += 1;
+      });
+      expect(first === second).assertTrue();
+      expect(requestCount).assertEqual(1);
+      release();
+      await first;
+      await merger.run(async (): Promise<void> => {
+        requestCount += 1;
+      });
+      expect(requestCount).assertEqual(2);
     });
 
     it('mergesDelayAndPrunesStaleSelections', 0, () => {

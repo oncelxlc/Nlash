@@ -103,7 +103,10 @@ extern "C" {
 extern char* NlashCoreVersion(void);
 extern char* NlashCoreEcho(char* value);
 extern int32_t NlashCoreValidateConfig(char* configPath);
-extern int32_t NlashCoreStart(char* configPath, char* workDir, int32_t tunFD, int32_t mtu, char* protectSocketPath, char* generation);
+extern int32_t NlashCoreStart(char* configPath, char* workDir);
+extern int32_t NlashCoreEnableProxy(int32_t tunFD, int32_t mtu, char* protectSocketPath, char* generation);
+extern int32_t NlashCoreDisableProxy(void);
+extern int32_t NlashCoreProxyEnabled(void);
 extern int32_t NlashCoreStop(void);
 extern int32_t NlashCoreState(void);
 extern char* NlashCoreLastError(void);

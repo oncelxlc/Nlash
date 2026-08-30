@@ -58,6 +58,18 @@ CoreResult ValidateCoreConfig(const std::string &configPath)
 
 CoreResult StartCore(const CoreStartOptions &options)
 {
+#ifdef NLASH_HAS_GO_CORE
+    return ResultFromCode(NlashCoreStart(
+        const_cast<char *>(options.configPath.c_str()),
+        const_cast<char *>(options.workDir.c_str())));
+#else
+    (void)options;
+    return {CoreErrorCode::UNAVAILABLE, "Go core is unavailable for this ABI"};
+#endif
+}
+
+CoreResult EnableCoreProxy(const CoreProxyOptions &options)
+{
     if (options.tunFd < 0) {
         return {CoreErrorCode::INVALID_ARGUMENT, "TUN fd is invalid"};
     }
@@ -66,9 +78,7 @@ CoreResult StartCore(const CoreStartOptions &options)
     if (duplicateFd < 0) {
         return {CoreErrorCode::START_FAILED, "failed to duplicate TUN fd"};
     }
-    const int32_t code = NlashCoreStart(
-        const_cast<char *>(options.configPath.c_str()),
-        const_cast<char *>(options.workDir.c_str()),
+    const int32_t code = NlashCoreEnableProxy(
         duplicateFd,
         options.mtu,
         const_cast<char *>(options.protectSocketPath.c_str()),
@@ -79,6 +89,24 @@ CoreResult StartCore(const CoreStartOptions &options)
     return ResultFromCode(code);
 #else
     return {CoreErrorCode::UNAVAILABLE, "Go core is unavailable for this ABI"};
+#endif
+}
+
+CoreResult DisableCoreProxy()
+{
+#ifdef NLASH_HAS_GO_CORE
+    return ResultFromCode(NlashCoreDisableProxy());
+#else
+    return {CoreErrorCode::UNAVAILABLE, "Go core is unavailable for this ABI"};
+#endif
+}
+
+bool IsCoreProxyEnabled()
+{
+#ifdef NLASH_HAS_GO_CORE
+    return NlashCoreProxyEnabled() != 0;
+#else
+    return false;
 #endif
 }
 

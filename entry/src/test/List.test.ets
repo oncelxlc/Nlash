@@ -8,6 +8,7 @@ import coreControlProtocolTest from './CoreControlProtocol.test';
 import runtimeModelsTest from './RuntimeModels.test';
 import profileFeaturesTest from './ProfileFeatures.test';
 import feedbackServiceTest from './FeedbackService.test';
+import settingsModelsTest from './SettingsModels.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -20,4 +21,5 @@ export default function testsuite() {
   runtimeModelsTest();
   profileFeaturesTest();
   feedbackServiceTest();
+  settingsModelsTest();
 }

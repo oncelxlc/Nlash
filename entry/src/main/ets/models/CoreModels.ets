@@ -28,6 +28,9 @@ export interface CoreResult {
 export interface CoreStartOptions {
   configPath: string;
   workDir: string;
+}
+
+export interface CoreProxyOptions {
   tunFd: number;
   mtu: number;
   protectSocketPath: string;
@@ -55,6 +58,9 @@ export interface CoreClient {
   getVersion(): string;
   validateConfig(configPath: string): Promise<CoreResult>;
   start(options: CoreStartOptions): Promise<CoreResult>;
+  enableProxy(options: CoreProxyOptions): Promise<CoreResult>;
+  disableProxy(): Promise<CoreResult>;
+  isProxyEnabled(): boolean;
   stop(): Promise<void>;
   getState(): CoreRuntimeState;
   subscribe(listener: CoreEventListener): () => void;

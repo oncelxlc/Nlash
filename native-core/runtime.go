@@ -43,8 +43,11 @@ const (
 )
 
 type coreStartOptions struct {
-	configPath        string
-	workDir           string
+	configPath string
+	workDir    string
+}
+
+type coreProxyOptions struct {
 	tunFD             int
 	mtu               int
 	protectSocketPath string
@@ -52,10 +55,13 @@ type coreStartOptions struct {
 }
 
 type coreRuntime struct {
-	mu        sync.Mutex
-	state     coreRuntimeState
-	lastError string
-	protect   *protectClient
+	mu           sync.Mutex
+	state        coreRuntimeState
+	lastError    string
+	protect      *protectClient
+	configPath   string
+	workDir      string
+	proxyEnabled bool
 }
 
 var runtimeInstance = &coreRuntime{state: coreStopped}
@@ -119,14 +125,10 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	runtime.state = coreStarting
 	runtime.lastError = ""
 	emitCoreEvent(coreEventLifecycle, runtime.state, coreOK, "starting core")
-	if options.configPath == "" || options.workDir == "" || options.tunFD < 0 || options.mtu <= 0 {
+	if options.configPath == "" || options.workDir == "" {
 		return runtime.setFailure(coreInvalidArgument, errors.New("core start options are invalid"))
 	}
-	protect, err := newProtectClient(options.protectSocketPath, options.generation)
-	if err != nil {
-		return runtime.setFailure(coreInvalidArgument, err)
-	}
-	if err = os.MkdirAll(options.workDir, 0700); err != nil {
+	if err := os.MkdirAll(options.workDir, 0700); err != nil {
 		return runtime.setFailure(coreStartFailed, err)
 	}
 
@@ -141,24 +143,124 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	if err != nil {
 		return runtime.setFailure(coreConfigInvalid, err)
 	}
-	configureHarmonyTun(cfg, options.tunFD, options.mtu)
+	configureHarmonyCore(cfg)
 	if runtime.protect != nil {
 		runtime.protect.close()
 	}
-	runtime.protect = protect
+	runtime.protect = nil
+	runtime.proxyEnabled = false
+	dialer.DefaultSocketHook = nil
+	executor.ApplyConfig(cfg, true)
+	runtime.configPath = options.configPath
+	runtime.workDir = options.workDir
+	runtime.state = coreRunning
+	emitCoreEvent(coreEventLifecycle, runtime.state, coreOK, "core is running")
+	return coreOK
+}
+
+func (runtime *coreRuntime) enableProxy(options coreProxyOptions) (code coreErrorCode) {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.state != coreRunning {
+		return runtime.reject(coreInvalidState, errors.New("core is not running"))
+	}
+	if runtime.proxyEnabled {
+		return coreOK
+	}
+	if options.tunFD < 0 || options.mtu <= 0 {
+		return runtime.reject(coreInvalidArgument, errors.New("proxy options are invalid"))
+	}
+	protect, err := newProtectClient(options.protectSocketPath, options.generation)
+	if err != nil {
+		return runtime.reject(coreInvalidArgument, err)
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			dialer.DefaultSocketHook = nil
+			protect.close()
+			runtime.proxyEnabled = false
+			code = runtime.setFailure(coreStartFailed, fmt.Errorf("enable proxy panic: %v", recovered))
+		}
+	}()
+	cfg, err := runtime.parseActiveConfig()
+	if err != nil {
+		protect.close()
+		return runtime.reject(coreConfigInvalid, err)
+	}
+	configureHarmonyTun(cfg, options.tunFD, options.mtu)
 	dialer.DefaultSocketHook = func(_ string, _ string, connection syscall.RawConn) error {
 		return protectSocket(protect, connection)
 	}
 	if err = applyConfigAndVerifyTun(cfg); err != nil {
 		dialer.DefaultSocketHook = nil
-		executor.Shutdown()
 		protect.close()
-		runtime.protect = nil
-		return runtime.setFailure(coreStartFailed, err)
+		if rollbackErr := runtime.applyCoreOnlyConfig(); rollbackErr != nil {
+			return runtime.setFailure(coreStartFailed,
+				fmt.Errorf("enable proxy failed: %v; rollback failed: %v", err, rollbackErr))
+		}
+		return runtime.reject(coreStartFailed, err)
 	}
-	runtime.state = coreRunning
-	emitCoreEvent(coreEventLifecycle, runtime.state, coreOK, "core is running")
+	runtime.protect = protect
+	runtime.proxyEnabled = true
+	runtime.lastError = ""
 	return coreOK
+}
+
+func (runtime *coreRuntime) disableProxy() (code coreErrorCode) {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.state != coreRunning {
+		return runtime.reject(coreInvalidState, errors.New("core is not running"))
+	}
+	if !runtime.proxyEnabled {
+		return coreOK
+	}
+	previousProtect := runtime.protect
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			code = runtime.setFailure(coreStopFailed, fmt.Errorf("disable proxy panic: %v", recovered))
+		}
+	}()
+	if err := runtime.applyCoreOnlyConfig(); err != nil {
+		return runtime.reject(coreStopFailed, err)
+	}
+	dialer.DefaultSocketHook = nil
+	runtime.protect = nil
+	runtime.proxyEnabled = false
+	if previousProtect != nil {
+		previousProtect.close()
+	}
+	runtime.lastError = ""
+	return coreOK
+}
+
+func (runtime *coreRuntime) isProxyEnabled() bool {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	return runtime.proxyEnabled
+}
+
+func (runtime *coreRuntime) parseActiveConfig() (*config.Config, error) {
+	if runtime.configPath == "" || runtime.workDir == "" {
+		return nil, errors.New("active core configuration is unavailable")
+	}
+	C.SetHomeDir(runtime.workDir)
+	C.SetConfig(runtime.configPath)
+	return parseConfigWithPath(runtime.configPath)
+}
+
+func (runtime *coreRuntime) applyCoreOnlyConfig() error {
+	cfg, err := runtime.parseActiveConfig()
+	if err != nil {
+		return err
+	}
+	configureHarmonyCore(cfg)
+	dialer.DefaultSocketHook = nil
+	executor.ApplyConfig(cfg, true)
+	if listener.GetTunConf().Enable {
+		return errors.New("TUN listener did not stop")
+	}
+	return nil
 }
 
 func applyConfigAndVerifyTun(cfg *config.Config) error {
@@ -251,6 +353,16 @@ func configureHarmonyTun(cfg *config.Config, tunFD int, mtu int) {
 	cfg.General.IPv6 = false
 }
 
+func configureHarmonyCore(cfg *config.Config) {
+	cfg.General.Tun.Enable = false
+	cfg.General.Tun.FileDescriptor = -1
+	cfg.General.Tun.AutoRoute = false
+	cfg.General.Tun.AutoDetectInterface = false
+	cfg.General.Tun.AutoRedirect = false
+	cfg.General.Tun.StrictRoute = false
+	cfg.General.IPv6 = false
+}
+
 func protectSocket(protect *protectClient, connection syscall.RawConn) error {
 	var fd int = -1
 	if err := connection.Control(func(value uintptr) {
@@ -291,6 +403,9 @@ func (runtime *coreRuntime) stop() (code coreErrorCode) {
 	if protect != nil {
 		protect.close()
 	}
+	runtime.proxyEnabled = false
+	runtime.configPath = ""
+	runtime.workDir = ""
 	runtime.lastError = ""
 	runtime.state = coreStopped
 	emitCoreEvent(coreEventLifecycle, runtime.state, coreOK, "core is stopped")

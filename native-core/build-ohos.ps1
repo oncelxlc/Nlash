@@ -85,7 +85,7 @@ try {
       $moduleInfo.Sum -ne $requiredVersionValues['mihomo_sum']) {
       throw 'Pinned Mihomo module version or checksum does not match VERSION.'
     }
-    & $go test ./...
+    & $go test .
     if ($LASTEXITCODE -ne 0) {
       throw "Go host tests failed with exit code $LASTEXITCODE"
     }

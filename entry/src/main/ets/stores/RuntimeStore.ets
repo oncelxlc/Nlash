@@ -20,19 +20,25 @@ import {
   resetGroupDelay,
   RuntimeCommandResponse,
   RuntimeMode,
+  RuntimeRequestMerger,
   RuntimeStoreListener,
   RuntimeStoreSnapshot,
   TrafficSample
 } from '../models/RuntimeModels';
-import { VpnState } from '../models/VpnModels';
+import {
+  AppSettings,
+  resolveRefreshIntervalMilliseconds,
+  SettingsStoreSnapshot
+} from '../models/SettingsModels';
+import { CoreServiceState, RuntimeLifecycleSnapshot } from '../models/VpnModels';
 import { feedbackService } from '../services/FeedbackService';
 import { preferenceRepository } from '../repository/PreferenceRepository';
 import { profilePreviewService } from '../services/ProfilePreviewService';
 import { runtimeControlService } from '../services/RuntimeControlService';
 import { vpnService } from '../services/VpnService';
 import { profileStore } from './ProfileStore';
+import { settingsStore } from './SettingsStore';
 
-const POLL_INTERVAL_MS = 1000;
 const MAX_REQUEST_HISTORY = 200;
 const DELAY_TEST_TIMEOUT_MS = 10000;
 const DELAY_TEST_CONCURRENCY = 8;
@@ -53,7 +59,7 @@ interface CloseConnectionCommandPayload { id: string; }
 interface SetModeCommandPayload { mode: RuntimeMode; }
 
 class RuntimeStore {
-  private available: boolean = false;
+  private coreAvailable: boolean = false;
   private refreshing: boolean = false;
   private previewLoading: boolean = false;
   private dashboard: DashboardSnapshot | undefined;
@@ -67,10 +73,11 @@ class RuntimeStore {
   private lastBackgroundError: string = '';
   private listeners: Set<RuntimeStoreListener> = new Set<RuntimeStoreListener>();
   private pollTimer: number | undefined;
-  private vpnUnsubscribe: (() => void) | undefined;
+  private lifecycleUnsubscribe: (() => void) | undefined;
   private profileUnsubscribe: (() => void) | undefined;
-  private refreshOperation: Promise<void> | undefined;
-  private pollCount: number = 0;
+  private settingsUnsubscribe: (() => void) | undefined;
+  private refreshMerger: RuntimeRequestMerger = new RuntimeRequestMerger();
+  private refreshIntervalMs: number = 3000;
   private profileId: string = '';
   private configPath: string = '';
   private profileSignature: string = '';
@@ -85,7 +92,7 @@ class RuntimeStore {
   private lifecycleGeneration: number = 0;
 
   initialize(): void {
-    if (this.vpnUnsubscribe !== undefined) {
+    if (this.lifecycleUnsubscribe !== undefined) {
       return;
     }
     runtimeControlService.initialize().catch((): void => {
@@ -94,30 +101,32 @@ class RuntimeStore {
     this.profileUnsubscribe = profileStore.subscribe((snapshot: ProfileStoreSnapshot): void => {
       this.handleProfileSnapshot(snapshot);
     });
-    this.vpnUnsubscribe = vpnService.subscribe((state: VpnState): void => {
-      if (state === VpnState.CONNECTED) {
-        const wasAvailable = this.available;
-        this.available = true;
+    this.settingsUnsubscribe = settingsStore.subscribe((snapshot: SettingsStoreSnapshot): void => {
+      this.handleSettingsSnapshot(snapshot.settings);
+    });
+    this.lifecycleUnsubscribe = vpnService.subscribeLifecycle((snapshot: RuntimeLifecycleSnapshot): void => {
+      const available = snapshot.coreState === CoreServiceState.RUNNING;
+      if (available) {
+        const wasAvailable = this.coreAvailable;
+        this.coreAvailable = true;
         if (!wasAvailable) {
           this.trafficHistory = [];
           this.invalidateDelayOperation();
           if (this.isDelayBusy()) {
             this.busyKey = '';
           }
-          this.runtimeUsesConfigIndex = this.proxySource === ProxySnapshotSource.CONFIG && this.proxies.length > 0;
-          if (this.runtimeUsesConfigIndex) {
-            this.proxySource = ProxySnapshotSource.RUNTIME;
-          }
+          this.runtimeUsesConfigIndex = false;
+          this.applyPreselectedSelections();
         }
         if (this.foreground) {
           this.startPolling();
           this.refresh();
         }
-      } else if (state === VpnState.IDLE || state === VpnState.DISCONNECTED || state === VpnState.ERROR) {
-        if (!this.available) {
+      } else {
+        if (!this.coreAvailable) {
           return;
         }
-        this.available = false;
+        this.coreAvailable = false;
         this.runtimeUsesConfigIndex = false;
         const cancelDelay = this.activeDelayOperationId.length === 0 || this.activeDelayRuntime;
         if (cancelDelay) {
@@ -146,7 +155,7 @@ class RuntimeStore {
       this.stopPolling();
       return;
     }
-    if (this.available) {
+    if (this.coreAvailable) {
       this.startPolling();
       this.refresh();
     }
@@ -154,7 +163,7 @@ class RuntimeStore {
 
   getSnapshot(): RuntimeStoreSnapshot {
     return {
-      available: this.available,
+      coreAvailable: this.coreAvailable,
       refreshing: this.refreshing,
       previewLoading: this.previewLoading,
       dashboard: this.dashboard,
@@ -177,19 +186,13 @@ class RuntimeStore {
   }
 
   refresh(): Promise<void> {
-    if (!this.available) {
+    if (!this.coreAvailable) {
       if (this.previewLoading || (this.proxySource === ProxySnapshotSource.CONFIG && this.proxies.length > 0)) {
         return Promise.resolve();
       }
       return this.loadPreview();
     }
-    if (this.refreshOperation === undefined) {
-      const operation = this.refreshInternal();
-      this.refreshOperation = operation;
-      operation.then((): void => { this.refreshOperation = undefined; },
-        (): void => { this.refreshOperation = undefined; });
-    }
-    return this.refreshOperation;
+    return this.refreshMerger.run((): Promise<void> => this.refreshInternal());
   }
 
   async selectProxy(group: string, proxy: string): Promise<void> {
@@ -198,16 +201,42 @@ class RuntimeStore {
     }
     await this.runAction(`select:${group}`, async (): Promise<void> => {
       this.requireSelectableNode(group, proxy);
-      if (this.available) {
+      const originalGroups = this.proxies;
+      const originalSelections = this.proxySelections;
+      const originalGroup = originalGroups.find((item: ProxyGroupSnapshot): boolean => item.name === group);
+      const originalProxy = originalGroup?.selected ?? '';
+      let runtimeChanged = false;
+      if (this.coreAvailable) {
         const payload: SelectProxyCommandPayload = { group: group, proxy: proxy };
         this.requireOK<Object>(await runtimeControlService.execute<Object>('selectProxy', payload));
-        if (this.runtimeUsesConfigIndex) {
-          this.proxies = this.replaceRuntimeSelection(this.proxies, group, proxy);
-        } else {
-          await this.refreshProxies();
-        }
+        runtimeChanged = true;
+        this.proxies = this.replaceRuntimeSelection(this.proxies, group, proxy);
+        this.proxySelections = this.replaceSelection(this.proxySelections, group, proxy);
+        this.publish();
       }
-      await preferenceRepository.setProxySelection(this.profileId, group, proxy);
+      try {
+        await preferenceRepository.setProxySelection(this.profileId, group, proxy);
+      } catch (error) {
+        let runtimeRollbackFailed = false;
+        try {
+          await preferenceRepository.replaceProxySelections(this.profileId, originalSelections);
+        } catch (rollbackError) {
+          // The original in-memory selection remains authoritative for this session.
+        }
+        if (runtimeChanged && originalProxy.length > 0 && originalProxy !== proxy) {
+          try {
+            const rollbackPayload: SelectProxyCommandPayload = { group: group, proxy: originalProxy };
+            this.requireOK<Object>(await runtimeControlService.execute<Object>('selectProxy', rollbackPayload));
+          } catch (rollbackError) {
+            runtimeRollbackFailed = true;
+          }
+        }
+        this.proxies = originalGroups;
+        this.proxySelections = originalSelections;
+        this.publish();
+        throw new Error(runtimeRollbackFailed ?
+          '节点选择保存失败，且 Core 节点恢复失败' : '节点选择保存失败，已恢复原节点');
+      }
       this.proxySelections = this.replaceSelection(this.proxySelections, group, proxy);
     });
   }
@@ -235,7 +264,7 @@ class RuntimeStore {
     const profileSignature = this.profileSignature;
     const startedProfileId = this.profileId;
     const startedConfigPath = this.configPath;
-    const startedInRuntime = this.available && this.proxySource === ProxySnapshotSource.RUNTIME;
+    const startedInRuntime = this.coreAvailable && this.proxySource === ProxySnapshotSource.RUNTIME;
     const actionKey = `delay:${group}:${proxy}`;
     const operationId = util.generateRandomUUID();
     this.activeDelayOperationId = operationId;
@@ -302,7 +331,7 @@ class RuntimeStore {
     const profileSignature = this.profileSignature;
     const startedProfileId = this.profileId;
     const startedConfigPath = this.configPath;
-    const startedInRuntime = this.available && this.proxySource === ProxySnapshotSource.RUNTIME;
+    const startedInRuntime = this.coreAvailable && this.proxySource === ProxySnapshotSource.RUNTIME;
     this.activeDelayOperationId = operationId;
     this.activeDelayGroup = group;
     this.activeDelayGeneration = generation;
@@ -314,7 +343,7 @@ class RuntimeStore {
     const progressListener: ProxyDelayProgressListener = (progress: ProxyDelayProgress): void => {
       if (this.isActiveDelayOperation(progress.operationId, progress.group, generation, profileSignature)) {
         this.applyDelayProgress(progress);
-      } else if (!startedInRuntime && !this.available &&
+      } else if (!startedInRuntime && !this.coreAvailable &&
         this.isPreviewProfileCurrent(startedProfileId, startedConfigPath) &&
         progress.operationId === operationId && progress.group === group) {
         this.proxies = mergeGroupDelay(this.proxies, group, [{
@@ -407,11 +436,25 @@ class RuntimeStore {
     this.profileId = active?.id ?? '';
     this.configPath = active?.localPath ?? '';
     this.previewGeneration += 1;
-    if (!this.available) {
+    if (!this.coreAvailable) {
       this.proxies = [];
       this.proxySource = ProxySnapshotSource.NONE;
     }
     this.loadSelectionsAndPreview(this.previewGeneration);
+  }
+
+  private handleSettingsSnapshot(settings: AppSettings): void {
+    const nextIntervalMs = resolveRefreshIntervalMilliseconds(settings.refreshIntervalSeconds);
+    if (nextIntervalMs === this.refreshIntervalMs) {
+      return;
+    }
+    this.refreshIntervalMs = nextIntervalMs;
+    this.lifecycleGeneration += 1;
+    this.stopPolling();
+    if (this.foreground && this.coreAvailable) {
+      this.refresh();
+      this.startPolling();
+    }
   }
 
   private async loadSelectionsAndPreview(generation: number): Promise<void> {
@@ -429,7 +472,7 @@ class RuntimeStore {
       }
       this.proxySelections = selections;
       this.publish();
-      if (!this.available) {
+      if (!this.coreAvailable) {
         await this.loadPreview(generation);
       }
     } catch (error) {
@@ -440,7 +483,7 @@ class RuntimeStore {
   }
 
   private async loadPreview(expectedGeneration: number = this.previewGeneration): Promise<void> {
-    if (this.available || this.configPath.length === 0) {
+    if (this.coreAvailable || this.configPath.length === 0) {
       return;
     }
     const configPath = this.configPath;
@@ -449,7 +492,7 @@ class RuntimeStore {
     this.publish();
     try {
       const snapshot = await profilePreviewService.load(configPath);
-      if (expectedGeneration !== this.previewGeneration || this.available ||
+      if (expectedGeneration !== this.previewGeneration || this.coreAvailable ||
         configPath !== this.configPath || profileId !== this.profileId) {
         return;
       }
@@ -462,7 +505,7 @@ class RuntimeStore {
       }
       this.clearBackgroundError();
     } catch (error) {
-      if (expectedGeneration === this.previewGeneration && !this.available) {
+      if (expectedGeneration === this.previewGeneration && !this.coreAvailable) {
         this.proxies = [];
         this.proxySource = ProxySnapshotSource.NONE;
         this.reportBackgroundError(this.errorMessage(error));
@@ -507,15 +550,12 @@ class RuntimeStore {
     this.publish();
     try {
       await this.refreshDashboard();
-      this.pollCount += 1;
-      if (!this.runtimeUsesConfigIndex && !this.isDelayBusy() &&
-        (this.proxies.length === 0 || this.pollCount % 5 === 0)) {
+      this.publish();
+      if (!this.isDelayBusy()) {
         await this.refreshProxies();
         this.publish();
       }
-      if (!this.runtimeUsesConfigIndex) {
-        await this.refreshConnections();
-      }
+      await this.refreshConnections();
       this.clearBackgroundError();
     } catch (error) {
       if (this.foreground && lifecycleGeneration === this.lifecycleGeneration) {
@@ -535,6 +575,17 @@ class RuntimeStore {
       uploadSpeed: this.dashboard.uploadSpeed,
       downloadSpeed: this.dashboard.downloadSpeed
     });
+  }
+
+  private applyPreselectedSelections(): void {
+    runtimeControlService.execute<Object>('applyProxySelections').then(
+      (response: RuntimeCommandResponse<Object>): void => {
+        if (!response.ok) {
+          this.reportBackgroundError(response.message.length > 0 ? response.message : response.code);
+        }
+      }, (error: Error): void => {
+        this.reportBackgroundError(this.errorMessage(error));
+      });
   }
 
   private async refreshProxies(): Promise<void> {
@@ -642,7 +693,8 @@ class RuntimeStore {
     profileSignature: string, startedInRuntime: boolean, startedProfileId: string,
     startedConfigPath: string): boolean {
     return this.isActiveDelayOperation(operationId, group, generation, profileSignature) ||
-      (!startedInRuntime && !this.available && this.isPreviewProfileCurrent(startedProfileId, startedConfigPath));
+      (!startedInRuntime && !this.coreAvailable &&
+        this.isPreviewProfileCurrent(startedProfileId, startedConfigPath));
   }
 
   private isPreviewProfileCurrent(profileId: string, configPath: string): boolean {
@@ -682,8 +734,8 @@ class RuntimeStore {
   }
 
   private requireRuntime(): void {
-    if (!this.available) {
-      throw new Error('请先连接 VPN');
+    if (!this.coreAvailable) {
+      throw new Error('Core 尚未就绪');
     }
   }
 
@@ -728,7 +780,7 @@ class RuntimeStore {
 
   private startPolling(): void {
     if (this.foreground && this.pollTimer === undefined) {
-      this.pollTimer = setInterval((): void => { this.refresh(); }, POLL_INTERVAL_MS);
+      this.pollTimer = setInterval((): void => { this.refresh(); }, this.refreshIntervalMs);
     }
   }
 

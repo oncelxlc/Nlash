@@ -3,12 +3,14 @@ import { util } from '@kit.ArkTS';
 import { BusinessError, commonEventManager } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import {
+  CoreServiceState,
   encodeVpnStateEnvelope,
+  ProxyState,
   VPN_BUNDLE_NAME,
   VPN_STATE_COMMON_EVENT,
   VPN_STATE_EVENT,
-  VpnState,
-  VpnStateEvent
+  VpnStateEvent,
+  vpnStateFromProxyState
 } from '../models/VpnModels';
 
 const DOMAIN = 0x4E4C;
@@ -19,11 +21,22 @@ let nextSequence: number = 0;
 
 export function publishVpnState(
   applicationContext: common.ApplicationContext,
-  state: VpnState,
-  message: string = ''
+  coreState: CoreServiceState,
+  proxyState: ProxyState,
+  message: string = '',
+  profileId: string = '',
+  profileSignature: string = ''
 ): void {
-  const event: VpnStateEvent = { state, message };
-  hilog.info(DOMAIN, TAG, 'state=%{public}s message=%{public}s', state, message);
+  const event: VpnStateEvent = {
+    state: vpnStateFromProxyState(proxyState),
+    coreState: coreState,
+    proxyState: proxyState,
+    profileId: profileId,
+    profileSignature: profileSignature,
+    message: message
+  };
+  hilog.info(DOMAIN, TAG, 'core=%{public}s proxy=%{public}s message=%{public}s',
+    coreState, proxyState, message);
   applicationContext.eventHub.emit(VPN_STATE_EVENT, event);
   try {
     commonEventManager.publish(VPN_STATE_COMMON_EVENT, {

@@ -47,23 +47,47 @@ func NlashCoreValidateConfig(configPath *C.char) C.int32_t {
 func NlashCoreStart(
 	configPath *C.char,
 	workDir *C.char,
+) C.int32_t {
+	if configPath == nil || workDir == nil {
+		return C.int32_t(coreInvalidArgument)
+	}
+	options := coreStartOptions{
+		configPath: C.GoString(configPath),
+		workDir:    C.GoString(workDir),
+	}
+	return C.int32_t(runtimeInstance.start(options))
+}
+
+//export NlashCoreEnableProxy
+func NlashCoreEnableProxy(
 	tunFD C.int32_t,
 	mtu C.int32_t,
 	protectSocketPath *C.char,
 	generation *C.char,
 ) C.int32_t {
-	if configPath == nil || workDir == nil || protectSocketPath == nil || generation == nil {
+	if protectSocketPath == nil || generation == nil {
 		return C.int32_t(coreInvalidArgument)
 	}
-	options := coreStartOptions{
-		configPath:        C.GoString(configPath),
-		workDir:           C.GoString(workDir),
+	options := coreProxyOptions{
 		tunFD:             int(tunFD),
 		mtu:               int(mtu),
 		protectSocketPath: C.GoString(protectSocketPath),
 		generation:        C.GoString(generation),
 	}
-	return C.int32_t(runtimeInstance.start(options))
+	return C.int32_t(runtimeInstance.enableProxy(options))
+}
+
+//export NlashCoreDisableProxy
+func NlashCoreDisableProxy() C.int32_t {
+	return C.int32_t(runtimeInstance.disableProxy())
+}
+
+//export NlashCoreProxyEnabled
+func NlashCoreProxyEnabled() C.int32_t {
+	if runtimeInstance.isProxyEnabled() {
+		return 1
+	}
+	return 0
 }
 
 //export NlashCoreStop

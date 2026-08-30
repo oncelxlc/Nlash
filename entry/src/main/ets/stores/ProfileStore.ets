@@ -9,7 +9,6 @@ import {
   ProfileUpdateStage
 } from '../models/ProfileModels';
 import { FeedbackLevel } from '../models/FeedbackModels';
-import { VpnState } from '../models/VpnModels';
 import { preferenceRepository } from '../repository/PreferenceRepository';
 import { profileRepository } from '../repository/ProfileRepository';
 import { subscriptionService } from '../services/SubscriptionService';
@@ -29,12 +28,10 @@ class ProfileStore {
   private autoUpdateTimer: number = -1;
   private autoUpdateRunning: boolean = false;
   private autoUpdateRetryAt: Map<string, number> = new Map<string, number>();
-  private vpnUnsubscribe: (() => void) | undefined = undefined;
 
   initialize(context: common.UIAbilityContext): Promise<void> {
     if (this.initialized) {
       this.startAutoUpdateScheduler();
-      this.subscribeVpnState();
       return Promise.resolve();
     }
     if (this.initializeOperation === undefined) {
@@ -76,8 +73,6 @@ class ProfileStore {
       clearInterval(this.autoUpdateTimer);
       this.autoUpdateTimer = -1;
     }
-    this.vpnUnsubscribe?.();
-    this.vpnUnsubscribe = undefined;
   }
 
   async addSubscription(name: string, sourceUrl: string): Promise<void> {
@@ -91,6 +86,7 @@ class ProfileStore {
       await this.reload();
       if (this.activeProfileId.length === 0) {
         await this.activate(profile);
+        await this.synchronizeRuntime();
       }
       this.finishOperation('配置已添加并通过校验');
     } catch (error) {
@@ -111,6 +107,7 @@ class ProfileStore {
       await this.reload();
       if (this.activeProfileId.length === 0) {
         await this.activate(profile);
+        await this.synchronizeRuntime();
       }
       this.finishOperation('本地配置已导入并通过校验');
     } catch (error) {
@@ -123,7 +120,6 @@ class ProfileStore {
   async update(id: string): Promise<void> {
     await this.ensureReady();
     this.assertIdle();
-    this.assertRuntimeAllowsProfileChange(id);
     const profile = this.requireProfile(id);
     this.beginOperation(id);
     try {
@@ -131,6 +127,9 @@ class ProfileStore {
         this.setStage(stage);
       });
       await this.reload();
+      if (id === this.activeProfileId) {
+        await this.synchronizeRuntime();
+      }
       this.finishOperation('订阅已更新并通过校验');
     } catch (error) {
       const failure = this.toError(error);
@@ -142,7 +141,6 @@ class ProfileStore {
   async saveAndUpdate(id: string, draft: ProfileEditDraft): Promise<void> {
     await this.ensureReady();
     this.assertIdle();
-    this.assertRuntimeAllowsProfileChange(id);
     const profile = this.requireProfile(id);
     this.beginOperation(id);
     try {
@@ -154,6 +152,9 @@ class ProfileStore {
         });
       }
       await this.reload();
+      if (id === this.activeProfileId) {
+        await this.synchronizeRuntime();
+      }
       this.autoUpdateRetryAt.delete(id);
       this.finishOperation(profile.type === ProfileType.LOCAL ? '配置已重命名' : '配置已保存并更新');
     } catch (error) {
@@ -166,7 +167,6 @@ class ProfileStore {
   async updateAll(): Promise<void> {
     await this.ensureReady();
     this.assertIdle();
-    this.assertRuntimeStopped();
     const subscriptions = this.profiles.filter((profile: Profile): boolean =>
       profile.type === ProfileType.SUBSCRIPTION);
     if (subscriptions.length === 0) {
@@ -185,6 +185,9 @@ class ProfileStore {
     try {
       await subscriptionService.rename(profile, name);
       await this.reload();
+      if (id === this.activeProfileId) {
+        await this.synchronizeRuntime();
+      }
       this.finishOperation('配置已重命名');
     } catch (error) {
       const failure = this.toError(error);
@@ -196,11 +199,11 @@ class ProfileStore {
   async select(id: string): Promise<void> {
     await this.ensureReady();
     this.assertIdle();
-    this.assertRuntimeStopped();
     const profile = this.requireProfile(id);
     this.beginOperation(id);
     try {
       await this.activate(profile);
+      await this.synchronizeRuntime();
       this.finishOperation('已切换活动配置');
     } catch (error) {
       const failure = this.toError(error);
@@ -212,8 +215,8 @@ class ProfileStore {
   async remove(id: string): Promise<void> {
     await this.ensureReady();
     this.assertIdle();
-    this.assertRuntimeAllowsProfileChange(id);
     const profile = this.requireProfile(id);
+    const removedActiveProfile = this.activeProfileId === id;
     this.beginOperation(id);
     try {
       await subscriptionService.remove(profile);
@@ -226,6 +229,9 @@ class ProfileStore {
       await this.reload();
       if (this.activeProfileId.length === 0 && this.profiles.length > 0) {
         await this.activate(this.profiles[0]);
+      }
+      if (removedActiveProfile) {
+        await this.synchronizeRuntime();
       }
       this.finishOperation('配置已删除');
     } catch (error) {
@@ -254,18 +260,6 @@ class ProfileStore {
     this.initialized = true;
     this.publish();
     this.startAutoUpdateScheduler();
-    this.subscribeVpnState();
-  }
-
-  private subscribeVpnState(): void {
-    if (this.vpnUnsubscribe !== undefined) {
-      return;
-    }
-    this.vpnUnsubscribe = vpnService.subscribe((state: VpnState): void => {
-      if (state === VpnState.IDLE || state === VpnState.DISCONNECTED || state === VpnState.ERROR) {
-        this.runDueAutoUpdates();
-      }
-    });
   }
 
   private async reload(): Promise<void> {
@@ -279,25 +273,14 @@ class ProfileStore {
     this.publish();
   }
 
-  private assertRuntimeAllowsProfileChange(id: string): void {
-    if (id !== this.activeProfileId) {
+  private async synchronizeRuntime(): Promise<void> {
+    const active = this.profiles.find((profile: Profile): boolean => profile.id === this.activeProfileId);
+    if (active === undefined) {
+      await vpnService.ensureHost();
       return;
     }
-    if (this.isRuntimeActive()) {
-      throw new Error('请先断开 VPN，再修改当前活动配置');
-    }
-  }
-
-  private assertRuntimeStopped(): void {
-    if (this.isRuntimeActive()) {
-      throw new Error('请先断开 VPN，再切换或批量更新配置');
-    }
-  }
-
-  private isRuntimeActive(): boolean {
-    const state = vpnService.getState();
-    return state === VpnState.CONNECTED || state === VpnState.STARTING ||
-      state === VpnState.REQUESTING_PERMISSION || state === VpnState.STOPPING;
+    await vpnService.applyProfile(active.id, active.localPath,
+      `${active.id}:${active.localPath}:${active.updatedAt}`);
   }
 
   private startAutoUpdateScheduler(): void {
@@ -325,8 +308,7 @@ class ProfileStore {
     const now = Date.now();
     const dueProfiles = this.profiles.filter((profile: Profile): boolean => {
       const retryAt = this.autoUpdateRetryAt.get(profile.id) ?? 0;
-      return isProfileUpdateDue(profile, now) && now >= retryAt &&
-        !(profile.id === this.activeProfileId && this.isRuntimeActive());
+      return isProfileUpdateDue(profile, now) && now >= retryAt;
     });
     let failureCount = 0;
     for (let index = 0; index < dueProfiles.length; index += 1) {

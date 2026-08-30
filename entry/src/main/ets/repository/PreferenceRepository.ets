@@ -1,7 +1,12 @@
 import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { ProxySelection } from '../models/RuntimeModels';
-import { AppSettings, AppThemeMode, DEFAULT_APP_SETTINGS } from '../models/SettingsModels';
+import {
+  AppSettings,
+  AppThemeMode,
+  DEFAULT_APP_SETTINGS,
+  isRefreshIntervalSeconds
+} from '../models/SettingsModels';
 
 const PREFERENCES_NAME = 'nlash_settings';
 const ACTIVE_PROFILE_ID = 'activeProfileId';
@@ -9,6 +14,7 @@ const ACTIVE_PROFILE_PATH = 'activeProfilePath';
 const THEME_MODE = 'themeMode';
 const VPN_MTU = 'vpnMtu';
 const DELAY_TEST_URL = 'delayTestUrl';
+const REFRESH_INTERVAL_SECONDS = 'refreshIntervalSeconds';
 const PROXY_SELECTIONS = 'proxySelections';
 const MAX_PROXY_SELECTIONS = 256;
 
@@ -85,12 +91,17 @@ class PreferenceRepository {
     const themeValue = await store.get(THEME_MODE, DEFAULT_APP_SETTINGS.themeMode);
     const mtuValue = await store.get(VPN_MTU, DEFAULT_APP_SETTINGS.mtu);
     const testUrlValue = await store.get(DELAY_TEST_URL, DEFAULT_APP_SETTINGS.delayTestUrl);
+    const refreshIntervalValue = await store.get(REFRESH_INTERVAL_SECONDS,
+      DEFAULT_APP_SETTINGS.refreshIntervalSeconds);
     return {
       themeMode: this.parseThemeMode(typeof themeValue === 'string' ? themeValue : ''),
       mtu: typeof mtuValue === 'number' && mtuValue >= 1280 && mtuValue <= 9000 ?
         Math.round(mtuValue) : DEFAULT_APP_SETTINGS.mtu,
       delayTestUrl: typeof testUrlValue === 'string' && this.isHttpUrl(testUrlValue) ?
-        testUrlValue : DEFAULT_APP_SETTINGS.delayTestUrl
+        testUrlValue : DEFAULT_APP_SETTINGS.delayTestUrl,
+      refreshIntervalSeconds: typeof refreshIntervalValue === 'number' &&
+        isRefreshIntervalSeconds(refreshIntervalValue) ? refreshIntervalValue :
+        DEFAULT_APP_SETTINGS.refreshIntervalSeconds
     };
   }
 
@@ -99,6 +110,7 @@ class PreferenceRepository {
     await store.put(THEME_MODE, settings.themeMode);
     await store.put(VPN_MTU, settings.mtu);
     await store.put(DELAY_TEST_URL, settings.delayTestUrl);
+    await store.put(REFRESH_INTERVAL_SECONDS, settings.refreshIntervalSeconds);
     await store.flush();
   }
 

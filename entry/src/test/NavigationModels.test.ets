@@ -73,10 +73,10 @@ export default function navigationModelsTest() {
     });
 
     it('usesCurrentProxyColumns', 0, () => {
-      expect(resolveResponsiveMetrics(360).proxyCardWidth).assertEqual('49%');
-      expect(resolveResponsiveMetrics(700).proxyCardWidth).assertEqual('49%');
-      expect(resolveResponsiveMetrics(360, true).proxyCardWidth).assertEqual('24%');
-      expect(resolveResponsiveMetrics(1000).proxyCardWidth).assertEqual('24%');
+      expect(resolveResponsiveMetrics(360).proxyColumns).assertEqual('1fr 1fr');
+      expect(resolveResponsiveMetrics(700).proxyColumns).assertEqual('1fr 1fr');
+      expect(resolveResponsiveMetrics(360, true).proxyColumns).assertEqual('1fr 1fr 1fr 1fr');
+      expect(resolveResponsiveMetrics(1000).proxyColumns).assertEqual('1fr 1fr 1fr 1fr');
     });
 
     it('keepsDashboardCardsEqualHeight', 0, () => {

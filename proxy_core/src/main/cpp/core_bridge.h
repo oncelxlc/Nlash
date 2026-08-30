@@ -40,6 +40,9 @@ struct CoreResult {
 struct CoreStartOptions {
     std::string configPath;
     std::string workDir;
+};
+
+struct CoreProxyOptions {
     int32_t tunFd = -1;
     int32_t mtu = 0;
     std::string protectSocketPath;
@@ -49,6 +52,9 @@ struct CoreStartOptions {
 std::string CoreVersion();
 CoreResult ValidateCoreConfig(const std::string &configPath);
 CoreResult StartCore(const CoreStartOptions &options);
+CoreResult EnableCoreProxy(const CoreProxyOptions &options);
+CoreResult DisableCoreProxy();
+bool IsCoreProxyEnabled();
 CoreResult StopCore();
 CoreRuntimeState GetCoreState();
 std::string ExecuteCoreCommand(const std::string &command);

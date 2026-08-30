@@ -1,10 +1,14 @@
 import {
   coreState,
+  coreProxyEnabled,
   coreVersion,
+  disableCoreProxy,
+  enableCoreProxy,
   executeCoreCommand,
   clearCoreEventListener,
   NativeCoreEvent,
   NativeCoreResult,
+  NativeCoreProxyOptions,
   NativeCoreStartOptions,
   startCore,
   setCoreEventListener,
@@ -19,6 +23,7 @@ import {
   CoreEventListener,
   CoreEventType,
   CoreResult,
+  CoreProxyOptions,
   CoreRuntimeState,
   CoreStartOptions
 } from '../models/CoreModels';
@@ -91,15 +96,33 @@ class NativeCoreClient implements CoreClient {
     this.publish(CoreRuntimeState.STARTING, CoreErrorCode.OK, 'Starting core');
     const nativeOptions: NativeCoreStartOptions = {
       configPath: options.configPath,
-      workDir: options.workDir,
+      workDir: options.workDir
+    };
+    const result = this.mapResult(await startCore(nativeOptions));
+    this.publish(this.getState(), result.code, result.message);
+    return result;
+  }
+
+  async enableProxy(options: CoreProxyOptions): Promise<CoreResult> {
+    const nativeOptions: NativeCoreProxyOptions = {
       tunFd: options.tunFd,
       mtu: options.mtu,
       protectSocketPath: options.protectSocketPath,
       generation: options.generation
     };
-    const result = this.mapResult(await startCore(nativeOptions));
+    const result = this.mapResult(await enableCoreProxy(nativeOptions));
     this.publish(this.getState(), result.code, result.message);
     return result;
+  }
+
+  async disableProxy(): Promise<CoreResult> {
+    const result = this.mapResult(await disableCoreProxy());
+    this.publish(this.getState(), result.code, result.message);
+    return result;
+  }
+
+  isProxyEnabled(): boolean {
+    return coreProxyEnabled();
   }
 
   async stop(): Promise<void> {

@@ -1,4 +1,9 @@
-import { AppSettings, AppThemeMode, SettingsStoreSnapshot } from '../models/SettingsModels';
+import {
+  AppSettings,
+  AppThemeMode,
+  REFRESH_INTERVAL_OPTIONS,
+  SettingsStoreSnapshot
+} from '../models/SettingsModels';
 import { RuntimeStoreSnapshot } from '../models/RuntimeModels';
 import { feedbackService } from '../services/FeedbackService';
 import { coreClient } from '../services/CoreClient';
@@ -32,7 +37,7 @@ export struct SettingsPage {
       }
     });
     this.unsubscribeRuntime = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
-      this.runtimeAvailable = snapshot.available;
+      this.runtimeAvailable = snapshot.coreAvailable;
       this.runtimeBusyKey = snapshot.busyKey;
     });
     try {
@@ -77,6 +82,15 @@ export struct SettingsPage {
     try {
       await settingsStore.setThemeMode(theme);
       feedbackService.success('主题设置已保存');
+    } catch (error) {
+      feedbackService.error(this.errorMessage(error));
+    }
+  }
+
+  private async changeRefreshInterval(seconds: number): Promise<void> {
+    try {
+      await settingsStore.setRefreshIntervalSeconds(seconds);
+      feedbackService.success(`数据刷新间隔已设为 ${seconds} 秒`);
     } catch (error) {
       feedbackService.error(this.errorMessage(error));
     }
@@ -150,7 +164,7 @@ export struct SettingsPage {
   @Builder
   private dataCard() {
     Column({ space: 14 }) {
-      this.cardHeader('运行数据', '这些操作只影响当前 Core 会话和本地请求历史。')
+      this.cardHeader('运行数据', '设置流量、速度、连接和代理数据的全局刷新频率。')
       this.dataContent()
     }
     .alignItems(HorizontalAlign.Start)
@@ -211,6 +225,27 @@ export struct SettingsPage {
   @Builder
   private dataContent() {
     Column({ space: 8 }) {
+      Text('数据刷新间隔')
+        .fontSize(13)
+        .fontColor($r('app.color.content_secondary'))
+        .width('100%')
+      Row({ space: 8 }) {
+        ForEach(REFRESH_INTERVAL_OPTIONS, (seconds: number) => {
+          Button(`${seconds} 秒`)
+            .type(ButtonType.Normal)
+            .borderRadius(BUTTON_RADIUS)
+            .layoutWeight(1)
+            .fontColor(this.settings.refreshIntervalSeconds === seconds ?
+              Color.White : $r('app.color.content_primary'))
+            .backgroundColor(this.settings.refreshIntervalSeconds === seconds ?
+              $r('app.color.nav_selected') : $r('app.color.app_background'))
+            .enabled(!this.saving)
+            .onClick((): void => {
+              this.changeRefreshInterval(seconds);
+            })
+        }, (seconds: number): string => seconds.toString())
+      }
+      .width('100%')
       Button('重置 Core 流量统计')
         .type(ButtonType.Normal)
         .borderRadius(BUTTON_RADIUS)

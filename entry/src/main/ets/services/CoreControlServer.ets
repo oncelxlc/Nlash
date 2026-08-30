@@ -23,6 +23,8 @@ interface CoreCommandTypeOnly {
   type?: string;
 }
 
+export type CoreCommandInterceptor = (command: string) => Promise<string | undefined>;
+
 class CoreControlServer {
   private subscriber: commonEventManager.CommonEventSubscriber | undefined;
   private startOperation: Promise<void> | undefined;
@@ -30,8 +32,10 @@ class CoreControlServer {
   private loggedFirstCommand: boolean = false;
   private loggedFirstResponse: boolean = false;
   private commandCount: number = 0;
+  private interceptor: CoreCommandInterceptor | undefined;
 
-  start(): Promise<void> {
+  start(interceptor?: CoreCommandInterceptor): Promise<void> {
+    this.interceptor = interceptor;
     if (this.subscriber !== undefined) {
       return Promise.resolve();
     }
@@ -48,6 +52,7 @@ class CoreControlServer {
   }
 
   stop(): void {
+    this.interceptor = undefined;
     this.unsubscribeCore?.();
     this.unsubscribeCore = undefined;
     const subscriber = this.subscriber;
@@ -102,7 +107,10 @@ class CoreControlServer {
   }
 
   private async handleCommand(envelope: CoreCommandEnvelope, commandIndex: number, commandType: string): Promise<void> {
-    let response = await coreClient.executeCommand(envelope.command);
+    let response = this.interceptor === undefined ? undefined : await this.interceptor(envelope.command);
+    if (response === undefined) {
+      response = await coreClient.executeCommand(envelope.command);
+    }
     if (commandIndex <= 3) {
       hilog.info(DOMAIN, TAG, 'command end index=%{public}d type=%{public}s', commandIndex, commandType);
     }

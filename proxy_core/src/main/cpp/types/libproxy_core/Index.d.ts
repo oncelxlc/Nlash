@@ -7,6 +7,8 @@ export interface NativeCoreResult {
 export interface NativeCoreStartOptions {
   configPath: string;
   workDir: string;
+}
+export interface NativeCoreProxyOptions {
   tunFd: number;
   mtu: number;
   protectSocketPath: string;
@@ -20,6 +22,9 @@ export interface NativeCoreEvent {
 }
 export const validateConfig: (configPath: string) => Promise<NativeCoreResult>;
 export const startCore: (options: NativeCoreStartOptions) => Promise<NativeCoreResult>;
+export const enableCoreProxy: (options: NativeCoreProxyOptions) => Promise<NativeCoreResult>;
+export const disableCoreProxy: () => Promise<NativeCoreResult>;
+export const coreProxyEnabled: () => boolean;
 export const stopCore: () => Promise<NativeCoreResult>;
 export const coreState: () => number;
 export const setCoreEventListener: (listener: (event: NativeCoreEvent) => void) => void;

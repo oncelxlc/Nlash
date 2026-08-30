@@ -11,7 +11,12 @@ import {
   RuntimeStoreSnapshot,
   TrafficSample
 } from '../models/RuntimeModels';
-import { formatVpnRunDuration, VpnState } from '../models/VpnModels';
+import {
+  CoreServiceState,
+  formatVpnRunDuration,
+  ProxyState,
+  RuntimeLifecycleSnapshot
+} from '../models/VpnModels';
 import { feedbackService } from '../services/FeedbackService';
 import { countryCodeFlag, publicNetworkService } from '../services/LocalNetworkService';
 import { vpnService } from '../services/VpnService';
@@ -29,7 +34,8 @@ const MODES: RuntimeMode[] = [RuntimeMode.RULE, RuntimeMode.GLOBAL, RuntimeMode.
 
 @Component
 export struct DashboardPage {
-  @State vpnState: VpnState = vpnService.getState();
+  @State coreState: CoreServiceState = vpnService.getCoreState();
+  @State proxyState: ProxyState = vpnService.getProxyState();
   @State message: string = vpnService.getLastMessage();
   @State profiles: Profile[] = [];
   @State activeProfileId: string = '';
@@ -50,22 +56,26 @@ export struct DashboardPage {
   private chartContext: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.chartSettings);
   private chartWidth: number = 0;
   private chartHeight: number = 320;
-  private unsubscribeVpn: (() => void) | undefined = undefined;
+  private unsubscribeLifecycle: (() => void) | undefined = undefined;
   private unsubscribeProfiles: (() => void) | undefined = undefined;
   private unsubscribeRuntime: (() => void) | undefined = undefined;
   private unsubscribeNetwork: (() => void) | undefined = undefined;
   private elapsedTimer: number | undefined = undefined;
 
   aboutToAppear(): void {
-    this.unsubscribeVpn = vpnService.subscribe((state: VpnState, message: string): void => {
-      this.vpnState = state;
-      this.message = message;
+    this.unsubscribeLifecycle = vpnService.subscribeLifecycle((snapshot: RuntimeLifecycleSnapshot): void => {
+      const previousProxyState = this.proxyState;
+      this.coreState = snapshot.coreState;
+      this.proxyState = snapshot.proxyState;
+      this.message = snapshot.message;
       this.connectedAt = vpnService.getConnectedAt();
-      if (this.unsubscribeNetwork !== undefined &&
-        (state === VpnState.CONNECTED || state === VpnState.DISCONNECTED || state === VpnState.ERROR)) {
+      if (this.unsubscribeNetwork !== undefined && previousProxyState !== snapshot.proxyState &&
+        (snapshot.proxyState === ProxyState.ENABLED || snapshot.proxyState === ProxyState.DISABLED ||
+          snapshot.proxyState === ProxyState.ERROR)) {
         publicNetworkService.refresh();
       }
-      if (state === VpnState.IDLE || state === VpnState.DISCONNECTED || state === VpnState.ERROR) {
+      if (snapshot.coreState === CoreServiceState.WAITING_CONFIG ||
+        snapshot.coreState === CoreServiceState.STOPPED || snapshot.coreState === CoreServiceState.ERROR) {
         this.selectedMode = DEFAULT_RUNTIME_MODE;
       }
       this.syncElapsedTimer();
@@ -90,14 +100,15 @@ export struct DashboardPage {
       this.publicNetworkChecking = snapshot.checking;
       this.publicNetworkError = snapshot.errorMessage;
     });
+    runtimeStore.refresh();
   }
 
   aboutToDisappear(): void {
-    this.unsubscribeVpn?.();
+    this.unsubscribeLifecycle?.();
     this.unsubscribeProfiles?.();
     this.unsubscribeRuntime?.();
     this.unsubscribeNetwork?.();
-    this.unsubscribeVpn = undefined;
+    this.unsubscribeLifecycle = undefined;
     this.unsubscribeProfiles = undefined;
     this.unsubscribeRuntime = undefined;
     this.unsubscribeNetwork = undefined;
@@ -125,16 +136,15 @@ export struct DashboardPage {
     this.metrics = resolveResponsiveMetrics(Number.isFinite(numericWidth) ? numericWidth : 0);
   }
 
-  private isVpnBusy(): boolean {
-    return this.vpnState === VpnState.REQUESTING_PERMISSION || this.vpnState === VpnState.STARTING ||
-      this.vpnState === VpnState.STOPPING;
+  private isProxyBusy(): boolean {
+    return this.proxyState === ProxyState.ENABLING || this.proxyState === ProxyState.DISABLING;
   }
 
-  private isVpnActive(): boolean {
-    return this.vpnState === VpnState.CONNECTED || this.isVpnBusy();
+  private isProxyActive(): boolean {
+    return this.proxyState === ProxyState.ENABLED || this.proxyState === ProxyState.ENABLING;
   }
 
-  private async toggleVpn(enabled: boolean): Promise<void> {
+  private async toggleProxy(enabled: boolean): Promise<void> {
     try {
       if (!enabled) {
         await vpnService.stop();
@@ -144,17 +154,24 @@ export struct DashboardPage {
         await vpnService.start();
       }
     } catch (error) {
+      feedbackService.error(this.errorMessage(error));
     }
   }
 
   private coreStatus(): string {
-    if (this.vpnState === VpnState.CONNECTED) {
+    if (this.coreState === CoreServiceState.RUNNING) {
       return 'Core 运行中';
     }
-    if (this.isVpnBusy()) {
-      return 'Core 切换中';
+    if (this.coreState === CoreServiceState.STARTING) {
+      return 'Core 启动中';
     }
-    if (this.vpnState === VpnState.ERROR) {
+    if (this.coreState === CoreServiceState.RELOADING) {
+      return 'Core 重载中';
+    }
+    if (this.coreState === CoreServiceState.WAITING_CONFIG) {
+      return '等待活动配置';
+    }
+    if (this.coreState === CoreServiceState.ERROR) {
       return 'Core 异常';
     }
     return 'Core 已停止';
@@ -184,24 +201,24 @@ export struct DashboardPage {
   }
 
   private confirmCoreRestart(): void {
-    if (this.isVpnBusy() || this.restarting) {
+    if (this.coreState === CoreServiceState.STARTING || this.coreState === CoreServiceState.RELOADING ||
+      this.restarting) {
       return;
     }
     if (this.getActiveProfile() === undefined) {
       feedbackService.warning('请先添加并选择一份配置');
       return;
     }
-    const stopped = this.vpnState === VpnState.IDLE || this.vpnState === VpnState.DISCONNECTED;
     AlertDialog.show({
-      title: stopped ? '启动 Core' : '重启 Core',
-      message: stopped ? '确定使用当前配置启动 Core 吗？' : '确定停止当前连接并重新启动 Core 吗？',
+      title: '重启 Core',
+      message: '确定重新加载当前配置吗？如代理已开启，完成后会自动重建 VPN。',
       primaryButton: {
         value: '取消',
         action: (): void => {
         }
       },
       secondaryButton: {
-        value: stopped ? '启动' : '重启',
+        value: '重启',
         action: (): void => {
           this.restartCore();
         }
@@ -214,6 +231,7 @@ export struct DashboardPage {
     try {
       await vpnService.restart();
     } catch (error) {
+      feedbackService.error(this.errorMessage(error));
     } finally {
       this.restarting = false;
     }
@@ -277,8 +295,11 @@ export struct DashboardPage {
     }
     const context = this.chartContext;
     context.beginPath();
+    const latestTimestamp = this.history[this.history.length - 1].timestamp;
+    const earliestTimestamp = latestTimestamp - 60000;
     this.history.forEach((sample: TrafficSample, index: number): void => {
-      const x = this.history.length === 1 ? 0 : index * this.chartWidth / (this.history.length - 1);
+      const x = this.history.length === 1 ? this.chartWidth :
+        Math.max(0, sample.timestamp - earliestTimestamp) * this.chartWidth / 60000;
       const value = upload ? sample.uploadSpeed : sample.downloadSpeed;
       const y = this.chartHeight - 8 - (value / maximum) * (this.chartHeight - 20);
       if (index === 0) {
@@ -330,7 +351,8 @@ export struct DashboardPage {
               .fontSize(15)
               .fontWeight(FontWeight.Medium)
               .fontColor($r('app.color.content_secondary'))
-            Text(this.vpnState === VpnState.CONNECTED ? '正在等待网络流量' : '连接 VPN 后显示实时曲线')
+            Text(this.proxyState === ProxyState.ENABLED ? '正在等待网络流量' :
+              (this.coreState === CoreServiceState.RUNNING ? '代理已关闭，系统流量直连' : 'Core 就绪后显示运行数据'))
               .fontSize(12)
               .fontColor($r('app.color.content_secondary'))
           }
@@ -399,7 +421,8 @@ export struct DashboardPage {
   private vpnCard(cardWidth: Length) {
     Column({ space: 8 }) {
       this.cardTitle('VPN 代理模式')
-      Text(this.vpnState === VpnState.CONNECTED ? '选择 Core 当前的流量处理方式' : '连接 VPN 后可切换模式')
+      Text(this.coreState === CoreServiceState.RUNNING ?
+        '选择 Core 的流量处理方式，代理开启时生效' : 'Core 就绪后可切换模式')
         .fontSize(12)
         .fontColor($r('app.color.content_secondary'))
         .maxLines(1)
@@ -419,7 +442,7 @@ export struct DashboardPage {
               (mode === RuntimeMode.RULE ? $r('app.color.mode_rule_background') :
                 (mode === RuntimeMode.GLOBAL ? $r('app.color.mode_global_background') :
                   $r('app.color.mode_direct_background'))))
-            .enabled(this.vpnState === VpnState.CONNECTED && this.runtimeBusyKey.length === 0)
+            .enabled(this.coreState === CoreServiceState.RUNNING && this.runtimeBusyKey.length === 0)
             .onClick((): void => { this.setMode(mode); })
         }, (mode: RuntimeMode): string => mode)
       }
@@ -459,11 +482,13 @@ export struct DashboardPage {
     .height(56)
     .borderRadius(BUTTON_RADIUS)
     .backgroundColor($r('app.color.vpn_fab_background'))
-    .enabled(!this.isVpnBusy() && (this.isVpnActive() || this.getActiveProfile() !== undefined))
-    .accessibilityText(this.hasRunStarted() ? '停止 VPN' : '启动 VPN')
+    .enabled(!this.isProxyBusy() &&
+      (this.isProxyActive() || (this.coreState === CoreServiceState.RUNNING &&
+        this.getActiveProfile() !== undefined)))
+    .accessibilityText(this.hasRunStarted() ? '关闭代理' : '开启代理')
     .margin({ right: this.metrics.pagePadding, bottom: this.metrics.pagePadding })
     .zIndex(2)
-    .onClick((): void => { this.toggleVpn(!this.isVpnActive()); })
+    .onClick((): void => { this.toggleProxy(!this.isProxyActive()); })
   }
 
   @Builder
@@ -566,10 +591,12 @@ export struct DashboardPage {
             .layoutWeight(1)
             Text(this.coreStatus())
               .fontSize(12)
-              .fontColor(this.vpnState === VpnState.CONNECTED ?
+              .fontColor(this.coreState === CoreServiceState.RUNNING ?
                 $r('app.color.status_success') : $r('app.color.content_secondary'))
-              .enabled(!this.isVpnBusy() && !this.restarting)
-              .opacity(this.isVpnBusy() || this.restarting ? 0.55 : 1)
+              .enabled(this.coreState !== CoreServiceState.STARTING &&
+                this.coreState !== CoreServiceState.RELOADING && !this.restarting)
+              .opacity(this.coreState === CoreServiceState.STARTING ||
+                this.coreState === CoreServiceState.RELOADING || this.restarting ? 0.55 : 1)
               .onClick((): void => { this.confirmCoreRestart(); })
           }
           .width('100%')
