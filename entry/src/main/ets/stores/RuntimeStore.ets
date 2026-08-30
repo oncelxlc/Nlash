@@ -81,6 +81,8 @@ class RuntimeStore {
   private activeDelayProfileSignature: string = '';
   private activeDelayRuntime: boolean = false;
   private runtimeUsesConfigIndex: boolean = false;
+  private foreground: boolean = true;
+  private lifecycleGeneration: number = 0;
 
   initialize(): void {
     if (this.vpnUnsubscribe !== undefined) {
@@ -107,8 +109,10 @@ class RuntimeStore {
             this.proxySource = ProxySnapshotSource.RUNTIME;
           }
         }
-        this.startPolling();
-        this.refresh();
+        if (this.foreground) {
+          this.startPolling();
+          this.refresh();
+        }
       } else if (state === VpnState.IDLE || state === VpnState.DISCONNECTED || state === VpnState.ERROR) {
         if (!this.available) {
           return;
@@ -130,6 +134,22 @@ class RuntimeStore {
         this.loadPreview();
       }
     });
+  }
+
+  setForeground(foreground: boolean): void {
+    if (this.foreground === foreground) {
+      return;
+    }
+    this.foreground = foreground;
+    this.lifecycleGeneration += 1;
+    if (!foreground) {
+      this.stopPolling();
+      return;
+    }
+    if (this.available) {
+      this.startPolling();
+      this.refresh();
+    }
   }
 
   getSnapshot(): RuntimeStoreSnapshot {
@@ -482,6 +502,7 @@ class RuntimeStore {
   }
 
   private async refreshInternal(): Promise<void> {
+    const lifecycleGeneration = this.lifecycleGeneration;
     this.refreshing = true;
     this.publish();
     try {
@@ -497,7 +518,9 @@ class RuntimeStore {
       }
       this.clearBackgroundError();
     } catch (error) {
-      this.reportBackgroundError(this.errorMessage(error));
+      if (this.foreground && lifecycleGeneration === this.lifecycleGeneration) {
+        this.reportBackgroundError(this.errorMessage(error));
+      }
     } finally {
       this.refreshing = false;
       this.publish();
@@ -704,7 +727,7 @@ class RuntimeStore {
   }
 
   private startPolling(): void {
-    if (this.pollTimer === undefined) {
+    if (this.foreground && this.pollTimer === undefined) {
       this.pollTimer = setInterval((): void => { this.refresh(); }, POLL_INTERVAL_MS);
     }
   }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -42,6 +43,17 @@ type protectClient struct {
 	dial       protectDialFunc
 	timeout    time.Duration
 	nextID     atomic.Uint64
+	mu         sync.Mutex
+	connection net.Conn
+}
+
+type protectTransportError struct {
+	operation string
+	err       error
+}
+
+func (failure *protectTransportError) Error() string {
+	return fmt.Sprintf("%s: %v", failure.operation, failure.err)
 }
 
 func newProtectClient(socketPath string, generation string) (*protectClient, error) {
@@ -61,6 +73,24 @@ func (client *protectClient) protect(fd int) error {
 	if fd < 0 {
 		return errors.New("invalid outbound socket")
 	}
+	client.mu.Lock()
+	defer client.mu.Unlock()
+
+	var lastError error
+	for attempt := 0; attempt < 2; attempt++ {
+		lastError = client.protectLocked(fd)
+		if lastError == nil {
+			return nil
+		}
+		if _, retryable := lastError.(*protectTransportError); !retryable {
+			return lastError
+		}
+		client.closeLocked()
+	}
+	return lastError
+}
+
+func (client *protectClient) protectLocked(fd int) error {
 	requestID := client.nextID.Add(1)
 	request := protectRequest{
 		Version:    protectProtocolVersion,
@@ -77,29 +107,32 @@ func (client *protectClient) protect(fd int) error {
 		return errors.New("protect request is too large")
 	}
 
-	connection, err := client.dial()
-	if err != nil {
-		return fmt.Errorf("connect protect channel: %w", err)
+	connection := client.connection
+	if connection == nil {
+		connection, err = client.dial()
+		if err != nil {
+			return &protectTransportError{operation: "connect protect channel", err: err}
+		}
+		client.connection = connection
 	}
-	defer connection.Close()
 	timeout := client.timeout
 	if timeout <= 0 {
 		timeout = protectACKTimeout
 	}
 	if err = connection.SetDeadline(time.Now().Add(timeout)); err != nil {
-		return fmt.Errorf("set protect deadline: %w", err)
+		return &protectTransportError{operation: "set protect deadline", err: err}
 	}
 
 	frame := make([]byte, 4+len(payload))
 	binary.BigEndian.PutUint32(frame[:4], uint32(len(payload)))
 	copy(frame[4:], payload)
 	if _, err = connection.Write(frame); err != nil {
-		return fmt.Errorf("send protect request: %w", err)
+		return &protectTransportError{operation: "send protect request", err: err}
 	}
 
 	responsePayload, err := readProtectFrame(connection)
 	if err != nil {
-		return fmt.Errorf("read protect acknowledgement: %w", err)
+		return &protectTransportError{operation: "read protect acknowledgement", err: err}
 	}
 	var response protectACK
 	if err = json.Unmarshal(responsePayload, &response); err != nil {
@@ -116,6 +149,20 @@ func (client *protectClient) protect(fd int) error {
 		return fmt.Errorf("protect rejected: %s", response.ErrorCode)
 	}
 	return nil
+}
+
+func (client *protectClient) close() {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	client.closeLocked()
+}
+
+func (client *protectClient) closeLocked() {
+	connection := client.connection
+	client.connection = nil
+	if connection != nil {
+		_ = connection.Close()
+	}
 }
 
 func readProtectFrame(reader io.Reader) ([]byte, error) {

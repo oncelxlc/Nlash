@@ -46,11 +46,13 @@ export default class EntryAbility extends UIAbility {
 
   onForeground(): void {
     profileStore.onForeground();
+    runtimeStore.setForeground(true);
     // Ability has brought to foreground
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');
   }
 
   onBackground(): void {
+    runtimeStore.setForeground(false);
     // Ability has back to background
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onBackground');
   }

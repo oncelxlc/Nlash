@@ -71,6 +71,9 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     this.recoveryPolicy.reset();
     this.unsubscribeCore = coreClient.subscribe((event: CoreEvent): void => {
       if (event.type === CoreEventType.PROTECT_FAILURE) {
+        if (this.fatalOperation !== undefined || this.destroying) {
+          return;
+        }
         const message = 'Outbound socket protect failed';
         publishVpnState(this.context.getApplicationContext(), VpnState.ERROR, message);
         this.handleFatalError(message);
@@ -176,9 +179,10 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
       generation,
       new VpnSocketProtector(connection),
       (message: string): void => {
-        hilog.error(DOMAIN, TAG, '%{public}s', message);
-        publishVpnState(this.context.getApplicationContext(), VpnState.ERROR, message);
-        this.handleFatalError(message);
+        // HarmonyOS may emit transient LocalSocketServer errors while short-lived
+        // protect clients disconnect. A real protect failure is reported by the
+        // native client through CoreEventType.PROTECT_FAILURE.
+        hilog.warn(DOMAIN, TAG, 'protect channel diagnostic: %{public}s', message);
       }
     );
     try {
@@ -369,8 +373,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
       generation,
       new VpnSocketProtector(this.vpnConnection),
       (message: string): void => {
-        publishVpnState(this.context.getApplicationContext(), VpnState.ERROR, message);
-        this.handleFatalError(message);
+        hilog.warn(DOMAIN, TAG, 'protect channel diagnostic during recovery: %{public}s', message);
       }
     );
     await channel.start();

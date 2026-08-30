@@ -142,11 +142,17 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 		return runtime.setFailure(coreConfigInvalid, err)
 	}
 	configureHarmonyTun(cfg, options.tunFD, options.mtu)
+	if runtime.protect != nil {
+		runtime.protect.close()
+	}
 	runtime.protect = protect
-	dialer.DefaultSocketHook = runtime.protectSocket
+	dialer.DefaultSocketHook = func(_ string, _ string, connection syscall.RawConn) error {
+		return protectSocket(protect, connection)
+	}
 	if err = applyConfigAndVerifyTun(cfg); err != nil {
 		dialer.DefaultSocketHook = nil
 		executor.Shutdown()
+		protect.close()
 		runtime.protect = nil
 		return runtime.setFailure(coreStartFailed, err)
 	}
@@ -245,17 +251,17 @@ func configureHarmonyTun(cfg *config.Config, tunFD int, mtu int) {
 	cfg.General.IPv6 = false
 }
 
-func (runtime *coreRuntime) protectSocket(_ string, _ string, connection syscall.RawConn) error {
+func protectSocket(protect *protectClient, connection syscall.RawConn) error {
 	var fd int = -1
 	if err := connection.Control(func(value uintptr) {
 		fd = int(value)
 	}); err != nil {
 		return fmt.Errorf("read outbound socket: %w", err)
 	}
-	if runtime.protect == nil {
+	if protect == nil {
 		return errors.New("protect channel is unavailable")
 	}
-	if err := runtime.protect.protect(fd); err != nil {
+	if err := protect.protect(fd); err != nil {
 		emitCoreEvent(coreEventProtectFailure, coreRunning, coreProtectFailed, "outbound socket protect failed")
 		return fmt.Errorf("protect outbound socket: %w", err)
 	}
@@ -280,7 +286,11 @@ func (runtime *coreRuntime) stop() (code coreErrorCode) {
 	}()
 	dialer.DefaultSocketHook = nil
 	executor.Shutdown()
+	protect := runtime.protect
 	runtime.protect = nil
+	if protect != nil {
+		protect.close()
+	}
 	runtime.lastError = ""
 	runtime.state = coreStopped
 	emitCoreEvent(coreEventLifecycle, runtime.state, coreOK, "core is stopped")

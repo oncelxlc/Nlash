@@ -65,5 +65,13 @@ export default function protectChannelServerTest() {
       expect(ack.ok).assertFalse();
       expect(ack.errorCode).assertEqual(ProtectFailureCode.PROTECT_FAILED);
     });
+
+    it('boundsTheDuplicateRequestHistory', 0, async () => {
+      const coordinator = new ProtectRequestCoordinator('generation-1', new RecordingProtector(), 2);
+      expect((await coordinator.handle(request(1))).ok).assertTrue();
+      expect((await coordinator.handle(request(2))).ok).assertTrue();
+      expect((await coordinator.handle(request(3))).ok).assertTrue();
+      expect((await coordinator.handle(request(1))).ok).assertTrue();
+    });
   });
 }

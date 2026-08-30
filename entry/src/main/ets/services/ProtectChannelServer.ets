@@ -21,16 +21,22 @@ export interface SocketProtector {
   protect(socketFd: number): Promise<void>;
 }
 
-export type ProtectChannelErrorListener = (message: string) => void;
+export type ProtectChannelDiagnosticListener = (message: string) => void;
+
+const DEFAULT_REQUEST_HISTORY_LIMIT = 4096;
 
 export class ProtectRequestCoordinator {
   private readonly generation: string;
   private readonly protector: SocketProtector;
+  private readonly requestHistoryLimit: number;
   private readonly seenRequestIds: Set<number> = new Set<number>();
+  private readonly requestHistory: number[] = [];
 
-  constructor(generation: string, protector: SocketProtector) {
+  constructor(generation: string, protector: SocketProtector,
+    requestHistoryLimit: number = DEFAULT_REQUEST_HISTORY_LIMIT) {
     this.generation = generation;
     this.protector = protector;
+    this.requestHistoryLimit = Math.max(1, requestHistoryLimit);
   }
 
   async handle(message: ProtectWireMessage): Promise<ProtectAck> {
@@ -51,6 +57,13 @@ export class ProtectRequestCoordinator {
     }
 
     this.seenRequestIds.add(request.requestId);
+    this.requestHistory.push(request.requestId);
+    if (this.requestHistory.length > this.requestHistoryLimit) {
+      const expiredRequestId = this.requestHistory.shift();
+      if (expiredRequestId !== undefined) {
+        this.seenRequestIds.delete(expiredRequestId);
+      }
+    }
     try {
       await this.protector.protect(request.fd);
       return createProtectAck(request, true);
@@ -64,35 +77,36 @@ export class ProtectRequestCoordinator {
 export class ProtectChannelServer {
   private readonly address: string;
   private readonly coordinator: ProtectRequestCoordinator;
-  private readonly errorListener: ProtectChannelErrorListener;
+  private readonly diagnosticListener: ProtectChannelDiagnosticListener;
   private server: socket.LocalSocketServer | undefined;
-  private readonly clients: Map<number, socket.LocalSocketConnection> = new Map<number, socket.LocalSocketConnection>();
-  private readonly operations: Map<number, Promise<void>> = new Map<number, Promise<void>>();
+  private readonly clients: Set<socket.LocalSocketConnection> = new Set<socket.LocalSocketConnection>();
+  private readonly operations: Map<socket.LocalSocketConnection, Promise<void>> =
+    new Map<socket.LocalSocketConnection, Promise<void>>();
 
   private readonly connectHandler = (connection: socket.LocalSocketConnection): void => {
     const decoder = new ProtectFrameDecoder();
-    this.clients.set(connection.clientId, connection);
+    this.clients.add(connection);
     connection.on('message', (info: socket.LocalSocketMessageInfo): void => {
       this.enqueueMessage(connection, decoder, info.message);
     });
     connection.on('close', (): void => {
-      this.removeClient(connection.clientId);
+      this.removeClient(connection);
     });
     connection.on('error', (error: BusinessError): void => {
-      this.errorListener(`Protect client error code=${error.code ?? 'unknown'}`);
-      this.removeClient(connection.clientId);
+      this.diagnosticListener(`Protect client error code=${error.code ?? 'unknown'}`);
+      this.removeClient(connection);
     });
   };
 
   private readonly serverErrorHandler = (error: BusinessError): void => {
-    this.errorListener(`Protect server error code=${error.code ?? 'unknown'}`);
+    this.diagnosticListener(`Protect server error code=${error.code ?? 'unknown'}`);
   };
 
   constructor(address: string, generation: string, protector: SocketProtector,
-    errorListener: ProtectChannelErrorListener) {
+    diagnosticListener: ProtectChannelDiagnosticListener) {
     this.address = address;
     this.coordinator = new ProtectRequestCoordinator(generation, protector);
-    this.errorListener = errorListener;
+    this.diagnosticListener = diagnosticListener;
   }
 
   async start(): Promise<void> {
@@ -115,7 +129,7 @@ export class ProtectChannelServer {
   }
 
   async stop(): Promise<void> {
-    const clients = Array.from(this.clients.values());
+    const clients = Array.from(this.clients);
     this.clients.clear();
     this.operations.clear();
     for (const client of clients) {
@@ -142,20 +156,20 @@ export class ProtectChannelServer {
 
   private enqueueMessage(connection: socket.LocalSocketConnection, decoder: ProtectFrameDecoder,
     data: ArrayBuffer): void {
-    const previous = this.operations.get(connection.clientId) ?? Promise.resolve();
+    const previous = this.operations.get(connection) ?? Promise.resolve();
     const operation = previous.then(async (): Promise<void> => {
       await this.handleMessage(connection, decoder, data);
     });
-    this.operations.set(connection.clientId, operation);
+    this.operations.set(connection, operation);
     operation.then((): void => {
-      if (this.operations.get(connection.clientId) === operation) {
-        this.operations.delete(connection.clientId);
+      if (this.operations.get(connection) === operation) {
+        this.operations.delete(connection);
       }
     }, (error: Error): void => {
-      if (this.operations.get(connection.clientId) === operation) {
-        this.operations.delete(connection.clientId);
+      if (this.operations.get(connection) === operation) {
+        this.operations.delete(connection);
       }
-      this.errorListener(`Protect message rejected: ${error.message}`);
+      this.diagnosticListener(`Protect message rejected: ${error.message}`);
       connection.close().catch((): void => {});
     });
   }
@@ -174,8 +188,8 @@ export class ProtectChannelServer {
     }
   }
 
-  private removeClient(clientId: number): void {
-    this.clients.delete(clientId);
-    this.operations.delete(clientId);
+  private removeClient(connection: socket.LocalSocketConnection): void {
+    this.clients.delete(connection);
+    this.operations.delete(connection);
   }
 }

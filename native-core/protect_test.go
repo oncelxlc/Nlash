@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -62,6 +63,36 @@ func TestProtectClientAcceptsMatchingACK(t *testing.T) {
 	})
 	if err := client.protect(42); err != nil {
 		t.Fatalf("protect failed: %v", err)
+	}
+}
+
+func TestProtectClientReusesConnection(t *testing.T) {
+	var dialCount atomic.Int32
+	client := &protectClient{
+		generation: "5e4f3ec5-37b9-4ed5-9b0e-d6746165f2c4",
+		dial: func() (net.Conn, error) {
+			dialCount.Add(1)
+			clientConnection, serverConnection := net.Pipe()
+			go func() {
+				defer serverConnection.Close()
+				for index := 0; index < 2; index++ {
+					request := readProtectRequest(t, serverConnection)
+					writeProtectACK(t, serverConnection, request, true, "")
+				}
+			}()
+			return clientConnection, nil
+		},
+	}
+	defer client.close()
+
+	if err := client.protect(42); err != nil {
+		t.Fatalf("first protect failed: %v", err)
+	}
+	if err := client.protect(43); err != nil {
+		t.Fatalf("second protect failed: %v", err)
+	}
+	if dialCount.Load() != 1 {
+		t.Fatalf("unexpected protect connection count: %d", dialCount.Load())
 	}
 }
 
