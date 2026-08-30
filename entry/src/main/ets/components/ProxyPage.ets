@@ -1,13 +1,13 @@
 import {
-  failPendingGroupDelay,
-  mergeGroupDelay,
+  ProxyDelayOperationSnapshot,
   ProxyGroupSnapshot,
   ProxyNodeSnapshot,
   proxyDelayLabel,
   proxyNodeRenderKey,
   ProxySelection,
   ProxySnapshotSource,
-  RuntimeStoreSnapshot
+  RuntimeStoreSnapshot,
+  visibleProxyGroups
 } from '../models/RuntimeModels';
 import { AppSettings, SettingsStoreSnapshot } from '../models/SettingsModels';
 import { feedbackService } from '../services/FeedbackService';
@@ -21,13 +21,12 @@ import { LengthMetrics, LengthUnit } from '@kit.ArkUI';
 export struct ProxyPage {
   @Prop forceExpanded: boolean = false;
   @State coreAvailable: boolean = false;
-  @State refreshing: boolean = false;
   @State previewLoading: boolean = false;
   @State groups: ProxyGroupSnapshot[] = [];
   @State selections: ProxySelection[] = [];
   @State source: ProxySnapshotSource = ProxySnapshotSource.NONE;
   @State selectedGroup: string = '';
-  @State busyKey: string = '';
+  @State delayOperations: ProxyDelayOperationSnapshot[] = [];
   @State settings: AppSettings = settingsStore.getSnapshot().settings;
   @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
   private unsubscribeRuntime: (() => void) | undefined = undefined;
@@ -36,16 +35,12 @@ export struct ProxyPage {
   aboutToAppear(): void {
     this.unsubscribeRuntime = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
       this.coreAvailable = snapshot.coreAvailable;
-      this.refreshing = snapshot.refreshing;
       this.previewLoading = snapshot.previewLoading;
-      this.groups = snapshot.proxies.filter((group: ProxyGroupSnapshot): boolean => !group.hidden);
+      this.groups = visibleProxyGroups(snapshot.proxies, snapshot.proxyMode);
       this.selections = snapshot.proxySelections;
       this.source = snapshot.proxySource;
-      this.busyKey = snapshot.busyKey;
-      if (this.groups.length > 0 && !this.groups.some((group: ProxyGroupSnapshot): boolean =>
-        group.name === this.selectedGroup)) {
-        this.selectedGroup = this.groups[0].name;
-      }
+      this.selectedGroup = snapshot.selectedProxyGroup;
+      this.delayOperations = snapshot.delayOperations;
     });
     this.unsubscribeSettings = settingsStore.subscribe((snapshot: SettingsStoreSnapshot): void => {
       this.settings = snapshot.settings;
@@ -78,15 +73,26 @@ export struct ProxyPage {
     if (this.coreAvailable) {
       return group?.selected === node.name;
     }
-    return this.preselectedNode(group?.name ?? '') === node.name;
+    const preselected = this.preselectedNode(group?.name ?? '');
+    return (preselected.length > 0 ? preselected : (group?.selected ?? '')) === node.name;
   }
 
   private isNodeTesting(node: ProxyNodeSnapshot): boolean {
     const groupName = this.currentGroup()?.name ?? '';
-    if (this.busyKey === `delay-group:${groupName}`) {
-      return !node.tested;
-    }
-    return this.busyKey === `delay:${groupName}:${node.name}` && !node.tested;
+    return this.delayOperations.some((operation: ProxyDelayOperationSnapshot): boolean =>
+      operation.group === groupName && operation.pendingProxies.includes(node.name));
+  }
+
+  private isDirectNodeTesting(node: ProxyNodeSnapshot): boolean {
+    const groupName = this.currentGroup()?.name ?? '';
+    return this.delayOperations.some((operation: ProxyDelayOperationSnapshot): boolean =>
+      operation.group === groupName && operation.proxy === node.name);
+  }
+
+  private isGroupTesting(): boolean {
+    const groupName = this.currentGroup()?.name ?? '';
+    return this.delayOperations.some((operation: ProxyDelayOperationSnapshot): boolean =>
+      operation.group === groupName && operation.proxy.length === 0);
   }
 
   private delayColor(node: ProxyNodeSnapshot, testing: boolean): ResourceColor {
@@ -112,20 +118,8 @@ export struct ProxyPage {
     const group = this.currentGroup();
     if (group !== undefined) {
       try {
-        const delay = await runtimeStore.testDelay(group.name, node.name, this.settings.delayTestUrl);
-        this.groups = mergeGroupDelay(this.groups, group.name, [{
-          proxy: node.name,
-          delay: delay,
-          alive: delay > 0
-        }]);
-        runtimeStore.commitDelayResult(group.name, node.name, delay);
+        await runtimeStore.testDelay(group.name, node.name, this.settings.delayTestUrl);
       } catch (error) {
-        this.groups = mergeGroupDelay(this.groups, group.name, [{
-          proxy: node.name,
-          delay: -1,
-          alive: false
-        }]);
-        runtimeStore.commitDelayResult(group.name, node.name, -1);
         feedbackService.error(this.errorMessage(error));
       }
     }
@@ -138,11 +132,15 @@ export struct ProxyPage {
     }
     try {
       await runtimeStore.testGroupDelay(group.name, this.settings.delayTestUrl);
-      this.groups = failPendingGroupDelay(this.groups, group.name);
-      runtimeStore.completePendingDelayResults(group.name);
     } catch (error) {
-      this.groups = failPendingGroupDelay(this.groups, group.name);
-      runtimeStore.completePendingDelayResults(group.name);
+      feedbackService.error(this.errorMessage(error));
+    }
+  }
+
+  private async selectGroup(group: string): Promise<void> {
+    try {
+      await runtimeStore.selectProxyGroup(group);
+    } catch (error) {
       feedbackService.error(this.errorMessage(error));
     }
   }
@@ -182,7 +180,7 @@ export struct ProxyPage {
             .accessibilityText(`测试 ${node.name} 延迟`)
             .onTouch((event: TouchEvent): void => {
               event.stopPropagation();
-              if (event.type === TouchType.Up && this.busyKey.length === 0) {
+              if (event.type === TouchType.Up && !this.isDirectNodeTesting(node)) {
                 this.testNode(node);
               }
             })
@@ -247,7 +245,7 @@ export struct ProxyPage {
                   .fontColor(this.selectedGroup === group.name ? Color.White : $r('app.color.content_primary'))
                   .backgroundColor(this.selectedGroup === group.name ?
                     $r('app.color.nav_selected') : $r('app.color.card_background'))
-                  .onClick((): void => { this.selectedGroup = group.name; })
+                  .onClick((): void => { this.selectGroup(group.name); })
               }, (group: ProxyGroupSnapshot): string => group.name)
             }
           }
@@ -299,14 +297,14 @@ export struct ProxyPage {
 
   @Builder
   private floatingDelayButton() {
-    Button(this.busyKey.length > 0 ? '测速中…' : '⚡ 测试全部')
+    Button(this.isGroupTesting() ? '测速中…' : '⚡ 测试全部')
       .type(ButtonType.Normal)
       .borderRadius(BUTTON_RADIUS)
       .height(52)
       .padding({ left: 20, right: 20 })
       .backgroundColor($r('app.color.nav_selected'))
       .fontColor(Color.White)
-      .enabled(this.busyKey.length === 0 && !this.refreshing && !this.previewLoading && this.currentGroup() !== undefined)
+      .enabled(!this.isGroupTesting() && !this.previewLoading && this.currentGroup() !== undefined)
       .accessibilityText('测试当前代理组延迟')
       .margin({ right: this.metrics.pagePadding, bottom: this.metrics.pagePadding })
       .zIndex(2)

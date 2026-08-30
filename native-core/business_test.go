@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/metacubex/mihomo/config"
 	C "github.com/metacubex/mihomo/constant"
@@ -75,9 +76,15 @@ rules:
 	if err := json.Unmarshal(data, &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Source != "config" || len(snapshot.Groups) < 2 || snapshot.Groups[0].Name != "First" ||
+	if snapshot.Source != "config" || snapshot.Mode != "rule" || len(snapshot.Groups) < 2 ||
+		snapshot.Groups[0].Name != "First" || snapshot.Groups[1].Name != "Second" ||
 		len(snapshot.Groups[0].Nodes) != 2 || snapshot.Groups[0].Nodes[0].Tested {
 		t.Fatalf("unexpected preview snapshot: %+v", snapshot)
+	}
+	for index, group := range snapshot.Groups {
+		if group.Name == "GLOBAL" && index < 2 {
+			t.Fatalf("generated GLOBAL group must follow configured groups: %+v", snapshot.Groups)
+		}
 	}
 }
 
@@ -210,6 +217,47 @@ func TestExecuteCommandRejectsUnsupportedCommand(t *testing.T) {
 	response := decodeTestCommandResponse(t, runtime.executeCommand(`{"type":"notSupported"}`))
 	if response.OK || response.Code != "UNSUPPORTED" {
 		t.Fatalf("unexpected unsupported response: %+v", response)
+	}
+}
+
+func TestBusinessCommandsShareRuntimeReadLock(t *testing.T) {
+	runtime := &coreRuntime{state: coreStopped}
+	runtime.mu.RLock()
+	done := make(chan string, 1)
+	go func() {
+		done <- runtime.executeCommand(`{"type":"dashboardSnapshot"}`)
+	}()
+	select {
+	case response := <-done:
+		if decoded := decodeTestCommandResponse(t, response); decoded.Code != "CORE_NOT_RUNNING" {
+			t.Fatalf("unexpected concurrent response: %+v", decoded)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("business command was serialized behind another reader")
+	}
+	runtime.mu.RUnlock()
+}
+
+func TestLifecycleCommandsRemainExclusive(t *testing.T) {
+	runtime := &coreRuntime{state: coreStopped}
+	runtime.mu.RLock()
+	done := make(chan coreErrorCode, 1)
+	go func() {
+		done <- runtime.stop()
+	}()
+	select {
+	case <-done:
+		t.Fatal("lifecycle command must wait for active business readers")
+	case <-time.After(50 * time.Millisecond):
+	}
+	runtime.mu.RUnlock()
+	select {
+	case code := <-done:
+		if code != coreOK {
+			t.Fatalf("unexpected stop code: %v", code)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("lifecycle command did not resume after readers completed")
 	}
 }
 

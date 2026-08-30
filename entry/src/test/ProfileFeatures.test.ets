@@ -9,9 +9,12 @@ import {
 } from '../main/ets/models/ProfileModels';
 import {
   parseStoredProxySelections,
+  parseStoredProxyGroups,
   selectStoredProfile,
+  selectStoredProxyGroup,
   StoredProxySelection
 } from '../main/ets/repository/PreferenceRepository';
+import { RuntimeMode } from '../main/ets/models/RuntimeModels';
 import {
   countryCodeFlag,
   isValidIpv4,
@@ -42,6 +45,22 @@ export default function profileFeaturesTest() {
       expect(selectStoredProfile(records, 'one').length).assertEqual(1);
       expect(selectStoredProfile(records, 'one')[0].proxy).assertEqual('A');
       expect(selectStoredProfile(records, 'two')[0].proxy).assertEqual('B');
+    });
+
+    it('isolatesProxySelectionsAndGroupsByMode', 0, () => {
+      const records: StoredProxySelection[] = parseStoredProxySelections(
+        '[{"profileId":"one","group":"Auto","proxy":"Legacy"},' +
+        '{"profileId":"one","mode":"rule","group":"Auto","proxy":"Rule"},' +
+        '{"profileId":"one","mode":"global","group":"Auto","proxy":"Global"}]');
+      expect(selectStoredProfile(records, 'one', RuntimeMode.RULE)[0].proxy).assertEqual('Rule');
+      expect(selectStoredProfile(records, 'one', RuntimeMode.GLOBAL)[0].proxy).assertEqual('Global');
+      expect(selectStoredProfile(records, 'one', RuntimeMode.DIRECT).length).assertEqual(0);
+      const groups = parseStoredProxyGroups(
+        '[{"profileId":"one","mode":"rule","group":"Rule Group"},' +
+        '{"profileId":"one","mode":"global","group":"GLOBAL"}]');
+      expect(selectStoredProxyGroup(groups, 'one', RuntimeMode.RULE)).assertEqual('Rule Group');
+      expect(selectStoredProxyGroup(groups, 'one', RuntimeMode.GLOBAL)).assertEqual('GLOBAL');
+      expect(selectStoredProxyGroup(groups, 'one', RuntimeMode.DIRECT)).assertEqual('');
     });
 
     it('validatesPublicIpv4AndGeoIp', 0, () => {

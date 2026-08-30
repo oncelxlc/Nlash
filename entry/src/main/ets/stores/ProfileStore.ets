@@ -224,7 +224,7 @@ class ProfileStore {
         await preferenceRepository.clearActiveProfile();
         this.activeProfileId = '';
       }
-      await preferenceRepository.removeProxySelections(id);
+      await preferenceRepository.removeProxyState(id);
       this.autoUpdateRetryAt.delete(id);
       await this.reload();
       if (this.activeProfileId.length === 0 && this.profiles.length > 0) {

@@ -55,26 +55,27 @@ type coreProxyOptions struct {
 }
 
 type coreRuntime struct {
-	mu           sync.Mutex
-	state        coreRuntimeState
-	lastError    string
-	protect      *protectClient
-	configPath   string
-	workDir      string
-	proxyEnabled bool
+	mu              sync.RWMutex
+	state           coreRuntimeState
+	lastError       string
+	protect         *protectClient
+	configPath      string
+	workDir         string
+	proxyEnabled    bool
+	proxyGroupOrder []string
 }
 
 var runtimeInstance = &coreRuntime{state: coreStopped}
 
 func (runtime *coreRuntime) getState() coreRuntimeState {
-	runtime.mu.Lock()
-	defer runtime.mu.Unlock()
+	runtime.mu.RLock()
+	defer runtime.mu.RUnlock()
 	return runtime.state
 }
 
 func (runtime *coreRuntime) getLastError() string {
-	runtime.mu.Lock()
-	defer runtime.mu.Unlock()
+	runtime.mu.RLock()
+	defer runtime.mu.RUnlock()
 	return runtime.lastError
 }
 
@@ -139,7 +140,7 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	}()
 	C.SetHomeDir(options.workDir)
 	C.SetConfig(options.configPath)
-	cfg, err := parseConfigWithPath(options.configPath)
+	cfg, proxyGroupOrder, err := parseRuntimeConfigWithPath(options.configPath)
 	if err != nil {
 		return runtime.setFailure(coreConfigInvalid, err)
 	}
@@ -153,6 +154,7 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	executor.ApplyConfig(cfg, true)
 	runtime.configPath = options.configPath
 	runtime.workDir = options.workDir
+	runtime.proxyGroupOrder = proxyGroupOrder
 	runtime.state = coreRunning
 	emitCoreEvent(coreEventLifecycle, runtime.state, coreOK, "core is running")
 	return coreOK
@@ -235,8 +237,8 @@ func (runtime *coreRuntime) disableProxy() (code coreErrorCode) {
 }
 
 func (runtime *coreRuntime) isProxyEnabled() bool {
-	runtime.mu.Lock()
-	defer runtime.mu.Unlock()
+	runtime.mu.RLock()
+	defer runtime.mu.RUnlock()
 	return runtime.proxyEnabled
 }
 
@@ -294,16 +296,40 @@ const (
 )
 
 func parseConfigWithPath(configPath string) (*config.Config, error) {
+	cfg, _, err := parseRuntimeConfigWithPath(configPath)
+	return cfg, err
+}
+
+func parseRuntimeConfigWithPath(configPath string) (*config.Config, []string, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	raw, err := config.UnmarshalRawConfig(data)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	proxyGroupOrder := rawProxyGroupOrder(raw)
 	applyHarmonyGeoMirrors(raw)
-	return config.ParseRawConfig(raw)
+	cfg, err := config.ParseRawConfig(raw)
+	if err != nil {
+		return nil, nil, err
+	}
+	return cfg, proxyGroupOrder, nil
+}
+
+func rawProxyGroupOrder(raw *config.RawConfig) []string {
+	order := make([]string, 0, len(raw.ProxyGroup))
+	seen := make(map[string]bool)
+	for _, mapping := range raw.ProxyGroup {
+		name, ok := mapping["name"].(string)
+		name = strings.TrimSpace(name)
+		if ok && name != "" && !seen[name] {
+			seen[name] = true
+			order = append(order, name)
+		}
+	}
+	return order
 }
 
 func configHomeDir(configPath string) string {
@@ -406,6 +432,7 @@ func (runtime *coreRuntime) stop() (code coreErrorCode) {
 	runtime.proxyEnabled = false
 	runtime.configPath = ""
 	runtime.workDir = ""
+	runtime.proxyGroupOrder = nil
 	runtime.lastError = ""
 	runtime.state = coreStopped
 	emitCoreEvent(coreEventLifecycle, runtime.state, coreOK, "core is stopped")

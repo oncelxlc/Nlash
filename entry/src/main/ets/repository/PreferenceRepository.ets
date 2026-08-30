@@ -1,6 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
-import { ProxySelection } from '../models/RuntimeModels';
+import { ProxySelection, RuntimeMode } from '../models/RuntimeModels';
 import {
   AppSettings,
   AppThemeMode,
@@ -16,12 +16,25 @@ const VPN_MTU = 'vpnMtu';
 const DELAY_TEST_URL = 'delayTestUrl';
 const REFRESH_INTERVAL_SECONDS = 'refreshIntervalSeconds';
 const PROXY_SELECTIONS = 'proxySelections';
-const MAX_PROXY_SELECTIONS = 256;
+const PROXY_GROUPS = 'proxyGroups';
+const MAX_PROXY_SELECTIONS = 768;
+const MAX_PROXY_GROUPS = 128;
 
 export interface StoredProxySelection {
   profileId: string;
+  mode?: RuntimeMode;
   group: string;
   proxy: string;
+}
+
+export interface StoredProxyGroup {
+  profileId: string;
+  mode: RuntimeMode;
+  group: string;
+}
+
+function isRuntimeMode(value: Object | undefined): boolean {
+  return value === RuntimeMode.RULE || value === RuntimeMode.GLOBAL || value === RuntimeMode.DIRECT;
 }
 
 export function parseStoredProxySelections(value: string): StoredProxySelection[] {
@@ -36,13 +49,54 @@ export function parseStoredProxySelections(value: string): StoredProxySelection[
   }
   return records.filter((record: StoredProxySelection): boolean => record !== undefined &&
     typeof record.profileId === 'string' && record.profileId.length > 0 &&
+    (record.mode === undefined || isRuntimeMode(record.mode)) &&
     typeof record.group === 'string' && record.group.length > 0 &&
     typeof record.proxy === 'string' && record.proxy.length > 0);
 }
 
-export function selectStoredProfile(records: StoredProxySelection[], profileId: string): ProxySelection[] {
-  return records.filter((record: StoredProxySelection): boolean => record.profileId === profileId)
-    .map((record: StoredProxySelection): ProxySelection => ({ group: record.group, proxy: record.proxy }));
+export function selectStoredProfile(records: StoredProxySelection[], profileId: string,
+  mode: RuntimeMode = RuntimeMode.RULE): ProxySelection[] {
+  const selected = new Map<string, string>();
+  records.filter((record: StoredProxySelection): boolean =>
+    record.profileId === profileId && record.mode === mode)
+    .forEach((record: StoredProxySelection): void => {
+      selected.set(record.group, record.proxy);
+    });
+  if (mode === RuntimeMode.RULE) {
+    records.filter((record: StoredProxySelection): boolean =>
+      record.profileId === profileId && record.mode === undefined)
+      .forEach((record: StoredProxySelection): void => {
+        if (!selected.has(record.group)) {
+          selected.set(record.group, record.proxy);
+        }
+      });
+  }
+  const result: ProxySelection[] = [];
+  selected.forEach((proxy: string, group: string): void => {
+    result.push({ group: group, proxy: proxy });
+  });
+  return result;
+}
+
+export function parseStoredProxyGroups(value: string): StoredProxyGroup[] {
+  let records: StoredProxyGroup[];
+  try {
+    records = JSON.parse(value) as StoredProxyGroup[];
+  } catch (error) {
+    return [];
+  }
+  if (!Array.isArray(records)) {
+    return [];
+  }
+  return records.filter((record: StoredProxyGroup): boolean => record !== undefined &&
+    typeof record.profileId === 'string' && record.profileId.length > 0 && isRuntimeMode(record.mode) &&
+    typeof record.group === 'string' && record.group.length > 0);
+}
+
+export function selectStoredProxyGroup(records: StoredProxyGroup[], profileId: string,
+  mode: RuntimeMode): string {
+  return records.find((record: StoredProxyGroup): boolean =>
+    record.profileId === profileId && record.mode === mode)?.group ?? '';
 }
 
 class PreferenceRepository {
@@ -114,13 +168,13 @@ class PreferenceRepository {
     await store.flush();
   }
 
-  async getProxySelections(profileId: string): Promise<ProxySelection[]> {
+  async getProxySelections(profileId: string, mode: RuntimeMode): Promise<ProxySelection[]> {
     const records = await this.readProxySelectionRecords();
-    return selectStoredProfile(records, profileId);
+    return selectStoredProfile(records, profileId, mode);
   }
 
-  async setProxySelection(profileId: string, group: string, proxy: string): Promise<void> {
-    const current = await this.getProxySelections(profileId);
+  async setProxySelection(profileId: string, mode: RuntimeMode, group: string, proxy: string): Promise<void> {
+    const current = await this.getProxySelections(profileId, mode);
     const replaced: ProxySelection[] = [];
     let updated = false;
     current.forEach((selection: ProxySelection): void => {
@@ -136,17 +190,19 @@ class PreferenceRepository {
     if (!updated) {
       replaced.push({ group: group, proxy: proxy });
     }
-    await this.replaceProxySelections(profileId, replaced);
+    await this.replaceProxySelections(profileId, mode, replaced);
   }
 
-  async replaceProxySelections(profileId: string, selections: ProxySelection[]): Promise<void> {
-    const records = (await this.readProxySelectionRecords()).filter(
-      (record: StoredProxySelection): boolean => record.profileId !== profileId);
+  async replaceProxySelections(profileId: string, mode: RuntimeMode, selections: ProxySelection[]): Promise<void> {
+    const records = (await this.readProxySelectionRecords()).filter((record: StoredProxySelection): boolean =>
+      record.profileId !== profileId || (record.mode !== mode &&
+        !(mode === RuntimeMode.RULE && record.mode === undefined)));
     selections.slice(0, MAX_PROXY_SELECTIONS).forEach((selection: ProxySelection): void => {
       if (this.isSelectionValue(profileId) && this.isSelectionValue(selection.group) &&
         this.isSelectionValue(selection.proxy)) {
         records.push({
           profileId: profileId,
+          mode: mode,
           group: selection.group,
           proxy: selection.proxy
         });
@@ -158,7 +214,39 @@ class PreferenceRepository {
   }
 
   async removeProxySelections(profileId: string): Promise<void> {
-    await this.replaceProxySelections(profileId, []);
+    const records = (await this.readProxySelectionRecords()).filter(
+      (record: StoredProxySelection): boolean => record.profileId !== profileId);
+    const store = this.requireStore();
+    await store.put(PROXY_SELECTIONS, JSON.stringify(records.slice(-MAX_PROXY_SELECTIONS)));
+    await store.flush();
+  }
+
+  async getProxyGroup(profileId: string, mode: RuntimeMode): Promise<string> {
+    return selectStoredProxyGroup(await this.readProxyGroupRecords(), profileId, mode);
+  }
+
+  async setProxyGroup(profileId: string, mode: RuntimeMode, group: string): Promise<void> {
+    const records = (await this.readProxyGroupRecords()).filter((record: StoredProxyGroup): boolean =>
+      record.profileId !== profileId || record.mode !== mode);
+    if (this.isSelectionValue(profileId) && this.isSelectionValue(group)) {
+      records.push({ profileId: profileId, mode: mode, group: group });
+    }
+    const store = this.requireStore();
+    await store.put(PROXY_GROUPS, JSON.stringify(records.slice(-MAX_PROXY_GROUPS)));
+    await store.flush();
+  }
+
+  async removeProxyGroups(profileId: string): Promise<void> {
+    const records = (await this.readProxyGroupRecords()).filter(
+      (record: StoredProxyGroup): boolean => record.profileId !== profileId);
+    const store = this.requireStore();
+    await store.put(PROXY_GROUPS, JSON.stringify(records.slice(-MAX_PROXY_GROUPS)));
+    await store.flush();
+  }
+
+  async removeProxyState(profileId: string): Promise<void> {
+    await this.removeProxySelections(profileId);
+    await this.removeProxyGroups(profileId);
   }
 
   private async initializeInternal(context: common.Context): Promise<void> {
@@ -194,6 +282,15 @@ class PreferenceRepository {
     return parseStoredProxySelections(value).filter((record: StoredProxySelection): boolean =>
       this.isSelectionValue(record.profileId) && this.isSelectionValue(record.group) &&
       this.isSelectionValue(record.proxy));
+  }
+
+  private async readProxyGroupRecords(): Promise<StoredProxyGroup[]> {
+    const value = await this.requireStore().get(PROXY_GROUPS, '[]');
+    if (typeof value !== 'string') {
+      return [];
+    }
+    return parseStoredProxyGroups(value).filter((record: StoredProxyGroup): boolean =>
+      this.isSelectionValue(record.profileId) && this.isSelectionValue(record.group));
   }
 
   private isSelectionValue(value: string): boolean {

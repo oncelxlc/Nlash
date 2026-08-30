@@ -7,9 +7,11 @@ import {
   ConnectionSnapshot,
   ConnectionsSnapshot,
   DashboardSnapshot,
-  failPendingGroupDelay,
+  DEFAULT_RUNTIME_MODE,
   GroupDelayResult,
   mergeGroupDelay,
+  ProxyDelayResult,
+  ProxyDelayOperationRegistry,
   ProxyGroupSnapshot,
   ProxySelection,
   ProxySnapshot,
@@ -17,7 +19,7 @@ import {
   preserveTestedProxyDelays,
   pruneProxySelections,
   RequestRecord,
-  resetGroupDelay,
+  resolveSelectedProxyGroup,
   RuntimeCommandResponse,
   RuntimeMode,
   RuntimeRequestMerger,
@@ -58,6 +60,17 @@ interface GroupDelayCommandPayload {
 interface CloseConnectionCommandPayload { id: string; }
 interface SetModeCommandPayload { mode: RuntimeMode; }
 
+interface DelayOperationContext {
+  operationId: string;
+  group: string;
+  proxy: string;
+  generation: number;
+  profileSignature: string;
+  profileId: string;
+  configPath: string;
+  runtime: boolean;
+}
+
 class RuntimeStore {
   private coreAvailable: boolean = false;
   private refreshing: boolean = false;
@@ -65,7 +78,9 @@ class RuntimeStore {
   private dashboard: DashboardSnapshot | undefined;
   private proxies: ProxyGroupSnapshot[] = [];
   private proxySource: ProxySnapshotSource = ProxySnapshotSource.NONE;
+  private proxyMode: RuntimeMode = DEFAULT_RUNTIME_MODE;
   private proxySelections: ProxySelection[] = [];
+  private selectedProxyGroup: string = '';
   private trafficHistory: TrafficSample[] = [];
   private connections: ConnectionSnapshot[] = [];
   private requests: RequestRecord[] = [];
@@ -82,14 +97,13 @@ class RuntimeStore {
   private configPath: string = '';
   private profileSignature: string = '';
   private previewGeneration: number = 0;
-  private activeDelayOperationId: string = '';
-  private activeDelayGroup: string = '';
-  private activeDelayGeneration: number = 0;
-  private activeDelayProfileSignature: string = '';
-  private activeDelayRuntime: boolean = false;
-  private runtimeUsesConfigIndex: boolean = false;
+  private delayRegistry: ProxyDelayOperationRegistry = new ProxyDelayOperationRegistry();
+  private delayContexts: Map<string, DelayOperationContext> = new Map<string, DelayOperationContext>();
+  private modePreferenceGeneration: number = 0;
+  private loadedModePreferenceKey: string = '';
   private foreground: boolean = true;
   private lifecycleGeneration: number = 0;
+  private runtimeSnapshotGeneration: number = 0;
 
   initialize(): void {
     if (this.lifecycleUnsubscribe !== undefined) {
@@ -110,12 +124,9 @@ class RuntimeStore {
         const wasAvailable = this.coreAvailable;
         this.coreAvailable = true;
         if (!wasAvailable) {
+          this.runtimeSnapshotGeneration += 1;
           this.trafficHistory = [];
-          this.invalidateDelayOperation();
-          if (this.isDelayBusy()) {
-            this.busyKey = '';
-          }
-          this.runtimeUsesConfigIndex = false;
+          this.invalidateDelayOperations();
           this.applyPreselectedSelections();
         }
         if (this.foreground) {
@@ -127,18 +138,12 @@ class RuntimeStore {
           return;
         }
         this.coreAvailable = false;
-        this.runtimeUsesConfigIndex = false;
-        const cancelDelay = this.activeDelayOperationId.length === 0 || this.activeDelayRuntime;
-        if (cancelDelay) {
-          this.invalidateDelayOperation();
-        }
+        this.runtimeSnapshotGeneration += 1;
+        this.invalidateDelayOperations();
         this.stopPolling();
         this.finishActiveRequests();
         this.dashboard = undefined;
         this.connections = [];
-        if (cancelDelay) {
-          this.busyKey = '';
-        }
         this.publish();
         this.loadPreview();
       }
@@ -169,7 +174,10 @@ class RuntimeStore {
       dashboard: this.dashboard,
       proxies: this.proxies.slice(),
       proxySource: this.proxySource,
+      proxyMode: this.proxyMode,
       proxySelections: this.proxySelections.slice(),
+      selectedProxyGroup: this.selectedProxyGroup,
+      delayOperations: this.delayRegistry.snapshots(),
       trafficHistory: this.trafficHistory.slice(),
       connections: this.connections.slice(),
       requests: this.requests.slice(),
@@ -201,185 +209,106 @@ class RuntimeStore {
     }
     await this.runAction(`select:${group}`, async (): Promise<void> => {
       this.requireSelectableNode(group, proxy);
-      const originalGroups = this.proxies;
-      const originalSelections = this.proxySelections;
-      const originalGroup = originalGroups.find((item: ProxyGroupSnapshot): boolean => item.name === group);
-      const originalProxy = originalGroup?.selected ?? '';
-      let runtimeChanged = false;
+      const profileId = this.profileId;
+      const mode = this.proxyMode;
       if (this.coreAvailable) {
         const payload: SelectProxyCommandPayload = { group: group, proxy: proxy };
         this.requireOK<Object>(await runtimeControlService.execute<Object>('selectProxy', payload));
-        runtimeChanged = true;
-        this.proxies = this.replaceRuntimeSelection(this.proxies, group, proxy);
-        this.proxySelections = this.replaceSelection(this.proxySelections, group, proxy);
-        this.publish();
+      } else {
+        await preferenceRepository.setProxySelection(profileId, mode, group, proxy);
       }
-      try {
-        await preferenceRepository.setProxySelection(this.profileId, group, proxy);
-      } catch (error) {
-        let runtimeRollbackFailed = false;
-        try {
-          await preferenceRepository.replaceProxySelections(this.profileId, originalSelections);
-        } catch (rollbackError) {
-          // The original in-memory selection remains authoritative for this session.
-        }
-        if (runtimeChanged && originalProxy.length > 0 && originalProxy !== proxy) {
-          try {
-            const rollbackPayload: SelectProxyCommandPayload = { group: group, proxy: originalProxy };
-            this.requireOK<Object>(await runtimeControlService.execute<Object>('selectProxy', rollbackPayload));
-          } catch (rollbackError) {
-            runtimeRollbackFailed = true;
-          }
-        }
-        this.proxies = originalGroups;
-        this.proxySelections = originalSelections;
-        this.publish();
-        throw new Error(runtimeRollbackFailed ?
-          '节点选择保存失败，且 Core 节点恢复失败' : '节点选择保存失败，已恢复原节点');
+      if (profileId !== this.profileId || mode !== this.proxyMode) {
+        return;
       }
+      this.proxies = this.replaceRuntimeSelection(this.proxies, group, proxy);
       this.proxySelections = this.replaceSelection(this.proxySelections, group, proxy);
+      this.publish();
     });
   }
 
-  commitDelayResult(group: string, proxy: string, delay: number): void {
-    this.proxies = mergeGroupDelay(this.proxies, group, [{
-      proxy: proxy,
-      delay: delay,
-      alive: delay > 0
-    }]);
+  async selectProxyGroup(group: string): Promise<void> {
+    if (this.profileId.length === 0) {
+      throw new Error('请先选择活动配置');
+    }
+    const resolved = resolveSelectedProxyGroup(this.proxies, this.proxyMode, group);
+    if (resolved !== group) {
+      throw new Error('代理分组已失效');
+    }
+    const previous = this.selectedProxyGroup;
+    const profileId = this.profileId;
+    const mode = this.proxyMode;
+    this.selectedProxyGroup = group;
     this.publish();
-  }
-
-  completePendingDelayResults(group: string): void {
-    this.proxies = failPendingGroupDelay(this.proxies, group);
-    this.publish();
+    try {
+      await preferenceRepository.setProxyGroup(profileId, mode, group);
+    } catch (error) {
+      if (profileId === this.profileId && mode === this.proxyMode && this.selectedProxyGroup === group) {
+        this.selectedProxyGroup = previous;
+        this.publish();
+      }
+      throw new Error('代理分组保存失败');
+    }
   }
 
   async testDelay(group: string, proxy: string, testUrl: string): Promise<number> {
-    if (this.busyKey.length > 0) {
-      throw new Error('已有 Core 操作正在执行');
+    this.requireProxyNode(group, proxy);
+    if (this.delayRegistry.hasDirectOperation(group, proxy)) {
+      throw new Error('该节点正在测速');
     }
+    const context = this.beginDelayOperation(group, proxy, [proxy]);
     let delay = -1;
-    const generation = this.previewGeneration;
-    const profileSignature = this.profileSignature;
-    const startedProfileId = this.profileId;
-    const startedConfigPath = this.configPath;
-    const startedInRuntime = this.coreAvailable && this.proxySource === ProxySnapshotSource.RUNTIME;
-    const actionKey = `delay:${group}:${proxy}`;
-    const operationId = util.generateRandomUUID();
-    this.activeDelayOperationId = operationId;
-    this.activeDelayGroup = group;
-    this.activeDelayGeneration = generation;
-    this.activeDelayProfileSignature = profileSignature;
-    this.activeDelayRuntime = startedInRuntime;
-    this.busyKey = actionKey;
-    this.proxies = resetGroupDelay(this.proxies, group, proxy);
-    this.publish();
     hilog.info(DELAY_LOG_DOMAIN, DELAY_LOG_TAG,
       'start operation=%{public}s mode=%{public}s generation=%{public}d',
-      operationId.substring(0, 8), startedInRuntime ? 'runtime' : 'preview', generation);
+      context.operationId.substring(0, 8), context.runtime ? 'runtime' : 'preview', context.generation);
     const progressListener: ProxyDelayProgressListener = (progress: ProxyDelayProgress): void => {
       this.applyDelayProgress(progress);
     };
     try {
-      const result = await this.executeGroupDelay(group, proxy, testUrl, operationId, 1, startedInRuntime,
+      const result = await this.executeGroupDelay(group, proxy, testUrl, context.operationId, 1, context.runtime,
         progressListener);
-      if (!this.canApplyDelayResult(operationId, group, generation, profileSignature, startedInRuntime,
-        startedProfileId, startedConfigPath)) {
+      if (!this.isDelayContextCurrent(context)) {
         return delay;
       }
       const nodeResult = result.results.find((item): boolean => item.proxy === proxy);
-      this.proxies = mergeGroupDelay(this.proxies, group, result.results);
-      this.proxies = failPendingGroupDelay(this.proxies, group, proxy);
-      const storedGroup = this.proxies.find((item: ProxyGroupSnapshot): boolean => item.name === group);
-      const storedNode = storedGroup?.nodes.find((item): boolean => item.name === proxy);
-      hilog.info(DELAY_LOG_DOMAIN, DELAY_LOG_TAG,
-        'final operation=%{public}s results=%{public}d returnedMatch=%{public}d storedMatch=%{public}d ' +
-        'tested=%{public}d delay=%{public}d', operationId.substring(0, 8), result.results.length,
-        nodeResult === undefined ? 0 : 1, storedNode === undefined ? 0 : 1, storedNode?.tested ? 1 : 0,
-        storedNode?.delay ?? -1);
+      this.applyDelayResults(context, result.results);
       delay = nodeResult?.delay ?? -1;
     } catch (error) {
-      if (!this.canApplyDelayResult(operationId, group, generation, profileSignature, startedInRuntime,
-        startedProfileId, startedConfigPath)) {
+      if (!this.isDelayContextCurrent(context)) {
         return delay;
       }
-      this.proxies = failPendingGroupDelay(this.proxies, group, proxy);
       throw new Error(this.errorMessage(error));
     } finally {
-      if (this.activeDelayOperationId === operationId) {
-        this.invalidateDelayOperation();
-        if (this.busyKey === actionKey) {
-          this.busyKey = '';
-        }
-        this.publish();
-      }
+      this.finishDelayOperation(context);
     }
     return delay;
   }
 
   async testGroupDelay(group: string, testUrl: string): Promise<void> {
-    if (this.busyKey.length > 0) {
-      throw new Error('已有 Core 操作正在执行');
+    if (this.delayRegistry.hasGroupOperation(group)) {
+      throw new Error('该分组正在执行全部测速');
     }
     const targetGroup = this.proxies.find((item: ProxyGroupSnapshot): boolean => item.name === group);
     if (targetGroup === undefined || targetGroup.nodes.length === 0) {
       throw new Error('当前代理组没有可测试节点');
     }
-    const operationId = util.generateRandomUUID();
-    const generation = this.previewGeneration;
-    const profileSignature = this.profileSignature;
-    const startedProfileId = this.profileId;
-    const startedConfigPath = this.configPath;
-    const startedInRuntime = this.coreAvailable && this.proxySource === ProxySnapshotSource.RUNTIME;
-    this.activeDelayOperationId = operationId;
-    this.activeDelayGroup = group;
-    this.activeDelayGeneration = generation;
-    this.activeDelayProfileSignature = profileSignature;
-    this.activeDelayRuntime = startedInRuntime;
-    this.busyKey = `delay-group:${group}`;
-    this.proxies = resetGroupDelay(this.proxies, group);
-    this.publish();
+    const targets = targetGroup.nodes.map((node): string => node.name);
+    const context = this.beginDelayOperation(group, '', targets);
     const progressListener: ProxyDelayProgressListener = (progress: ProxyDelayProgress): void => {
-      if (this.isActiveDelayOperation(progress.operationId, progress.group, generation, profileSignature)) {
-        this.applyDelayProgress(progress);
-      } else if (!startedInRuntime && !this.coreAvailable &&
-        this.isPreviewProfileCurrent(startedProfileId, startedConfigPath) &&
-        progress.operationId === operationId && progress.group === group) {
-        this.proxies = mergeGroupDelay(this.proxies, group, [{
-          proxy: progress.proxy,
-          delay: progress.delay,
-          alive: progress.alive,
-          errorCode: progress.errorCode
-        }]);
-        this.publish();
-      }
+      this.applyDelayProgress(progress);
     };
     try {
-      const result = await this.executeGroupDelay(group, '', testUrl, operationId,
-        targetGroup.nodes.length, startedInRuntime, progressListener);
-      if (this.canApplyDelayResult(operationId, group, generation, profileSignature, startedInRuntime,
-        startedProfileId, startedConfigPath)) {
-        this.proxies = mergeGroupDelay(this.proxies, group, result.results);
-        this.proxies = failPendingGroupDelay(this.proxies, group);
-        this.publish();
+      const result = await this.executeGroupDelay(group, '', testUrl, context.operationId,
+        targetGroup.nodes.length, context.runtime, progressListener);
+      if (this.isDelayContextCurrent(context)) {
+        this.applyDelayResults(context, result.results);
       }
     } catch (error) {
-      if (!this.canApplyDelayResult(operationId, group, generation, profileSignature, startedInRuntime,
-        startedProfileId, startedConfigPath)) {
+      if (!this.isDelayContextCurrent(context)) {
         return;
       }
-      this.proxies = failPendingGroupDelay(this.proxies, group);
-      this.publish();
       throw new Error(this.errorMessage(error));
     } finally {
-      if (this.activeDelayOperationId === operationId) {
-        this.invalidateDelayOperation();
-        if (this.busyKey === `delay-group:${group}`) {
-          this.busyKey = '';
-        }
-        this.publish();
-      }
+      this.finishDelayOperation(context);
     }
   }
 
@@ -403,9 +332,12 @@ class RuntimeStore {
   async setMode(mode: RuntimeMode): Promise<void> {
     this.requireRuntime();
     await this.runAction('mode', async (): Promise<void> => {
+      const generation = ++this.runtimeSnapshotGeneration;
       const payload: SetModeCommandPayload = { mode: mode };
-      this.requireOK<Object>(await runtimeControlService.execute<Object>('setMode', payload));
-      await this.refreshDashboard();
+      this.requireOK<Object>(await runtimeControlService.execute<Object>('setRuntimeMode', payload));
+      await this.refreshDashboard(generation);
+      await this.refreshProxies(generation);
+      this.publish();
     });
   }
 
@@ -428,14 +360,17 @@ class RuntimeStore {
     if (signature === this.profileSignature) {
       return;
     }
-    this.invalidateDelayOperation();
-    if (this.isDelayBusy()) {
-      this.busyKey = '';
-    }
+    this.invalidateDelayOperations();
     this.profileSignature = signature;
     this.profileId = active?.id ?? '';
     this.configPath = active?.localPath ?? '';
     this.previewGeneration += 1;
+    this.runtimeSnapshotGeneration += 1;
+    this.modePreferenceGeneration += 1;
+    this.loadedModePreferenceKey = '';
+    this.proxyMode = DEFAULT_RUNTIME_MODE;
+    this.proxySelections = [];
+    this.selectedProxyGroup = '';
     if (!this.coreAvailable) {
       this.proxies = [];
       this.proxySource = ProxySnapshotSource.NONE;
@@ -460,20 +395,16 @@ class RuntimeStore {
   private async loadSelectionsAndPreview(generation: number): Promise<void> {
     if (this.profileId.length === 0 || this.configPath.length === 0) {
       this.proxySelections = [];
+      this.selectedProxyGroup = '';
       this.previewLoading = false;
       this.publish();
       return;
     }
-    const profileId = this.profileId;
     try {
-      const selections = await preferenceRepository.getProxySelections(profileId);
-      if (generation !== this.previewGeneration || profileId !== this.profileId) {
-        return;
-      }
-      this.proxySelections = selections;
-      this.publish();
       if (!this.coreAvailable) {
         await this.loadPreview(generation);
+      } else {
+        await this.refresh();
       }
     } catch (error) {
       if (generation === this.previewGeneration) {
@@ -498,11 +429,8 @@ class RuntimeStore {
       }
       this.proxies = preserveTestedProxyDelays(snapshot.groups, this.proxies);
       this.proxySource = ProxySnapshotSource.CONFIG;
-      const validSelections = pruneProxySelections(this.proxies, this.proxySelections);
-      if (validSelections.length !== this.proxySelections.length) {
-        this.proxySelections = validSelections;
-        await preferenceRepository.replaceProxySelections(profileId, validSelections);
-      }
+      await this.ensureModePreferences(snapshot.mode);
+      await this.reconcileProxyPreferences();
       this.clearBackgroundError();
     } catch (error) {
       if (expectedGeneration === this.previewGeneration && !this.coreAvailable) {
@@ -514,6 +442,50 @@ class RuntimeStore {
       if (expectedGeneration === this.previewGeneration) {
         this.previewLoading = false;
         this.publish();
+      }
+    }
+  }
+
+  private async ensureModePreferences(mode: RuntimeMode): Promise<void> {
+    this.proxyMode = mode;
+    if (this.profileId.length === 0) {
+      this.proxySelections = [];
+      this.selectedProxyGroup = '';
+      this.loadedModePreferenceKey = '';
+      return;
+    }
+    const key = `${this.profileId.length}:${this.profileId}:${mode}`;
+    if (key === this.loadedModePreferenceKey) {
+      return;
+    }
+    const generation = ++this.modePreferenceGeneration;
+    const profileId = this.profileId;
+    const selections = await preferenceRepository.getProxySelections(profileId, mode);
+    const selectedGroup = await preferenceRepository.getProxyGroup(profileId, mode);
+    if (generation !== this.modePreferenceGeneration || profileId !== this.profileId || mode !== this.proxyMode) {
+      return;
+    }
+    this.proxySelections = selections;
+    this.selectedProxyGroup = selectedGroup;
+    this.loadedModePreferenceKey = key;
+  }
+
+  private async reconcileProxyPreferences(): Promise<void> {
+    if (this.profileId.length === 0 || this.proxies.length === 0) {
+      return;
+    }
+    const profileId = this.profileId;
+    const mode = this.proxyMode;
+    const validSelections = pruneProxySelections(this.proxies, this.proxySelections);
+    if (validSelections.length !== this.proxySelections.length) {
+      this.proxySelections = validSelections;
+      await preferenceRepository.replaceProxySelections(profileId, mode, validSelections);
+    }
+    const resolvedGroup = resolveSelectedProxyGroup(this.proxies, mode, this.selectedProxyGroup);
+    if (resolvedGroup !== this.selectedProxyGroup) {
+      this.selectedProxyGroup = resolvedGroup;
+      if (resolvedGroup.length > 0) {
+        await preferenceRepository.setProxyGroup(profileId, mode, resolvedGroup);
       }
     }
   }
@@ -546,15 +518,18 @@ class RuntimeStore {
 
   private async refreshInternal(): Promise<void> {
     const lifecycleGeneration = this.lifecycleGeneration;
+    const runtimeSnapshotGeneration = this.runtimeSnapshotGeneration;
     this.refreshing = true;
     this.publish();
     try {
-      await this.refreshDashboard();
-      this.publish();
-      if (!this.isDelayBusy()) {
-        await this.refreshProxies();
-        this.publish();
+      if (!await this.refreshDashboard(runtimeSnapshotGeneration)) {
+        return;
       }
+      this.publish();
+      if (!await this.refreshProxies(runtimeSnapshotGeneration)) {
+        return;
+      }
+      this.publish();
       await this.refreshConnections();
       this.clearBackgroundError();
     } catch (error) {
@@ -567,14 +542,23 @@ class RuntimeStore {
     }
   }
 
-  private async refreshDashboard(): Promise<void> {
+  private async refreshDashboard(expectedGeneration: number = this.runtimeSnapshotGeneration): Promise<boolean> {
     const response = await runtimeControlService.execute<DashboardSnapshot>('dashboardSnapshot');
-    this.dashboard = this.requireSuccess<DashboardSnapshot>(response);
+    const dashboard = this.requireSuccess<DashboardSnapshot>(response);
+    if (expectedGeneration !== this.runtimeSnapshotGeneration) {
+      return false;
+    }
+    this.dashboard = dashboard;
+    await this.ensureModePreferences(this.dashboard.mode);
+    if (expectedGeneration !== this.runtimeSnapshotGeneration) {
+      return false;
+    }
     this.trafficHistory = appendTrafficSample(this.trafficHistory, {
       timestamp: Date.now(),
       uploadSpeed: this.dashboard.uploadSpeed,
       downloadSpeed: this.dashboard.downloadSpeed
     });
+    return true;
   }
 
   private applyPreselectedSelections(): void {
@@ -588,12 +572,20 @@ class RuntimeStore {
       });
   }
 
-  private async refreshProxies(): Promise<void> {
+  private async refreshProxies(expectedGeneration: number = this.runtimeSnapshotGeneration): Promise<boolean> {
     const response = await runtimeControlService.execute<ProxySnapshot>('proxySnapshot');
-    const freshGroups = this.requireSuccess<ProxySnapshot>(response).groups;
-    this.proxies = preserveTestedProxyDelays(freshGroups, this.proxies);
+    const snapshot = this.requireSuccess<ProxySnapshot>(response);
+    if (expectedGeneration !== this.runtimeSnapshotGeneration) {
+      return false;
+    }
+    this.proxies = preserveTestedProxyDelays(snapshot.groups, this.proxies);
     this.proxySource = ProxySnapshotSource.RUNTIME;
-    this.runtimeUsesConfigIndex = false;
+    await this.ensureModePreferences(snapshot.mode);
+    if (expectedGeneration !== this.runtimeSnapshotGeneration) {
+      return false;
+    }
+    await this.reconcileProxyPreferences();
+    return expectedGeneration === this.runtimeSnapshotGeneration;
   }
 
   private async refreshConnections(): Promise<void> {
@@ -665,8 +657,9 @@ class RuntimeStore {
   }
 
   private applyDelayProgress(progress: ProxyDelayProgress): void {
-    if (!this.isActiveDelayOperation(progress.operationId, progress.group,
-      this.activeDelayGeneration, this.activeDelayProfileSignature)) {
+    const context = this.delayContexts.get(progress.operationId);
+    if (context === undefined || context.group !== progress.group || !this.isDelayContextCurrent(context) ||
+      !this.delayRegistry.accept(progress.operationId, progress.group, progress.proxy)) {
       return;
     }
     this.proxies = mergeGroupDelay(this.proxies, progress.group, [{
@@ -678,39 +671,59 @@ class RuntimeStore {
     this.publish();
   }
 
-  private isActiveDelayOperation(operationId: string, group: string, generation: number,
-    profileSignature: string): boolean {
-    return this.activeDelayOperationId === operationId && this.activeDelayGroup === group &&
-      this.activeDelayGeneration === generation && this.activeDelayProfileSignature === profileSignature &&
-      this.isDelayContextCurrent(generation, profileSignature);
+  private beginDelayOperation(group: string, proxy: string, targets: string[]): DelayOperationContext {
+    const context: DelayOperationContext = {
+      operationId: util.generateRandomUUID(),
+      group: group,
+      proxy: proxy,
+      generation: this.previewGeneration,
+      profileSignature: this.profileSignature,
+      profileId: this.profileId,
+      configPath: this.configPath,
+      runtime: this.coreAvailable && this.proxySource === ProxySnapshotSource.RUNTIME
+    };
+    this.delayContexts.set(context.operationId, context);
+    this.delayRegistry.start(context.operationId, group, proxy, targets);
+    this.publish();
+    return context;
   }
 
-  private isDelayContextCurrent(generation: number, profileSignature: string): boolean {
-    return this.previewGeneration === generation && this.profileSignature === profileSignature;
+  private applyDelayResults(context: DelayOperationContext, results: ProxyDelayResult[]): void {
+    const accepted = results.filter((result): boolean =>
+      this.delayRegistry.accept(context.operationId, context.group, result.proxy));
+    if (accepted.length > 0) {
+      this.proxies = mergeGroupDelay(this.proxies, context.group, accepted);
+      this.publish();
+    }
   }
 
-  private canApplyDelayResult(operationId: string, group: string, generation: number,
-    profileSignature: string, startedInRuntime: boolean, startedProfileId: string,
-    startedConfigPath: string): boolean {
-    return this.isActiveDelayOperation(operationId, group, generation, profileSignature) ||
-      (!startedInRuntime && !this.coreAvailable &&
-        this.isPreviewProfileCurrent(startedProfileId, startedConfigPath));
+  private finishDelayOperation(context: DelayOperationContext): void {
+    const current = this.isDelayContextCurrent(context);
+    const pending = this.delayRegistry.complete(context.operationId);
+    this.delayContexts.delete(context.operationId);
+    if (current && pending.length > 0) {
+      this.proxies = mergeGroupDelay(this.proxies, context.group,
+        pending.map((proxy: string): ProxyDelayResult => ({
+          proxy: proxy,
+          delay: -1,
+          alive: false
+        })));
+    }
+    this.publish();
   }
 
-  private isPreviewProfileCurrent(profileId: string, configPath: string): boolean {
-    return profileId.length > 0 && profileId === this.profileId && configPath === this.configPath;
+  private isDelayContextCurrent(context: DelayOperationContext): boolean {
+    if (this.delayContexts.get(context.operationId) !== context ||
+      this.previewGeneration !== context.generation || this.profileSignature !== context.profileSignature ||
+      this.profileId !== context.profileId || this.configPath !== context.configPath) {
+      return false;
+    }
+    return context.runtime ? this.coreAvailable : !this.coreAvailable;
   }
 
-  private invalidateDelayOperation(): void {
-    this.activeDelayOperationId = '';
-    this.activeDelayGroup = '';
-    this.activeDelayGeneration = 0;
-    this.activeDelayProfileSignature = '';
-    this.activeDelayRuntime = false;
-  }
-
-  private isDelayBusy(): boolean {
-    return this.busyKey.startsWith('delay:') || this.busyKey.startsWith('delay-group:');
+  private invalidateDelayOperations(): void {
+    this.delayRegistry.invalidate();
+    this.delayContexts.clear();
   }
 
   private delayCommandTimeout(nodeCount: number): number {
@@ -743,6 +756,13 @@ class RuntimeStore {
     const group = this.proxies.find((item: ProxyGroupSnapshot): boolean => item.name === groupName);
     if (group === undefined || !group.selectable ||
       !group.nodes.some((node): boolean => node.name === proxy)) {
+      throw new Error('代理组或节点已失效');
+    }
+  }
+
+  private requireProxyNode(groupName: string, proxy: string): void {
+    const group = this.proxies.find((item: ProxyGroupSnapshot): boolean => item.name === groupName);
+    if (group === undefined || !group.nodes.some((node): boolean => node.name === proxy)) {
       throw new Error('代理组或节点已失效');
     }
   }

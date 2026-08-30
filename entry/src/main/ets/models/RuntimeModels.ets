@@ -48,6 +48,7 @@ export interface ProxyGroupSnapshot {
 
 export interface ProxySnapshot {
   source: ProxySnapshotSource;
+  mode: RuntimeMode;
   groups: ProxyGroupSnapshot[];
 }
 
@@ -66,6 +67,13 @@ export interface GroupDelayResult {
 export interface ProxySelection {
   group: string;
   proxy: string;
+}
+
+export interface ProxyDelayOperationSnapshot {
+  operationId: string;
+  group: string;
+  proxy: string;
+  pendingProxies: string[];
 }
 
 export interface PublicNetworkSnapshot {
@@ -135,7 +143,10 @@ export interface RuntimeStoreSnapshot {
   dashboard?: DashboardSnapshot;
   proxies: ProxyGroupSnapshot[];
   proxySource: ProxySnapshotSource;
+  proxyMode: RuntimeMode;
   proxySelections: ProxySelection[];
+  selectedProxyGroup: string;
+  delayOperations: ProxyDelayOperationSnapshot[];
   trafficHistory: TrafficSample[];
   connections: ConnectionSnapshot[];
   requests: RequestRecord[];
@@ -164,6 +175,101 @@ export class RuntimeRequestMerger {
       }
     });
     return operation;
+  }
+}
+
+export class ProxyDelayOperationRegistry {
+  private operations: Map<string, ProxyDelayOperationSnapshot> = new Map<string, ProxyDelayOperationSnapshot>();
+  private owners: Map<string, string> = new Map<string, string>();
+
+  start(operationId: string, group: string, proxy: string, targets: string[]): void {
+    const uniqueTargets: string[] = [];
+    targets.forEach((target: string): void => {
+      if (target.length > 0 && !uniqueTargets.includes(target)) {
+        uniqueTargets.push(target);
+      }
+    });
+    this.operations.set(operationId, {
+      operationId: operationId,
+      group: group,
+      proxy: proxy,
+      pendingProxies: uniqueTargets
+    });
+    uniqueTargets.forEach((target: string): void => {
+      this.owners.set(this.nodeKey(group, target), operationId);
+    });
+  }
+
+  accept(operationId: string, group: string, proxy: string): boolean {
+    const operation = this.operations.get(operationId);
+    const key = this.nodeKey(group, proxy);
+    if (operation === undefined || operation.group !== group || this.owners.get(key) !== operationId) {
+      return false;
+    }
+    this.owners.delete(key);
+    operation.pendingProxies = operation.pendingProxies.filter((name: string): boolean => name !== proxy);
+    return true;
+  }
+
+  complete(operationId: string): string[] {
+    const operation = this.operations.get(operationId);
+    if (operation === undefined) {
+      return [];
+    }
+    const pending = operation.pendingProxies.filter((proxy: string): boolean =>
+      this.owners.get(this.nodeKey(operation.group, proxy)) === operationId);
+    pending.forEach((proxy: string): void => {
+      this.owners.delete(this.nodeKey(operation.group, proxy));
+    });
+    this.operations.delete(operationId);
+    return pending;
+  }
+
+  invalidate(): void {
+    this.operations.clear();
+    this.owners.clear();
+  }
+
+  hasGroupOperation(group: string): boolean {
+    let found = false;
+    this.operations.forEach((operation: ProxyDelayOperationSnapshot): void => {
+      if (operation.group === group && operation.proxy.length === 0) {
+        found = true;
+      }
+    });
+    return found;
+  }
+
+  hasDirectOperation(group: string, proxy: string): boolean {
+    let found = false;
+    this.operations.forEach((operation: ProxyDelayOperationSnapshot): void => {
+      if (operation.group === group && operation.proxy === proxy) {
+        found = true;
+      }
+    });
+    return found;
+  }
+
+  isTesting(group: string, proxy: string): boolean {
+    return this.owners.has(this.nodeKey(group, proxy));
+  }
+
+  snapshots(): ProxyDelayOperationSnapshot[] {
+    const result: ProxyDelayOperationSnapshot[] = [];
+    this.operations.forEach((operation: ProxyDelayOperationSnapshot): void => {
+      result.push({
+        operationId: operation.operationId,
+        group: operation.group,
+        proxy: operation.proxy,
+        pendingProxies: operation.pendingProxies.filter((proxy: string): boolean =>
+          this.owners.get(this.nodeKey(operation.group, proxy)) === operation.operationId)
+      });
+    });
+    return result;
+  }
+
+  private nodeKey(group: string, proxy: string): string {
+    return `${group.length}:${group}:${proxy}`;
   }
 }
 
@@ -343,4 +449,25 @@ export function pruneProxySelections(groups: ProxyGroupSnapshot[],
     return group !== undefined && group.selectable &&
       group.nodes.some((node: ProxyNodeSnapshot): boolean => node.name === selection.proxy);
   });
+}
+
+export function visibleProxyGroups(groups: ProxyGroupSnapshot[], mode: RuntimeMode): ProxyGroupSnapshot[] {
+  const visible = groups.filter((group: ProxyGroupSnapshot): boolean => !group.hidden && group.name !== 'GLOBAL');
+  if (mode !== RuntimeMode.GLOBAL) {
+    return visible;
+  }
+  const global = groups.find((group: ProxyGroupSnapshot): boolean => !group.hidden && group.name === 'GLOBAL');
+  return global === undefined ? visible : [global].concat(visible);
+}
+
+export function resolveSelectedProxyGroup(groups: ProxyGroupSnapshot[], mode: RuntimeMode,
+  savedGroup: string): string {
+  const visible = visibleProxyGroups(groups, mode);
+  if (visible.some((group: ProxyGroupSnapshot): boolean => group.name === savedGroup)) {
+    return savedGroup;
+  }
+  if (mode === RuntimeMode.GLOBAL && visible.some((group: ProxyGroupSnapshot): boolean => group.name === 'GLOBAL')) {
+    return 'GLOBAL';
+  }
+  return visible[0]?.name ?? '';
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
@@ -64,8 +65,11 @@ type proxyGroupSnapshot struct {
 
 type proxySnapshot struct {
 	Source string               `json:"source"`
+	Mode   string               `json:"mode"`
 	Groups []proxyGroupSnapshot `json:"groups"`
 }
+
+var previewParseMutex sync.Mutex
 
 type previewProxyPayload struct {
 	ConfigPath string `json:"configPath"`
@@ -152,8 +156,8 @@ type setModePayload struct {
 }
 
 func (runtime *coreRuntime) executeCommand(raw string) string {
-	runtime.mu.Lock()
-	defer runtime.mu.Unlock()
+	runtime.mu.RLock()
+	defer runtime.mu.RUnlock()
 
 	if len(raw) == 0 || len(raw) > maxCoreCommandBytes {
 		return marshalCommandResponse(commandFailure("INVALID_ARGUMENT", "command is empty or too large"))
@@ -280,10 +284,11 @@ func (runtime *coreRuntime) dashboardSnapshot() dashboardSnapshot {
 }
 
 func (runtime *coreRuntime) proxySnapshot() proxySnapshot {
-	return buildProxySnapshot(tunnel.Proxies(), nil, "runtime")
+	return buildProxySnapshot(tunnel.Proxies(), runtime.proxyGroupOrder, "runtime", tunnel.Mode().String())
 }
 
-func buildProxySnapshot(proxies map[string]C.Proxy, preferredOrder []string, source string) proxySnapshot {
+func buildProxySnapshot(proxies map[string]C.Proxy, preferredOrder []string, source string,
+	mode string) proxySnapshot {
 	groups := make([]proxyGroupSnapshot, 0)
 	seen := make(map[string]bool)
 	appendGroup := func(name string) {
@@ -335,19 +340,11 @@ func buildProxySnapshot(proxies map[string]C.Proxy, preferredOrder []string, sou
 			remaining = append(remaining, name)
 		}
 	}
-	sort.SliceStable(remaining, func(left, right int) bool {
-		if remaining[left] == "GLOBAL" {
-			return true
-		}
-		if remaining[right] == "GLOBAL" {
-			return false
-		}
-		return remaining[left] < remaining[right]
-	})
+	sort.Strings(remaining)
 	for _, name := range remaining {
 		appendGroup(name)
 	}
-	return proxySnapshot{Source: source, Groups: groups}
+	return proxySnapshot{Source: source, Mode: mode, Groups: groups}
 }
 
 type closeableProvider interface {
@@ -355,6 +352,8 @@ type closeableProvider interface {
 }
 
 func parsePreviewConfig(configPath string) (*config.Config, []string, func(), error) {
+	previewParseMutex.Lock()
+	defer previewParseMutex.Unlock()
 	cleanPath := strings.TrimSpace(configPath)
 	if cleanPath == "" {
 		return nil, nil, func() {}, errors.New("configuration path is empty")
@@ -368,13 +367,7 @@ func parsePreviewConfig(configPath string) (*config.Config, []string, func(), er
 		return nil, nil, func() {}, errors.New("configuration is invalid")
 	}
 	applyHarmonyGeoMirrors(raw)
-	order := make([]string, 0, len(raw.ProxyGroup))
-	for _, mapping := range raw.ProxyGroup {
-		name, ok := mapping["name"].(string)
-		if ok && strings.TrimSpace(name) != "" {
-			order = append(order, name)
-		}
-	}
+	order := rawProxyGroupOrder(raw)
 	homeDir, err := prepareConfigHome(cleanPath)
 	if err != nil {
 		return nil, nil, func() {}, errors.New("core work directory cannot be prepared")
@@ -409,7 +402,7 @@ func previewProxySnapshot(configPath string) (proxySnapshot, error) {
 		return proxySnapshot{}, err
 	}
 	defer cleanup()
-	return buildProxySnapshot(cfg.Proxies, order, "config"), nil
+	return buildProxySnapshot(cfg.Proxies, order, "config", cfg.General.Mode.String()), nil
 }
 
 func previewGroupDelay(payload previewGroupDelayPayload) (groupDelayResult, error) {

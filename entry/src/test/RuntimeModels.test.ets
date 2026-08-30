@@ -10,14 +10,17 @@ import {
   failPendingGroupDelay,
   mergeGroupDelay,
   preserveTestedProxyDelays,
+  ProxyDelayOperationRegistry,
   proxyDelayLabel,
   proxyNodeRenderKey,
   ProxyGroupSnapshot,
   pruneProxySelections,
   resetGroupDelay,
+  resolveSelectedProxyGroup,
   RuntimeRequestMerger,
   RuntimeMode,
-  TrafficSample
+  TrafficSample,
+  visibleProxyGroups
 } from '../main/ets/models/RuntimeModels';
 
 export default function runtimeModelsTest() {
@@ -127,6 +130,37 @@ export default function runtimeModelsTest() {
       const preserved = preserveTestedProxyDelays(refreshed, failed);
       expect(proxyDelayLabel(preserved[0].nodes[0], false)).assertEqual('Error');
       expect(proxyDelayLabel(preserved[0].nodes[1], false)).assertEqual('88ms');
+    });
+
+    it('ordersVisibleGroupsByMode', 0, () => {
+      const groups: ProxyGroupSnapshot[] = [
+        { name: 'Second', type: 'Selector', selected: 'B', selectable: true, hidden: false, nodes: [] },
+        { name: 'First', type: 'Selector', selected: 'A', selectable: true, hidden: false, nodes: [] },
+        { name: 'GLOBAL', type: 'Selector', selected: 'A', selectable: true, hidden: false, nodes: [] },
+        { name: 'Hidden', type: 'Selector', selected: 'A', selectable: true, hidden: true, nodes: [] }
+      ];
+      const ruleGroups = visibleProxyGroups(groups, RuntimeMode.RULE);
+      expect(ruleGroups.length).assertEqual(2);
+      expect(ruleGroups[0].name).assertEqual('Second');
+      expect(ruleGroups[1].name).assertEqual('First');
+      const globalGroups = visibleProxyGroups(groups, RuntimeMode.GLOBAL);
+      expect(globalGroups.length).assertEqual(3);
+      expect(globalGroups[0].name).assertEqual('GLOBAL');
+      expect(resolveSelectedProxyGroup(groups, RuntimeMode.GLOBAL, 'First')).assertEqual('First');
+      expect(resolveSelectedProxyGroup(groups, RuntimeMode.GLOBAL, 'Missing')).assertEqual('GLOBAL');
+      expect(resolveSelectedProxyGroup(groups, RuntimeMode.DIRECT, 'GLOBAL')).assertEqual('Second');
+    });
+
+    it('givesLatestDelayOperationNodeOwnership', 0, () => {
+      const registry = new ProxyDelayOperationRegistry();
+      registry.start('group-operation', 'Auto', '', ['A', 'B']);
+      registry.start('node-operation', 'Auto', 'B', ['B']);
+      expect(registry.accept('group-operation', 'Auto', 'B')).assertFalse();
+      expect(registry.accept('group-operation', 'Auto', 'A')).assertTrue();
+      expect(registry.accept('node-operation', 'Auto', 'B')).assertTrue();
+      expect(registry.complete('group-operation').length).assertEqual(0);
+      expect(registry.complete('node-operation').length).assertEqual(0);
+      expect(registry.snapshots().length).assertEqual(0);
     });
   });
 }
