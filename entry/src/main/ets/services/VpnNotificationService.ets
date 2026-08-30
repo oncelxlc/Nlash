@@ -300,8 +300,12 @@ class VpnNotificationService {
       id: VPN_NOTIFICATION_ID,
       label: VPN_NOTIFICATION_LABEL,
       notificationSlotType: notificationManager.SlotType.SERVICE_INFORMATION,
+      // The VPN status is updated frequently and must not request a ringtone.
+      sound: '',
       isOngoing: true,
-      isUnremovable: true,
+      // Keep this as an ongoing notification, but do not set isUnremovable.
+      // HarmonyOS treats unremovable notifications as a system-only capability
+      // and logs NOTIFICATION_CONTROLLER permission failures for normal apps.
       isAlertOnce: true,
       tapDismissed: false,
       showDeliveryTime: false,
