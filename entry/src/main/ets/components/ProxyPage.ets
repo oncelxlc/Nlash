@@ -182,8 +182,8 @@ export struct ProxyPage {
             .fontColor(this.delayColor(node, this.isNodeTesting(node)))
             .textAlign(TextAlign.End)
             .accessibilityText(`测试 ${node.name} 延迟`)
-            .width('40%')
-            .padding({top: 4, bottom: 4})
+            .padding({top: 4,right: 4, bottom: 4, left: 8})
+            .margin({right: -4})
             .onTouch((event: TouchEvent): void => {
               event.stopPropagation();
               if (event.type === TouchType.Up && !this.isDirectNodeTesting(node)) {
