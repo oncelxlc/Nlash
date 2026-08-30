@@ -151,10 +151,14 @@ export struct ProxyPage {
       exception.message : '代理操作失败';
   }
 
+  private currentGroupNodesLength(): number {
+    return this.currentGroup()?.nodes.length ?? 0;
+  }
+
   @Builder
   private nodeCard(node: ProxyNodeSnapshot) {
     Stack({ alignContent: Alignment.BottomEnd }) {
-      Column({ space: 4 }) {
+      Column({ space: 0 }) {
         Row() {
           Text(node.name)
             .fontSize(15)
@@ -178,20 +182,23 @@ export struct ProxyPage {
             .fontColor(this.delayColor(node, this.isNodeTesting(node)))
             .textAlign(TextAlign.End)
             .accessibilityText(`测试 ${node.name} 延迟`)
+            .width('40%')
+            .padding({top: 4, bottom: 4})
             .onTouch((event: TouchEvent): void => {
               event.stopPropagation();
               if (event.type === TouchType.Up && !this.isDirectNodeTesting(node)) {
                 this.testNode(node);
               }
             })
+            .hitTestBehavior(HitTestMode.Block)
         }
         .width('100%')
       }
       .alignItems(HorizontalAlign.Start)
       .width('100%')
       .padding({ top: 12, bottom: 10, left: 12, right: 10 })
-      .border({ width: this.isNodeSelected(node) ? 1 : 0,
-        color: $r('app.color.status_success') })
+      .border({ width: 1,
+        color: this.isNodeSelected(node) ? $r('app.color.status_success') : $r('app.color.card_background') })
       .borderRadius(14)
       .backgroundColor($r('app.color.card_background'))
       .onClick((): void => { this.selectNode(node); })
@@ -219,7 +226,6 @@ export struct ProxyPage {
               $r('app.color.status_success') : $r('app.color.content_secondary'))
         }
         .width('100%')
-
         if (this.groups.length === 0) {
           Column({ space: 8 }) {
             Text(this.previewLoading ? '正在解析活动配置…' : '暂无可用代理组')
@@ -252,7 +258,6 @@ export struct ProxyPage {
           .scrollable(ScrollDirection.Horizontal)
           .scrollBar(BarState.Off)
           .width('100%')
-
           if (this.currentGroup() !== undefined) {
             Row() {
               Text(`${this.currentGroup()?.name ?? ''} · ${this.currentGroup()?.nodes.length ?? 0} 个节点`)
@@ -265,12 +270,19 @@ export struct ProxyPage {
                 .fontColor($r('app.color.content_secondary'))
             }
             .width('100%')
-            Grid() {
+            Grid(new Scroller(), {
+              regularSize: [1, 1],
+              irregularIndexes: [this.currentGroupNodesLength()],
+              onGetIrregularSizeByIndex: (): [number, number] => [1, this.metrics.proxyColumns.split(' ').length]
+            }) {
               ForEach(this.currentGroup()?.nodes ?? [], (node: ProxyNodeSnapshot) => {
                 GridItem() {
                   this.nodeCard(node)
                 }
               }, (node: ProxyNodeSnapshot): string => proxyNodeRenderKey(node))
+              GridItem()
+                .height(this.metrics.pagePadding + 130)
+                .width('100%')
             }
             .columnsTemplate(this.metrics.proxyColumns)
             .columnsGap(this.metrics.cardGap)
@@ -308,7 +320,7 @@ export struct ProxyPage {
       .fontColor(Color.White)
       .enabled(!this.isGroupTesting() && !this.previewLoading && this.currentGroup() !== undefined)
       .accessibilityText('测试当前代理组延迟')
-      .margin({ right: this.metrics.pagePadding, bottom: this.metrics.pagePadding })
+      .margin({ right: this.metrics.pagePadding, bottom: this.metrics.pagePadding - 10 })
       .zIndex(2)
       .onClick((): void => {
         this.testCurrentGroup();
