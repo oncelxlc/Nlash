@@ -9,6 +9,7 @@ import runtimeModelsTest from './RuntimeModels.test';
 import profileFeaturesTest from './ProfileFeatures.test';
 import feedbackServiceTest from './FeedbackService.test';
 import settingsModelsTest from './SettingsModels.test';
+import notificationModelsTest from './NotificationModels.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -22,4 +23,5 @@ export default function testsuite() {
   profileFeaturesTest();
   feedbackServiceTest();
   settingsModelsTest();
+  notificationModelsTest();
 }

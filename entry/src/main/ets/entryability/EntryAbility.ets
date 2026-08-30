@@ -1,13 +1,20 @@
 import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
+import {
+  resolveNotificationNavigationTarget,
+  VPN_NOTIFICATION_TARGET_PARAMETER
+} from '../models/NotificationModels';
 import { Profile } from '../models/ProfileModels';
+import { AppPage } from '../models/NavigationModels';
 import { ProxyState, RuntimeLifecycleSnapshot } from '../models/VpnModels';
 import {
   publicNetworkService,
   shouldRefreshPublicNetworkAfterProxyStateChange
 } from '../services/LocalNetworkService';
 import { vpnService } from '../services/VpnService';
+import { navigationIntentService } from '../services/NavigationIntentService';
+import { notificationPermissionService } from '../services/NotificationPermissionService';
 import { profileStore } from '../stores/ProfileStore';
 import { runtimeStore } from '../stores/RuntimeStore';
 import { settingsStore } from '../stores/SettingsStore';
@@ -19,6 +26,7 @@ export default class EntryAbility extends UIAbility {
   private unsubscribeVpnLifecycle: (() => void) | undefined = undefined;
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    this.handleNavigationWant(want);
     vpnService.initialize(this.context.getApplicationContext());
     publicNetworkService.initialize();
     this.proxyState = vpnService.getProxyState();
@@ -56,6 +64,10 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
   }
 
+  onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    this.handleNavigationWant(want);
+  }
+
   onDestroy(): void {
     this.unsubscribeVpnLifecycle?.();
     this.unsubscribeVpnLifecycle = undefined;
@@ -74,6 +86,9 @@ export default class EntryAbility extends UIAbility {
         return;
       }
       hilog.info(DOMAIN, 'testTag', 'Succeeded in loading the content.');
+      notificationPermissionService.ensurePermission(this.context).catch((): void => {
+        hilog.warn(DOMAIN, 'NlashNotify', 'Notification permission initialization failed');
+      });
     });
   }
 
@@ -93,5 +108,12 @@ export default class EntryAbility extends UIAbility {
     runtimeStore.setForeground(false);
     // Ability has back to background
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onBackground');
+  }
+
+  private handleNavigationWant(want: Want): void {
+    const target = resolveNotificationNavigationTarget(want.parameters?.[VPN_NOTIFICATION_TARGET_PARAMETER]);
+    if (target === AppPage.DASHBOARD) {
+      navigationIntentService.publish(target);
+    }
   }
 }

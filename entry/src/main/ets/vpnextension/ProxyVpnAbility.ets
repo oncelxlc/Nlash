@@ -24,6 +24,7 @@ import { coreControlServer } from '../services/CoreControlServer';
 import { CoreRecoveryDecision, CoreRecoveryPolicy } from '../services/CoreRecoveryPolicy';
 import { ProtectChannelServer, SocketProtector } from '../services/ProtectChannelServer';
 import { publishVpnState } from '../services/VpnStatePublisher';
+import { vpnNotificationService } from '../services/VpnNotificationService';
 
 const DOMAIN = 0x4E4C;
 const TAG = 'NlashProxyVpn';
@@ -96,6 +97,10 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     this.runtimeProfileId = this.stringParameter(want, 'profileId');
     this.runtimeConfigPath = this.stringParameter(want, 'configPath');
     this.runtimeProfileSignature = this.stringParameter(want, 'profileSignature');
+    vpnNotificationService.start(this.context.getApplicationContext(), (): Promise<void> =>
+      this.enqueue((): Promise<void> => this.disableProxy(false))).catch((): void => {
+      hilog.warn(DOMAIN, TAG, 'notification service initialization failed');
+    });
     coreControlServer.start((command: string): Promise<string | undefined> =>
       this.handleControlCommand(command)).catch((): void => {
       this.setFailure('Core 控制通道初始化失败');
@@ -120,6 +125,9 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
 
   onDestroy(): void {
     this.destroying = true;
+    vpnNotificationService.stop().catch((): void => {
+      hilog.warn(DOMAIN, TAG, 'notification service shutdown failed');
+    });
     coreControlServer.stop();
     hilog.info(DOMAIN, TAG, 'onDestroy');
     this.enqueue((): Promise<void> => this.shutdown()).catch((error: Error): void => {
@@ -693,6 +701,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
 
   private publish(message: string): void {
     this.lastLifecycleMessage = message;
+    vpnNotificationService.updateLifecycle(this.coreState, this.proxyState);
     publishVpnState(this.context.getApplicationContext(), this.coreState, this.proxyState,
       message, this.runtimeProfileId, this.runtimeProfileSignature);
   }

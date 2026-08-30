@@ -15,6 +15,7 @@ const THEME_MODE = 'themeMode';
 const VPN_MTU = 'vpnMtu';
 const DELAY_TEST_URL = 'delayTestUrl';
 const REFRESH_INTERVAL_SECONDS = 'refreshIntervalSeconds';
+const NOTIFICATION_PERMISSION_REQUESTED = 'notificationPermissionRequested';
 const PROXY_SELECTIONS = 'proxySelections';
 const PROXY_GROUPS = 'proxyGroups';
 const MAX_PROXY_SELECTIONS = 768;
@@ -165,6 +166,17 @@ class PreferenceRepository {
     await store.put(VPN_MTU, settings.mtu);
     await store.put(DELAY_TEST_URL, settings.delayTestUrl);
     await store.put(REFRESH_INTERVAL_SECONDS, settings.refreshIntervalSeconds);
+    await store.flush();
+  }
+
+  async getNotificationPermissionRequested(): Promise<boolean> {
+    const value = await this.requireStore().get(NOTIFICATION_PERMISSION_REQUESTED, false);
+    return typeof value === 'boolean' && value;
+  }
+
+  async setNotificationPermissionRequested(): Promise<void> {
+    const store = this.requireStore();
+    await store.put(NOTIFICATION_PERMISSION_REQUESTED, true);
     await store.flush();
   }
 

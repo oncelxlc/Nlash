@@ -18,6 +18,7 @@ import {
 import { AppNavigationState, AppRoute } from '../navigation/AppNavigationState';
 import { feedbackService } from '../services/FeedbackService';
 import { configurationEditorService } from '../services/ConfigurationEditorService';
+import { navigationIntentService } from '../services/NavigationIntentService';
 
 @Entry
 @Component
@@ -31,6 +32,7 @@ struct Index {
   private windowStatusListenerRegistered: boolean = false;
   private mainWindow: window.Window | undefined = undefined;
   private unsubscribeFeedback: (() => void) | undefined = undefined;
+  private unsubscribeNavigationIntent: (() => void) | undefined = undefined;
 
   private readonly foldStatusChangeHandler = (status: display.FoldStatus): void => {
     this.foldStatus = status;
@@ -49,12 +51,17 @@ struct Index {
         duration: event.level === FeedbackLevel.WARNING || event.level === FeedbackLevel.ERROR ? 3500 : 2000
       });
     });
+    this.unsubscribeNavigationIntent = navigationIntentService.subscribe((page: AppPage): void => {
+      this.selectPage(page);
+    });
     this.registerResponsiveListeners();
   }
 
   aboutToDisappear(): void {
     this.unsubscribeFeedback?.();
     this.unsubscribeFeedback = undefined;
+    this.unsubscribeNavigationIntent?.();
+    this.unsubscribeNavigationIntent = undefined;
     this.unregisterResponsiveListeners();
   }
 
