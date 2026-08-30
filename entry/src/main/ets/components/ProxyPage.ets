@@ -299,22 +299,20 @@ export struct ProxyPage {
 
   @Builder
   private floatingDelayButton() {
-    if (this.currentGroup() !== undefined) {
-      Button(this.busyKey.length > 0 ? '测速中…' : '⚡ 测试全部')
-        .type(ButtonType.Normal)
-        .borderRadius(BUTTON_RADIUS)
-        .height(52)
-        .padding({ left: 20, right: 20 })
-        .backgroundColor($r('app.color.nav_selected'))
-        .fontColor(Color.White)
-        .enabled(this.busyKey.length === 0 && !this.refreshing && !this.previewLoading)
-        .accessibilityText('测试当前代理组延迟')
-        .margin({ right: this.metrics.pagePadding, bottom: this.metrics.pagePadding })
-        .zIndex(2)
-        .onClick((): void => {
-          this.testCurrentGroup();
-        })
-    }
+    Button(this.busyKey.length > 0 ? '测速中…' : '⚡ 测试全部')
+      .type(ButtonType.Normal)
+      .borderRadius(BUTTON_RADIUS)
+      .height(52)
+      .padding({ left: 20, right: 20 })
+      .backgroundColor($r('app.color.nav_selected'))
+      .fontColor(Color.White)
+      .enabled(this.busyKey.length === 0 && !this.refreshing && !this.previewLoading && this.currentGroup() !== undefined)
+      .accessibilityText('测试当前代理组延迟')
+      .margin({ right: this.metrics.pagePadding, bottom: this.metrics.pagePadding })
+      .zIndex(2)
+      .onClick((): void => {
+        this.testCurrentGroup();
+      })
   }
 
   build() {
