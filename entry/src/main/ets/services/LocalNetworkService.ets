@@ -85,6 +85,10 @@ class PublicNetworkService {
     this.publish();
   };
 
+  getSnapshot(): PublicNetworkSnapshot {
+    return this.copySnapshot();
+  }
+
   subscribe(listener: PublicNetworkListener): () => void {
     this.listeners.add(listener);
     listener(this.copySnapshot());

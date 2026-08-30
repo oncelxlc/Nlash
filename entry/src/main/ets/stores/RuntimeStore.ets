@@ -91,7 +91,9 @@ class RuntimeStore {
   private lifecycleUnsubscribe: (() => void) | undefined;
   private profileUnsubscribe: (() => void) | undefined;
   private settingsUnsubscribe: (() => void) | undefined;
-  private refreshMerger: RuntimeRequestMerger = new RuntimeRequestMerger();
+  private dashboardRefreshMerger: RuntimeRequestMerger = new RuntimeRequestMerger();
+  private proxyRefreshMerger: RuntimeRequestMerger = new RuntimeRequestMerger();
+  private connectionRefreshMerger: RuntimeRequestMerger = new RuntimeRequestMerger();
   private refreshIntervalMs: number = 3000;
   private profileId: string = '';
   private configPath: string = '';
@@ -200,7 +202,9 @@ class RuntimeStore {
       }
       return this.loadPreview();
     }
-    return this.refreshMerger.run((): Promise<void> => this.refreshInternal());
+    this.refreshProxySnapshot();
+    this.refreshConnectionSnapshot();
+    return this.dashboardRefreshMerger.run((): Promise<void> => this.refreshInternal());
   }
 
   async selectProxy(group: string, proxy: string): Promise<void> {
@@ -526,11 +530,6 @@ class RuntimeStore {
         return;
       }
       this.publish();
-      if (!await this.refreshProxies(runtimeSnapshotGeneration)) {
-        return;
-      }
-      this.publish();
-      await this.refreshConnections();
       this.clearBackgroundError();
     } catch (error) {
       if (this.foreground && lifecycleGeneration === this.lifecycleGeneration) {
@@ -549,16 +548,44 @@ class RuntimeStore {
       return false;
     }
     this.dashboard = dashboard;
-    await this.ensureModePreferences(this.dashboard.mode);
-    if (expectedGeneration !== this.runtimeSnapshotGeneration) {
-      return false;
-    }
     this.trafficHistory = appendTrafficSample(this.trafficHistory, {
       timestamp: Date.now(),
       uploadSpeed: this.dashboard.uploadSpeed,
       downloadSpeed: this.dashboard.downloadSpeed
     });
     return true;
+  }
+
+  private refreshProxySnapshot(): void {
+    const lifecycleGeneration = this.lifecycleGeneration;
+    const runtimeSnapshotGeneration = this.runtimeSnapshotGeneration;
+    this.proxyRefreshMerger.run(async (): Promise<void> => {
+      try {
+        if (await this.refreshProxies(runtimeSnapshotGeneration)) {
+          this.publish();
+        }
+      } catch (error) {
+        if (this.foreground && lifecycleGeneration === this.lifecycleGeneration) {
+          this.reportBackgroundError(this.errorMessage(error));
+        }
+      }
+    });
+  }
+
+  private refreshConnectionSnapshot(): void {
+    const lifecycleGeneration = this.lifecycleGeneration;
+    this.connectionRefreshMerger.run(async (): Promise<void> => {
+      try {
+        await this.refreshConnections();
+        if (lifecycleGeneration === this.lifecycleGeneration) {
+          this.publish();
+        }
+      } catch (error) {
+        if (this.foreground && lifecycleGeneration === this.lifecycleGeneration) {
+          this.reportBackgroundError(this.errorMessage(error));
+        }
+      }
+    });
   }
 
   private applyPreselectedSelections(): void {
@@ -800,13 +827,20 @@ class RuntimeStore {
 
   private startPolling(): void {
     if (this.foreground && this.pollTimer === undefined) {
-      this.pollTimer = setInterval((): void => { this.refresh(); }, this.refreshIntervalMs);
+      this.pollTimer = setTimeout((): void => {
+        this.pollTimer = undefined;
+        if (!this.foreground || !this.coreAvailable) {
+          return;
+        }
+        this.refresh();
+        this.startPolling();
+      }, this.refreshIntervalMs);
     }
   }
 
   private stopPolling(): void {
     if (this.pollTimer !== undefined) {
-      clearInterval(this.pollTimer);
+      clearTimeout(this.pollTimer);
       this.pollTimer = undefined;
     }
   }

@@ -240,10 +240,7 @@ func (runtime *coreRuntime) executeCommand(raw string) string {
 			response = commandSuccess(nil)
 		}
 	case "closeAllConnections":
-		statistic.DefaultManager.Range(func(tracker statistic.Tracker) bool {
-			_ = tracker.Close()
-			return true
-		})
+		closeAllConnections()
 		response = commandSuccess(nil)
 	case "setMode":
 		var payload setModePayload
@@ -591,7 +588,15 @@ func selectProxy(groupName string, proxyName string) error {
 	if err := selector.Set(proxyName); err != nil {
 		return errors.New("proxy was not found in group")
 	}
+	closeAllConnections()
 	return nil
+}
+
+func closeAllConnections() {
+	statistic.DefaultManager.Range(func(tracker statistic.Tracker) bool {
+		_ = tracker.Close()
+		return true
+	})
 }
 
 func testProxyDelay(payload delayTestPayload) (int32, error) {

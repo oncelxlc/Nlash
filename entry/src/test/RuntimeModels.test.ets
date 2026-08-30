@@ -85,6 +85,33 @@ export default function runtimeModelsTest() {
       expect(requestCount).assertEqual(2);
     });
 
+    it('doesNotBlockDashboardRefreshWhenDetailRefreshIsPending', 0, async () => {
+      const dashboardMerger = new RuntimeRequestMerger();
+      const detailMerger = new RuntimeRequestMerger();
+      let dashboardRequestCount = 0;
+      let detailRequestCount = 0;
+      let releaseDetail: () => void = (): void => {};
+      const detail = detailMerger.run((): Promise<void> => {
+        detailRequestCount += 1;
+        return new Promise<void>((resolve: () => void): void => {
+          releaseDetail = resolve;
+        });
+      });
+      await dashboardMerger.run(async (): Promise<void> => {
+        dashboardRequestCount += 1;
+      });
+      await dashboardMerger.run(async (): Promise<void> => {
+        dashboardRequestCount += 1;
+      });
+      detailMerger.run(async (): Promise<void> => {
+        detailRequestCount += 1;
+      });
+      expect(dashboardRequestCount).assertEqual(2);
+      expect(detailRequestCount).assertEqual(1);
+      releaseDetail();
+      await detail;
+    });
+
     it('mergesDelayAndPrunesStaleSelections', 0, () => {
       const groups: ProxyGroupSnapshot[] = [{
         name: 'Auto', type: 'Selector', selected: 'A', selectable: true, hidden: false,
