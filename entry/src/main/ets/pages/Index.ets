@@ -179,7 +179,8 @@ struct Index {
     }
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext | undefined;
     if (context !== undefined) {
-      context.terminateSelf().catch((): void => {
+      context.moveAbilityToBackground().catch((): void => {
+        feedbackService.error('切换到后台失败，请重试或使用系统桌面手势');
       });
     }
     return true;
