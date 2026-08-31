@@ -1,13 +1,12 @@
-import {
-  ConnectionSnapshot,
-  connectionTitle,
-  formatBytes,
-  RuntimeStoreSnapshot
-} from '../models/RuntimeModels';
+import { EmptyStateCard } from '../components/EmptyStateCard';
+import { formatLocalTime } from '../utils/DateUtils';
+import { ConnectionSnapshot, RuntimeStoreSnapshot } from '../model/RuntimeModels';
+import { connectionTitle, formatBytes } from '../utils/RuntimeUtils';
 import { feedbackService } from '../services/FeedbackService';
 import { runtimeStore } from '../stores/RuntimeStore';
-import { ResponsiveMetrics, resolveResponsiveMetrics } from '../ui/ResponsiveMetrics';
-import { BUTTON_RADIUS } from '../ui/UiConstants';
+import { ResponsiveMetrics } from '../model/ResponsiveModels';
+import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
+import { BUTTON_RADIUS } from '../constants/UiConstants';
 
 @Component
 export struct ConnectionsPage {
@@ -59,8 +58,7 @@ export struct ConnectionsPage {
   }
 
   private updateWidth(width: Length): void {
-    const numericWidth = typeof width === 'number' ? width : (typeof width === 'string' ? Number(width) : 0);
-    this.metrics = resolveResponsiveMetrics(Number.isFinite(numericWidth) ? numericWidth : 0);
+    this.metrics = resolveResponsiveMetrics(resolveContentWidth(width));
   }
 
   private visibleConnections(): ConnectionSnapshot[] {
@@ -74,10 +72,6 @@ export struct ConnectionsPage {
         connection.process.toLowerCase().includes(keyword) ||
         connection.chains.join(' ').toLowerCase().includes(keyword);
     });
-  }
-
-  private formatTime(timestamp: number): string {
-    return timestamp > 0 ? new Date(timestamp).toLocaleTimeString() : '--';
   }
 
   @Builder
@@ -115,7 +109,7 @@ export struct ConnectionsPage {
         Text(`${connection.network.toUpperCase()} · ${connection.type}`)
           .fontSize(12)
           .fontColor($r('app.color.content_secondary'))
-        Text(`开始 ${this.formatTime(connection.start)}`)
+        Text(`开始 ${formatLocalTime(connection.start)}`)
           .fontSize(12)
           .fontColor($r('app.color.content_secondary'))
           .layoutWeight(1)
@@ -173,21 +167,10 @@ export struct ConnectionsPage {
           })
 
         if (!this.available) {
-          Column({ space: 10 }) {
-            Text('VPN 尚未连接')
-              .fontSize(20)
-              .fontWeight(FontWeight.Medium)
-              .fontColor($r('app.color.content_primary'))
-            Text('连接后，这里会显示 Mihomo 当前管理的真实 TCP、UDP 与 DNS 连接。')
-              .fontSize(14)
-              .fontColor($r('app.color.content_secondary'))
-              .textAlign(TextAlign.Start)
-          }
-          .alignItems(HorizontalAlign.Start)
-          .width('100%')
-          .padding(32)
-          .borderRadius(18)
-          .backgroundColor($r('app.color.card_background'))
+          EmptyStateCard({
+            title: 'VPN 尚未连接',
+            description: '连接后，这里会显示 Mihomo 当前管理的真实 TCP、UDP 与 DNS 连接。'
+          })
         } else if (this.visibleConnections().length === 0) {
           Text(this.query.length > 0 ? '没有匹配的活动连接' : '当前没有活动连接')
             .fontSize(16)

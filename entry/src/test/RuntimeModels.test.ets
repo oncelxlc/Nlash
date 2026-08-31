@@ -1,9 +1,7 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
   appendTrafficSample,
-  ConnectionSnapshot,
   connectionTitle,
-  DEFAULT_RUNTIME_MODE,
   formatBytes,
   formatBytesParts,
   formatSpeed,
@@ -13,15 +11,14 @@ import {
   ProxyDelayOperationRegistry,
   proxyDelayLabel,
   proxyNodeRenderKey,
-  ProxyGroupSnapshot,
   pruneProxySelections,
   resetGroupDelay,
   resolveSelectedProxyGroup,
   RuntimeRequestMerger,
-  RuntimeMode,
-  TrafficSample,
   visibleProxyGroups
-} from '../main/ets/models/RuntimeModels';
+} from '../main/ets/utils/RuntimeUtils';
+import { ConnectionSnapshot, ProxyGroupSnapshot, RuntimeMode, TrafficSample } from '../main/ets/model/RuntimeModels';
+import { DEFAULT_RUNTIME_MODE } from '../main/ets/constants/RuntimeConstants';
 
 export default function runtimeModelsTest() {
   describe('runtimeModels', () => {

@@ -4,20 +4,16 @@ import { fileIo } from '@kit.CoreFileKit';
 import { vpnExtension, VpnExtensionAbility } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { util } from '@kit.ArkTS';
-import { CoreEvent, CoreEventType, CoreResult, CoreRuntimeState } from '../models/CoreModels';
+import { CoreEvent, CoreEventType, CoreResult, CoreRuntimeState } from '../model/CoreModels';
+import { DEFAULT_RUNTIME_MODE } from '../constants/RuntimeConstants';
 import {
-  DEFAULT_RUNTIME_MODE,
   ProxyGroupSnapshot,
   ProxySelection,
   ProxySnapshot,
   RuntimeCommandResponse,
   RuntimeMode
-} from '../models/RuntimeModels';
-import {
-  CoreServiceState,
-  ProxyState,
-  RuntimeLifecycleSnapshot
-} from '../models/VpnModels';
+} from '../model/RuntimeModels';
+import { CoreServiceState, ProxyState, RuntimeLifecycleSnapshot } from '../model/VpnModels';
 import { preferenceRepository } from '../repository/PreferenceRepository';
 import { coreClient } from '../services/CoreClient';
 import { coreControlServer } from '../services/CoreControlServer';

@@ -1,14 +1,14 @@
 import { common } from '@kit.AbilityKit';
+import { isProfileUpdateDue } from '../utils/ProfileUtils';
 import {
-  isProfileUpdateDue,
   Profile,
   ProfileEditDraft,
   ProfileStoreListener,
   ProfileStoreSnapshot,
   ProfileType,
   ProfileUpdateStage
-} from '../models/ProfileModels';
-import { FeedbackLevel } from '../models/FeedbackModels';
+} from '../model/ProfileModels';
+import { FeedbackLevel } from '../model/FeedbackModels';
 import { preferenceRepository } from '../repository/PreferenceRepository';
 import { profileRepository } from '../repository/ProfileRepository';
 import { subscriptionService } from '../services/SubscriptionService';

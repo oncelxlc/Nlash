@@ -1,35 +1,4 @@
-export enum VpnState {
-  IDLE = 'IDLE',
-  REQUESTING_PERMISSION = 'REQUESTING_PERMISSION',
-  STARTING = 'STARTING',
-  CONNECTED = 'CONNECTED',
-  STOPPING = 'STOPPING',
-  DISCONNECTED = 'DISCONNECTED',
-  ERROR = 'ERROR'
-}
-
-export enum CoreServiceState {
-  STOPPED = 'STOPPED',
-  WAITING_CONFIG = 'WAITING_CONFIG',
-  STARTING = 'STARTING',
-  RUNNING = 'RUNNING',
-  RELOADING = 'RELOADING',
-  ERROR = 'ERROR'
-}
-
-export enum ProxyState {
-  DISABLED = 'DISABLED',
-  ENABLING = 'ENABLING',
-  ENABLED = 'ENABLED',
-  DISABLING = 'DISABLING',
-  ERROR = 'ERROR'
-}
-
-export enum CoreRestartAction {
-  START = 'START',
-  RESTART = 'RESTART',
-  BLOCKED = 'BLOCKED'
-}
+import { VpnState, CoreServiceState, ProxyState, CoreRestartAction, VpnStateEnvelope } from '../model/VpnModels';
 
 export function resolveCoreRestartAction(state: VpnState): CoreRestartAction {
   if (state === VpnState.REQUESTING_PERMISSION || state === VpnState.STARTING || state === VpnState.STOPPING) {
@@ -63,37 +32,6 @@ export function resolveVpnConnectedAt(previousState: VpnState, state: VpnState,
 function durationPart(value: number): string {
   return value < 10 ? `0${value}` : value.toString();
 }
-
-export interface VpnStateEvent {
-  state: VpnState;
-  coreState: CoreServiceState;
-  proxyState: ProxyState;
-  profileId: string;
-  profileSignature: string;
-  message: string;
-}
-
-export interface RuntimeLifecycleSnapshot {
-  coreState: CoreServiceState;
-  proxyState: ProxyState;
-  profileId: string;
-  profileSignature: string;
-  message: string;
-}
-
-export interface VpnStateEnvelope {
-  sourceId: string;
-  sourceStartedAt: number;
-  sequence: number;
-  event: VpnStateEvent;
-}
-
-export type VpnStateListener = (state: VpnState, message: string) => void;
-export type RuntimeLifecycleListener = (snapshot: RuntimeLifecycleSnapshot) => void;
-
-export const VPN_STATE_EVENT = 'nlash.vpn.state.changed';
-export const VPN_STATE_COMMON_EVENT = 'com.zhexian.nlash.event.VPN_STATE_CHANGED';
-export const VPN_BUNDLE_NAME = 'com.zhexian.nlash';
 
 export function encodeVpnStateEnvelope(envelope: VpnStateEnvelope): string {
   return JSON.stringify(envelope);

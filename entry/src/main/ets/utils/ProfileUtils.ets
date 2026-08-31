@@ -1,56 +1,9 @@
-export enum ProfileType {
-  SUBSCRIPTION = 'SUBSCRIPTION',
-  LOCAL = 'LOCAL'
-}
-
-export enum ProfileUpdateStage {
-  IDLE = 'IDLE',
-  DOWNLOADING = 'DOWNLOADING',
-  DOWNLOADED = 'DOWNLOADED',
-  VALIDATING = 'VALIDATING',
-  APPLYING = 'APPLYING',
-  APPLIED = 'APPLIED',
-  PERSISTING = 'PERSISTING',
-  SUCCESS = 'SUCCESS',
-  ERROR = 'ERROR'
-}
-
-export const DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES: number = 1440;
-export const MIN_PROFILE_UPDATE_INTERVAL_MINUTES: number = 15;
-export const MAX_PROFILE_UPDATE_INTERVAL_MINUTES: number = 10080;
-
-export interface Profile {
-  id: string;
-  name: string;
-  type: ProfileType;
-  sourceUrl: string;
-  localPath: string;
-  createdAt: number;
-  updatedAt: number;
-  lastUpdateAt?: number;
-  expireAt?: number;
-  uploadBytes?: number;
-  downloadBytes?: number;
-  totalBytes?: number;
-  autoUpdateEnabled: boolean;
-  updateIntervalMinutes: number;
-}
-
-export interface ProfileEditDraft {
-  name: string;
-  sourceUrl: string;
-  autoUpdateEnabled: boolean;
-  updateIntervalMinutes: number;
-}
-
-export interface ProfileStoreSnapshot {
-  profiles: Profile[];
-  activeProfileId: string;
-  stage: ProfileUpdateStage;
-  busyProfileId: string;
-}
-
-export type ProfileStoreListener = (snapshot: ProfileStoreSnapshot) => void;
+import { ProfileType, Profile } from '../model/ProfileModels';
+import {
+  DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES,
+  MIN_PROFILE_UPDATE_INTERVAL_MINUTES,
+  MAX_PROFILE_UPDATE_INTERVAL_MINUTES
+} from '../constants/ProfileConstants';
 
 export function normalizeProfileUpdateInterval(value: number): number {
   if (!Number.isFinite(value)) {

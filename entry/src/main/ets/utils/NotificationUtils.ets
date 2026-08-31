@@ -1,20 +1,9 @@
-import { AppPage } from './NavigationModels';
-import { DashboardSnapshot, formatSpeed } from './RuntimeModels';
-import { CoreServiceState, ProxyState } from './VpnModels';
-
-export const VPN_NOTIFICATION_ID = 1001;
-export const VPN_NOTIFICATION_LABEL = 'nlash-vpn-status';
-export const VPN_NOTIFICATION_PAUSE_EVENT = 'com.zhexian.nlash.event.PAUSE_PROXY';
-export const VPN_NOTIFICATION_REFRESH_EVENT = 'com.zhexian.nlash.event.REFRESH_VPN_NOTIFICATION';
-export const VPN_NOTIFICATION_TARGET_PARAMETER = 'targetPage';
-export const VPN_NOTIFICATION_DASHBOARD_TARGET = 'dashboard';
-
-export interface VpnNotificationPresentation {
-  title: string;
-  text: string;
-  additionalText: string;
-  showPauseAction: boolean;
-}
+import { AppPage } from '../model/NavigationModels';
+import { VPN_NOTIFICATION_DASHBOARD_TARGET } from '../constants/NotificationConstants';
+import { VpnNotificationPresentation } from '../model/NotificationModels';
+import { DashboardSnapshot } from '../model/RuntimeModels';
+import { formatSpeed } from './RuntimeUtils';
+import { CoreServiceState, ProxyState } from '../model/VpnModels';
 
 export function buildVpnNotificationPresentation(coreState: CoreServiceState, proxyState: ProxyState,
   dashboard?: DashboardSnapshot, speedAvailable: boolean = true): VpnNotificationPresentation {

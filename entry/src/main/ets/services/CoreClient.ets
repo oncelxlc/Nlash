@@ -26,7 +26,7 @@ import {
   CoreProxyOptions,
   CoreRuntimeState,
   CoreStartOptions
-} from '../models/CoreModels';
+} from '../model/CoreModels';
 
 const CORE_STATES: CoreRuntimeState[] = [
   CoreRuntimeState.STOPPED,

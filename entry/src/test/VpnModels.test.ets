@@ -2,18 +2,20 @@ import { describe, expect, it } from '@ohos/hypium';
 import {
   CoreServiceState,
   CoreRestartAction,
+  VpnState,
+  ProxyState,
+  VpnStateEnvelope
+} from '../main/ets/model/VpnModels';
+import {
   decodeVpnStateEnvelope,
   encodeVpnStateEnvelope,
   formatVpnRunDuration,
   resolveVpnConnectedAt,
   resolveProxyConnectedAt,
   resolveCoreRestartAction,
-  VpnState,
-  ProxyState,
   vpnStateFromProxyState,
-  VpnStateEnvelope,
   VpnStateSequenceTracker
-} from '../main/ets/models/VpnModels';
+} from '../main/ets/utils/VpnUtils';
 
 export default function vpnModelsTest() {
   describe('vpnModels', () => {

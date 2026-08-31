@@ -5,15 +5,17 @@ import {
   CORE_CONTROL_VERSION,
   CORE_PROGRESS_EVENT,
   CORE_RESPONSE_EVENT,
-  CoreCommandEnvelope,
+  MAX_CORE_RESPONSE_LENGTH
+} from '../constants/CoreControlConstants';
+import { CoreCommandEnvelope } from '../model/CoreControlModels';
+import {
   decodeCoreCommandEnvelope,
   decodeProxyDelayProgress,
   encodeProxyDelayProgress,
-  encodeCoreResponseEnvelope,
-  MAX_CORE_RESPONSE_LENGTH
-} from '../models/CoreControlProtocol';
-import { CoreEvent, CoreEventType } from '../models/CoreModels';
-import { VPN_BUNDLE_NAME } from '../models/VpnModels';
+  encodeCoreResponseEnvelope
+} from '../utils/CoreControlProtocol';
+import { CoreEvent, CoreEventType } from '../model/CoreModels';
+import { VPN_BUNDLE_NAME } from '../constants/VpnConstants';
 import { coreClient } from './CoreClient';
 
 const DOMAIN = 0x4E4C;

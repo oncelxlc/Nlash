@@ -12,4 +12,3 @@ export interface FeedbackEvent {
 }
 
 export type FeedbackListener = (event: FeedbackEvent) => void;
-

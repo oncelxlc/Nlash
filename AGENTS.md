@@ -6,12 +6,16 @@ Nlash is a HarmonyOS VPN application built with ArkTS and a C++ native bridge (`
 
 ### `entry/` — HAP Module (Main Application)
 
+`pages/` contains `@Entry` pages; `view/` contains business `@Component` views and their child components; `components/` contains reusable presentation components. Domain types live in singular `model/`, shared values in `constants/`, and formatting, validation and calculation helpers in `utils/`. Keep existing `stores/`, `services/`, `repository/` and `navigation/` responsibilities; do not add a parallel ViewModel layer just for naming consistency. Models must not import constants, utilities or services.
+
 | Path | Purpose |
 |---|---|
 | `entry/src/main/ets/pages/Index.ets` | Root page; responsive navigation shell (side/bottom nav), foldable-device aware |
-| `entry/src/main/ets/components/DashboardPage.ets` | VPN dashboard — real VPN state, active Profile and start/stop controls |
-| `entry/src/main/ets/components/ConfigurationPage.ets` | Subscription/Profile management — add, validate, select, update, rename and delete |
-| `entry/src/main/ets/components/PlaceholderPage.ets` | Stub page for features that still require typed Core APIs (PROXY, REQUESTS, CONNECTIONS, SETTINGS) |
+| `entry/src/main/ets/view/DashboardPage.ets` | VPN dashboard — composes separate RuntimeSpeedCard, RuntimeTrafficCard and RuntimeStatusCard business components |
+| `entry/src/main/ets/view/ConfigurationPage.ets` | Subscription/Profile management — add, validate, select, update, rename and delete |
+| `entry/src/main/ets/view/` | Six primary business views plus the navigation base and dashboard cards |
+| `entry/src/main/ets/components/EmptyStateCard.ets` | Shared title/description card for Requests and Connections |
+| `entry/src/main/ets/components/PlaceholderPage.ets` | Retained generic placeholder component |
 | `entry/src/main/ets/entryability/EntryAbility.ets` | UIAbility entry; initializes VPN, Profile, runtime and settings stores on `onCreate` |
 | `entry/src/main/ets/entrybackupability/EntryBackupAbility.ets` | `BackupExtensionAbility` stubs for onBackup/onRestore |
 | `entry/src/main/ets/vpnextension/ProxyVpnAbility.ets` | `VpnExtensionAbility` — establishes VPN, reads active Profile from Preferences and runs the Core/TUN/Protect lifecycle |
@@ -20,17 +24,19 @@ Nlash is a HarmonyOS VPN application built with ArkTS and a C++ native bridge (`
 | `entry/src/main/ets/stores/ProfileStore.ets` | UI-facing Profile state and serialized profile operations |
 | `entry/src/main/ets/repository/ProfileRepository.ets` | S2 RDB persistence for Profile metadata |
 | `entry/src/main/ets/repository/PreferenceRepository.ets` | Preferences persistence for the active Profile pointer |
-| `entry/src/main/ets/ui/ResponsiveMetrics.ets` | Central content-width breakpoints and page/card spacing |
+| `entry/src/main/ets/model/ResponsiveModels.ets` | Responsive size class and metrics types |
+| `entry/src/main/ets/constants/ResponsiveConstants.ets` | Compact, medium and expanded page/card spacing |
+| `entry/src/main/ets/utils/ResponsiveUtils.ets` | Shared width conversion, breakpoint resolution and card height calculation |
 | `entry/src/main/ets/services/VpnStatePublisher.ets` | Thin helper to emit typed `VpnStateEvent` on `applicationContext.eventHub` |
-| `entry/src/main/ets/models/VpnModels.ets` | `VpnState` enum, `VpnStateEvent` interface, `VpnStateListener` type alias |
-| `entry/src/main/ets/models/NavigationModels.ets` | `AppPage` enum (6 pages), `NavigationLayout` enum, layout-resolution logic (foldable/portrait/wide) |
+| `entry/src/main/ets/model/VpnModels.ets` | VPN state enums, events and listener types; helpers and shared values live in VpnUtils and VpnConstants |
+| `entry/src/main/ets/model/NavigationModels.ets` | `AppPage` enum (6 pages) and `NavigationLayout` enum; navigation lists and resolution live in NavigationConstants and NavigationUtils |
 
 **Navigation layout rules** (`resolveNavigationLayout`):
 - Foldable + expanded + fullscreen/maximized → **Side** nav (all 6 pages)
 - Foldable + expanded + floating/split-screen window → folded-style **Bottom** nav
 - Foldable + folded + portrait → **Bottom** nav (DASHBOARD, PROXY, CONFIGURATION, SETTINGS)
-- Non-foldable + portrait → **Bottom** nav
-- Non-foldable + wide → **Side** nav (REQUESTS, CONNECTIONS visible only in side nav)
+- Non-foldable → **Bottom** nav, including wide windows
+- REQUESTS and CONNECTIONS appear only in side nav; layout changes preserve the selected route
 
 ### `proxy_core/` — Native HAR/HSP Module
 
@@ -84,15 +90,14 @@ Follow existing ArkTS style: two-space indentation, semicolons, single quotes, e
 
 Tests use `@ohos/hypium` with `describe`, `it`, and `expect`. Name files `*.test.ets`, group behavior by feature, and cover success, failure, and state-transition paths. Add fast logic tests to `src/test` and device/API integration tests to `src/ohosTest`. There is no enforced coverage threshold; every behavior change should include focused regression coverage.
 
-**Current test status:** `entry/src/test/NavigationModels.test.ets` covers the navigation resolver, and scaffold tests exist under `entry/src/test/` and `entry/src/ohosTest/`. `proxy_core/src/test/` contains the Native module test-suite entry; device-level Native/VPN coverage still needs to be added.
+**Current test status:** `entry/src/test/NavigationModels.test.ets` covers navigation, and `UiUtils.test.ets` covers width conversion, responsive breakpoints and local-time formatting. Existing domain, protocol and service tests remain under `entry/src/test/`; scaffold integration tests remain under `entry/src/ohosTest/`. `proxy_core/src/test/` contains the Native module test-suite entry; device-level Native/VPN coverage still needs to be added.
 
 ## Adding New Pages
 
-1. Add the page enum value to `AppPage` in `NavigationModels.ets`.
-2. If the page should appear in bottom nav, add it to `BOTTOM_NAV_PAGES`; otherwise it will only show in side nav.
-3. Create the page component in `entry/src/main/ets/components/`.
-4. Add the page route to `entry/src/main/resources/base/profile/main_pages.json`.
-5. Wire into `Index.ets` — add a `build()` branch for the new `AppPage`.
+1. Add the primary page enum value to `AppPage` in `model/NavigationModels.ets` and its item to `SIDE_NAV_PAGES` in `constants/NavigationConstants.ets`; also add it to `BOTTOM_NAV_PAGES` if needed.
+2. Create the business `@Component` in `entry/src/main/ets/view/`; reusable presentation components belong in `components/`.
+3. Add the route and mapping in `navigation/AppNavigationState.ets`, then add its `NavDestination` branch in the `Index` destination builder, preserving the primary-page back behavior.
+4. Only independently loaded `@Entry` pages belong in `pages/` and `main_pages.json`. Business `@Component` views hosted by `Index` are not separately registered; the current entry remains `pages/Index`.
 
 ## Commit & Pull Request Guidelines
 

@@ -1,4 +1,4 @@
-import { AppPage } from '../models/NavigationModels';
+import { AppPage } from '../model/NavigationModels';
 
 export type NavigationIntentListener = (page: AppPage) => void;
 

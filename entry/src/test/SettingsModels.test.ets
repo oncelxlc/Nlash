@@ -1,10 +1,6 @@
 import { describe, expect, it } from '@ohos/hypium';
-import {
-  DEFAULT_APP_SETTINGS,
-  isRefreshIntervalSeconds,
-  REFRESH_INTERVAL_OPTIONS,
-  resolveRefreshIntervalMilliseconds
-} from '../main/ets/models/SettingsModels';
+import { DEFAULT_APP_SETTINGS, REFRESH_INTERVAL_OPTIONS } from '../main/ets/constants/SettingsConstants';
+import { isRefreshIntervalSeconds, resolveRefreshIntervalMilliseconds } from '../main/ets/utils/SettingsUtils';
 
 export default function settingsModelsTest() {
   describe('settingsModels', () => {

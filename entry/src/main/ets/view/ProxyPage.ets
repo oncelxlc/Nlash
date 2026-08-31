@@ -2,19 +2,18 @@ import {
   ProxyDelayOperationSnapshot,
   ProxyGroupSnapshot,
   ProxyNodeSnapshot,
-  proxyDelayLabel,
-  proxyNodeRenderKey,
   ProxySelection,
   ProxySnapshotSource,
-  RuntimeStoreSnapshot,
-  visibleProxyGroups
-} from '../models/RuntimeModels';
-import { AppSettings, SettingsStoreSnapshot } from '../models/SettingsModels';
+  RuntimeStoreSnapshot
+} from '../model/RuntimeModels';
+import { proxyDelayLabel, proxyNodeRenderKey, visibleProxyGroups } from '../utils/RuntimeUtils';
+import { AppSettings, SettingsStoreSnapshot } from '../model/SettingsModels';
 import { feedbackService } from '../services/FeedbackService';
 import { runtimeStore } from '../stores/RuntimeStore';
 import { settingsStore } from '../stores/SettingsStore';
-import { ResponsiveMetrics, resolveResponsiveMetrics } from '../ui/ResponsiveMetrics';
-import { BUTTON_RADIUS } from '../ui/UiConstants';
+import { ResponsiveMetrics } from '../model/ResponsiveModels';
+import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
+import { BUTTON_RADIUS } from '../constants/UiConstants';
 import { LengthMetrics, LengthUnit } from '@kit.ArkUI';
 
 @Component
@@ -56,8 +55,7 @@ export struct ProxyPage {
   }
 
   private updateWidth(width: Length): void {
-    const numericWidth = typeof width === 'number' ? width : (typeof width === 'string' ? Number(width) : 0);
-    this.metrics = resolveResponsiveMetrics(Number.isFinite(numericWidth) ? numericWidth : 0, this.forceExpanded);
+    this.metrics = resolveResponsiveMetrics(resolveContentWidth(width), this.forceExpanded);
   }
 
   private currentGroup(): ProxyGroupSnapshot | undefined {

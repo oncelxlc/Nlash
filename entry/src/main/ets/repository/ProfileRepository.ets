@@ -1,10 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { relationalStore } from '@kit.ArkData';
-import {
-  DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES,
-  Profile,
-  ProfileType
-} from '../models/ProfileModels';
+import { DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES } from '../constants/ProfileConstants';
+import { Profile, ProfileType } from '../model/ProfileModels';
 
 const DATABASE_NAME = 'nlash.db';
 const PROFILE_TABLE = 'profiles';

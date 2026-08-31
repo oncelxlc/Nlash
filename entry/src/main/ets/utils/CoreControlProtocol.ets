@@ -1,33 +1,10 @@
-export const CORE_COMMAND_EVENT = 'com.zhexian.nlash.event.CORE_COMMAND';
-export const CORE_RESPONSE_EVENT = 'com.zhexian.nlash.event.CORE_RESPONSE';
-export const CORE_PROGRESS_EVENT = 'com.zhexian.nlash.event.CORE_PROGRESS';
-export const CORE_CONTROL_VERSION = 1;
-export const MAX_CORE_COMMAND_LENGTH = 16 * 1024;
-export const MAX_CORE_RESPONSE_LENGTH = 1024 * 1024;
-export const MAX_CORE_PROGRESS_LENGTH = 8 * 1024;
-
-export interface CoreCommandEnvelope {
-  version: number;
-  requestId: string;
-  command: string;
-}
-
-export interface CoreResponseEnvelope {
-  version: number;
-  requestId: string;
-  response: string;
-}
-
-export interface ProxyDelayProgress {
-  operationId: string;
-  group: string;
-  proxy: string;
-  delay: number;
-  alive: boolean;
-  errorCode?: string;
-}
-
-export type ProxyDelayProgressListener = (progress: ProxyDelayProgress) => void;
+import {
+  CORE_CONTROL_VERSION,
+  MAX_CORE_COMMAND_LENGTH,
+  MAX_CORE_RESPONSE_LENGTH,
+  MAX_CORE_PROGRESS_LENGTH
+} from '../constants/CoreControlConstants';
+import { CoreCommandEnvelope, CoreResponseEnvelope, ProxyDelayProgress } from '../model/CoreControlModels';
 
 export function encodeCoreCommandEnvelope(envelope: CoreCommandEnvelope): string {
   return JSON.stringify(envelope);

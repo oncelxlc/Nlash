@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@ohos/hypium';
-import { FeedbackEvent, FeedbackLevel } from '../main/ets/models/FeedbackModels';
+import { FeedbackEvent, FeedbackLevel } from '../main/ets/model/FeedbackModels';
 import { FeedbackService } from '../main/ets/services/FeedbackService';
 
 export default function feedbackServiceTest() {

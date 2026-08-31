@@ -1,8 +1,8 @@
 import { BusinessError } from '@kit.BasicServicesKit';
 import { connection, http } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { PublicNetworkSnapshot } from '../models/RuntimeModels';
-import { ProxyState } from '../models/VpnModels';
+import { PublicNetworkSnapshot } from '../model/RuntimeModels';
+import { ProxyState } from '../model/VpnModels';
 
 const PUBLIC_IPV4_URL = 'https://api-ipv4.ip.sb/ip';
 const GEOIP_BASE_URL = 'https://api.ip.sb/geoip/';

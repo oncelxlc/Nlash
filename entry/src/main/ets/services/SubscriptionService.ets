@@ -2,14 +2,9 @@ import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
 import { Environment, fileIo, picker } from '@kit.CoreFileKit';
 import { http } from '@kit.NetworkKit';
-import {
-  DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES,
-  normalizeProfileUpdateInterval,
-  Profile,
-  ProfileEditDraft,
-  ProfileType,
-  ProfileUpdateStage
-} from '../models/ProfileModels';
+import { DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES } from '../constants/ProfileConstants';
+import { normalizeProfileUpdateInterval } from '../utils/ProfileUtils';
+import { Profile, ProfileEditDraft, ProfileType, ProfileUpdateStage } from '../model/ProfileModels';
 import { profileRepository } from '../repository/ProfileRepository';
 import { coreClient } from './CoreClient';
 

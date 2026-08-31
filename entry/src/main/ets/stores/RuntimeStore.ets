@@ -1,38 +1,37 @@
 import { util } from '@kit.ArkTS';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { ProxyDelayProgress, ProxyDelayProgressListener } from '../models/CoreControlProtocol';
-import { Profile, ProfileStoreSnapshot } from '../models/ProfileModels';
+import { ProxyDelayProgress, ProxyDelayProgressListener } from '../model/CoreControlModels';
+import { Profile, ProfileStoreSnapshot } from '../model/ProfileModels';
 import {
   appendTrafficSample,
+  mergeGroupDelay,
+  ProxyDelayOperationRegistry,
+  preserveTestedProxyDelays,
+  pruneProxySelections,
+  resolveSelectedProxyGroup,
+  RuntimeRequestMerger
+} from '../utils/RuntimeUtils';
+import {
   ConnectionSnapshot,
   ConnectionsSnapshot,
   DashboardSnapshot,
-  DEFAULT_RUNTIME_MODE,
   GroupDelayResult,
-  mergeGroupDelay,
   ProxyDelayResult,
-  ProxyDelayOperationRegistry,
   ProxyGroupSnapshot,
   ProxySelection,
   ProxySnapshot,
   ProxySnapshotSource,
-  preserveTestedProxyDelays,
-  pruneProxySelections,
   RequestRecord,
-  resolveSelectedProxyGroup,
   RuntimeCommandResponse,
   RuntimeMode,
-  RuntimeRequestMerger,
   RuntimeStoreListener,
   RuntimeStoreSnapshot,
   TrafficSample
-} from '../models/RuntimeModels';
-import {
-  AppSettings,
-  resolveRefreshIntervalMilliseconds,
-  SettingsStoreSnapshot
-} from '../models/SettingsModels';
-import { CoreServiceState, ProxyState, RuntimeLifecycleSnapshot } from '../models/VpnModels';
+} from '../model/RuntimeModels';
+import { DEFAULT_RUNTIME_MODE } from '../constants/RuntimeConstants';
+import { AppSettings, SettingsStoreSnapshot } from '../model/SettingsModels';
+import { resolveRefreshIntervalMilliseconds } from '../utils/SettingsUtils';
+import { CoreServiceState, ProxyState, RuntimeLifecycleSnapshot } from '../model/VpnModels';
 import { feedbackService } from '../services/FeedbackService';
 import { preferenceRepository } from '../repository/PreferenceRepository';
 import {

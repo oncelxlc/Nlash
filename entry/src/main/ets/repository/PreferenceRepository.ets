@@ -1,12 +1,9 @@
 import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
-import { ProxySelection, RuntimeMode } from '../models/RuntimeModels';
-import {
-  AppSettings,
-  AppThemeMode,
-  DEFAULT_APP_SETTINGS,
-  isRefreshIntervalSeconds
-} from '../models/SettingsModels';
+import { ProxySelection, RuntimeMode } from '../model/RuntimeModels';
+import { AppSettings, AppThemeMode } from '../model/SettingsModels';
+import { DEFAULT_APP_SETTINGS } from '../constants/SettingsConstants';
+import { isRefreshIntervalSeconds } from '../utils/SettingsUtils';
 
 const PREFERENCES_NAME = 'nlash_settings';
 const ACTIVE_PROFILE_ID = 'activeProfileId';

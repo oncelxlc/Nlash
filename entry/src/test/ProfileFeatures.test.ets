@@ -3,10 +3,9 @@ import {
   formatProfileRelativeTime,
   isProfileUpdateDue,
   normalizeProfileUpdateInterval,
-  Profile,
-  profileUsageRatio,
-  ProfileType
-} from '../main/ets/models/ProfileModels';
+  profileUsageRatio
+} from '../main/ets/utils/ProfileUtils';
+import { Profile, ProfileType } from '../main/ets/model/ProfileModels';
 import {
   parseStoredProxySelections,
   parseStoredProxyGroups,
@@ -14,8 +13,8 @@ import {
   selectStoredProxyGroup,
   StoredProxySelection
 } from '../main/ets/repository/PreferenceRepository';
-import { RuntimeMode } from '../main/ets/models/RuntimeModels';
-import { ProxyState } from '../main/ets/models/VpnModels';
+import { RuntimeMode } from '../main/ets/model/RuntimeModels';
+import { ProxyState } from '../main/ets/model/VpnModels';
 import {
   countryCodeFlag,
   isValidIpv4,
@@ -30,7 +29,7 @@ import {
   parseSubscriptionMetadata,
   SUBSCRIPTION_USER_AGENT
 } from '../main/ets/services/SubscriptionService';
-import { resolveDashboardSpeedCardHeight, resolveResponsiveMetrics } from '../main/ets/ui/ResponsiveMetrics';
+import { resolveDashboardSpeedCardHeight, resolveResponsiveMetrics } from '../main/ets/utils/ResponsiveUtils';
 
 export default function profileFeaturesTest() {
   describe('profileFeatures', () => {

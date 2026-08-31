@@ -4,20 +4,20 @@ import { vpnExtension } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import {
   CoreServiceState,
-  decodeVpnStateEnvelope,
   ProxyState,
-  resolveProxyConnectedAt,
   RuntimeLifecycleListener,
   RuntimeLifecycleSnapshot,
-  VPN_BUNDLE_NAME,
-  VPN_STATE_COMMON_EVENT,
-  VPN_STATE_EVENT,
   VpnState,
   VpnStateEvent,
-  VpnStateListener,
+  VpnStateListener
+} from '../model/VpnModels';
+import {
+  decodeVpnStateEnvelope,
+  resolveProxyConnectedAt,
   VpnStateSequenceTracker,
   vpnStateFromProxyState
-} from '../models/VpnModels';
+} from '../utils/VpnUtils';
+import { VPN_BUNDLE_NAME, VPN_STATE_COMMON_EVENT, VPN_STATE_EVENT } from '../constants/VpnConstants';
 import { feedbackService } from './FeedbackService';
 import { runtimeControlService } from './RuntimeControlService';
 

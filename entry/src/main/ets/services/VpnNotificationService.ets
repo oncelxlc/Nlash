@@ -2,21 +2,19 @@ import { common, wantAgent, Want, WantAgent } from '@kit.AbilityKit';
 import { BusinessError, commonEventManager } from '@kit.BasicServicesKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { buildVpnNotificationPresentation } from '../utils/NotificationUtils';
 import {
-  buildVpnNotificationPresentation,
   VPN_NOTIFICATION_DASHBOARD_TARGET,
   VPN_NOTIFICATION_ID,
   VPN_NOTIFICATION_LABEL,
   VPN_NOTIFICATION_PAUSE_EVENT,
-  VPN_NOTIFICATION_REFRESH_EVENT,
-  VpnNotificationPresentation
-} from '../models/NotificationModels';
-import {
-  DashboardSnapshot,
-  RuntimeCommandResponse
-} from '../models/RuntimeModels';
-import { resolveRefreshIntervalMilliseconds } from '../models/SettingsModels';
-import { CoreServiceState, ProxyState, VPN_BUNDLE_NAME } from '../models/VpnModels';
+  VPN_NOTIFICATION_REFRESH_EVENT
+} from '../constants/NotificationConstants';
+import { VpnNotificationPresentation } from '../model/NotificationModels';
+import { DashboardSnapshot, RuntimeCommandResponse } from '../model/RuntimeModels';
+import { resolveRefreshIntervalMilliseconds } from '../utils/SettingsUtils';
+import { CoreServiceState, ProxyState } from '../model/VpnModels';
+import { VPN_BUNDLE_NAME } from '../constants/VpnConstants';
 import { preferenceRepository } from '../repository/PreferenceRepository';
 import { coreClient } from './CoreClient';
 

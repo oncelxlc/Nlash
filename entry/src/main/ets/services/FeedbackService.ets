@@ -1,4 +1,4 @@
-import { FeedbackEvent, FeedbackLevel, FeedbackListener } from '../models/FeedbackModels';
+import { FeedbackEvent, FeedbackLevel, FeedbackListener } from '../model/FeedbackModels';
 
 const DEFAULT_DEDUPE_WINDOW_MS = 3000;
 

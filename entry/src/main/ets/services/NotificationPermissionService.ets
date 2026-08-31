@@ -2,11 +2,9 @@ import { common } from '@kit.AbilityKit';
 import { BusinessError, commonEventManager } from '@kit.BasicServicesKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import {
-  shouldRequestNotificationPermission,
-  VPN_NOTIFICATION_REFRESH_EVENT
-} from '../models/NotificationModels';
-import { VPN_BUNDLE_NAME } from '../models/VpnModels';
+import { shouldRequestNotificationPermission } from '../utils/NotificationUtils';
+import { VPN_NOTIFICATION_REFRESH_EVENT } from '../constants/NotificationConstants';
+import { VPN_BUNDLE_NAME } from '../constants/VpnConstants';
 import { preferenceRepository } from '../repository/PreferenceRepository';
 import { feedbackService } from './FeedbackService';
 

@@ -1,12 +1,7 @@
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
-import {
-  AppSettings,
-  AppThemeMode,
-  DEFAULT_APP_SETTINGS,
-  isRefreshIntervalSeconds,
-  SettingsStoreListener,
-  SettingsStoreSnapshot
-} from '../models/SettingsModels';
+import { AppSettings, AppThemeMode, SettingsStoreListener, SettingsStoreSnapshot } from '../model/SettingsModels';
+import { DEFAULT_APP_SETTINGS } from '../constants/SettingsConstants';
+import { isRefreshIntervalSeconds } from '../utils/SettingsUtils';
 import { preferenceRepository } from '../repository/PreferenceRepository';
 
 class SettingsStore {

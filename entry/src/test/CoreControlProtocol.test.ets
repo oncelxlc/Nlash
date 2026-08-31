@@ -5,9 +5,9 @@ import {
   decodeCoreResponseEnvelope,
   encodeCoreCommandEnvelope,
   encodeProxyDelayProgress,
-  encodeCoreResponseEnvelope,
-  MAX_CORE_COMMAND_LENGTH
-} from '../main/ets/models/CoreControlProtocol';
+  encodeCoreResponseEnvelope
+} from '../main/ets/utils/CoreControlProtocol';
+import { MAX_CORE_COMMAND_LENGTH } from '../main/ets/constants/CoreControlConstants';
 
 export default function coreControlProtocolTest() {
   describe('coreControlProtocol', () => {

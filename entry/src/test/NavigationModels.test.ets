@@ -1,14 +1,9 @@
 import { describe, expect, it } from '@ohos/hypium';
-import {
-  AppPage,
-  BOTTOM_NAV_PAGES,
-  NavigationLayout,
-  normalizePage,
-  resolveNavigationLayout,
-  SIDE_NAV_PAGES
-} from '../main/ets/models/NavigationModels';
+import { AppPage, NavigationLayout } from '../main/ets/model/NavigationModels';
+import { BOTTOM_NAV_PAGES, SIDE_NAV_PAGES } from '../main/ets/constants/NavigationConstants';
+import { normalizePage, resolveNavigationLayout } from '../main/ets/utils/NavigationUtils';
 import { AppNavigationState, AppRoute, resolveAppRoute } from '../main/ets/navigation/AppNavigationState';
-import { resolveResponsiveMetrics } from '../main/ets/ui/ResponsiveMetrics';
+import { resolveResponsiveMetrics } from '../main/ets/utils/ResponsiveUtils';
 
 export default function navigationModelsTest() {
   describe('navigationModels', () => {

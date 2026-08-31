@@ -10,6 +10,7 @@ import profileFeaturesTest from './ProfileFeatures.test';
 import feedbackServiceTest from './FeedbackService.test';
 import settingsModelsTest from './SettingsModels.test';
 import notificationModelsTest from './NotificationModels.test';
+import uiUtilsTest from './UiUtils.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -24,4 +25,5 @@ export default function testsuite() {
   feedbackServiceTest();
   settingsModelsTest();
   notificationModelsTest();
+  uiUtilsTest();
 }

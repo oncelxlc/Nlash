@@ -1,14 +1,7 @@
-import {
-  decodeProxyDelayProgress,
-  ProxyDelayProgress,
-  ProxyDelayProgressListener
-} from '../models/CoreControlProtocol';
-import { CoreEvent, CoreEventType } from '../models/CoreModels';
-import {
-  GroupDelayResult,
-  ProxySnapshot,
-  RuntimeCommandResponse
-} from '../models/RuntimeModels';
+import { decodeProxyDelayProgress } from '../utils/CoreControlProtocol';
+import { ProxyDelayProgress, ProxyDelayProgressListener } from '../model/CoreControlModels';
+import { CoreEvent, CoreEventType } from '../model/CoreModels';
+import { GroupDelayResult, ProxySnapshot, RuntimeCommandResponse } from '../model/RuntimeModels';
 import { coreClient } from './CoreClient';
 
 interface PreviewProxyPayload {

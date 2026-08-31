@@ -5,14 +5,16 @@ import {
   CORE_COMMAND_EVENT,
   CORE_CONTROL_VERSION,
   CORE_PROGRESS_EVENT,
-  CORE_RESPONSE_EVENT,
+  CORE_RESPONSE_EVENT
+} from '../constants/CoreControlConstants';
+import {
   decodeCoreResponseEnvelope,
   decodeProxyDelayProgress,
-  ProxyDelayProgressListener,
   encodeCoreCommandEnvelope
-} from '../models/CoreControlProtocol';
-import { RuntimeCommandResponse } from '../models/RuntimeModels';
-import { VPN_BUNDLE_NAME } from '../models/VpnModels';
+} from '../utils/CoreControlProtocol';
+import { ProxyDelayProgressListener } from '../model/CoreControlModels';
+import { RuntimeCommandResponse } from '../model/RuntimeModels';
+import { VPN_BUNDLE_NAME } from '../constants/VpnConstants';
 
 const COMMAND_TIMEOUT_MS = 12000;
 const DOMAIN = 0x4E4C;

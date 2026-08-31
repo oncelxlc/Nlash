@@ -2,16 +2,9 @@ import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
 import { BusinessError, commonEventManager } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import {
-  CoreServiceState,
-  encodeVpnStateEnvelope,
-  ProxyState,
-  VPN_BUNDLE_NAME,
-  VPN_STATE_COMMON_EVENT,
-  VPN_STATE_EVENT,
-  VpnStateEvent,
-  vpnStateFromProxyState
-} from '../models/VpnModels';
+import { CoreServiceState, ProxyState, VpnStateEvent } from '../model/VpnModels';
+import { encodeVpnStateEnvelope, vpnStateFromProxyState } from '../utils/VpnUtils';
+import { VPN_BUNDLE_NAME, VPN_STATE_COMMON_EVENT, VPN_STATE_EVENT } from '../constants/VpnConstants';
 
 const DOMAIN = 0x4E4C;
 const TAG = 'NlashVpnState';

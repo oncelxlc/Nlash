@@ -1,8 +1,12 @@
-import { formatBytes, RequestRecord, RuntimeStoreSnapshot } from '../models/RuntimeModels';
+import { EmptyStateCard } from '../components/EmptyStateCard';
+import { formatLocalTime } from '../utils/DateUtils';
+import { formatBytes } from '../utils/RuntimeUtils';
+import { RequestRecord, RuntimeStoreSnapshot } from '../model/RuntimeModels';
 import { feedbackService } from '../services/FeedbackService';
 import { runtimeStore } from '../stores/RuntimeStore';
-import { ResponsiveMetrics, resolveResponsiveMetrics } from '../ui/ResponsiveMetrics';
-import { BUTTON_RADIUS } from '../ui/UiConstants';
+import { ResponsiveMetrics } from '../model/ResponsiveModels';
+import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
+import { BUTTON_RADIUS } from '../constants/UiConstants';
 
 enum RequestFilter {
   ALL = 'ALL',
@@ -32,8 +36,7 @@ export struct RequestsPage {
   }
 
   private updateWidth(width: Length): void {
-    const numericWidth = typeof width === 'number' ? width : (typeof width === 'string' ? Number(width) : 0);
-    this.metrics = resolveResponsiveMetrics(Number.isFinite(numericWidth) ? numericWidth : 0);
+    this.metrics = resolveResponsiveMetrics(resolveContentWidth(width));
   }
 
   private filterLabel(filter: RequestFilter): string {
@@ -65,10 +68,6 @@ export struct RequestsPage {
 
   private title(record: RequestRecord): string {
     return record.host.length > 0 ? record.host : record.destination;
-  }
-
-  private formatTime(timestamp: number): string {
-    return timestamp > 0 ? new Date(timestamp).toLocaleTimeString() : '--';
   }
 
   @Builder
@@ -105,7 +104,7 @@ export struct RequestsPage {
         .maxLines(2)
         .width('100%')
       Row() {
-        Text(`${record.network.toUpperCase()} · ${this.formatTime(record.start)}`)
+        Text(`${record.network.toUpperCase()} · ${formatLocalTime(record.start)}`)
           .fontSize(12)
           .fontColor($r('app.color.content_secondary'))
           .layoutWeight(1)
@@ -161,21 +160,10 @@ export struct RequestsPage {
         .width('100%')
 
         if (this.visibleRequests().length === 0) {
-          Column({ space: 10 }) {
-            Text('暂无请求记录')
-              .fontSize(20)
-              .fontWeight(FontWeight.Medium)
-              .fontColor($r('app.color.content_primary'))
-            Text('建立 VPN 并产生网络连接后，此处会保留最多 200 条会话内记录。')
-              .fontSize(14)
-              .fontColor($r('app.color.content_secondary'))
-              .textAlign(TextAlign.Start)
-          }
-          .alignItems(HorizontalAlign.Start)
-          .width('100%')
-          .padding(32)
-          .borderRadius(18)
-          .backgroundColor($r('app.color.card_background'))
+          EmptyStateCard({
+            title: '暂无请求记录',
+            description: '建立 VPN 并产生网络连接后，此处会保留最多 200 条会话内记录。'
+          })
         } else {
           Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
             ForEach(this.visibleRequests(), (record: RequestRecord) => {

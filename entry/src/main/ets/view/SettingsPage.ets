@@ -1,16 +1,13 @@
-import {
-  AppSettings,
-  AppThemeMode,
-  REFRESH_INTERVAL_OPTIONS,
-  SettingsStoreSnapshot
-} from '../models/SettingsModels';
-import { RuntimeStoreSnapshot } from '../models/RuntimeModels';
+import { AppSettings, AppThemeMode, SettingsStoreSnapshot } from '../model/SettingsModels';
+import { REFRESH_INTERVAL_OPTIONS } from '../constants/SettingsConstants';
+import { RuntimeStoreSnapshot } from '../model/RuntimeModels';
 import { feedbackService } from '../services/FeedbackService';
 import { coreClient } from '../services/CoreClient';
 import { runtimeStore } from '../stores/RuntimeStore';
 import { settingsStore } from '../stores/SettingsStore';
-import { ResponsiveMetrics, resolveResponsiveMetrics } from '../ui/ResponsiveMetrics';
-import { BUTTON_RADIUS } from '../ui/UiConstants';
+import { ResponsiveMetrics } from '../model/ResponsiveModels';
+import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
+import { BUTTON_RADIUS } from '../constants/UiConstants';
 
 const THEMES: AppThemeMode[] = [AppThemeMode.SYSTEM, AppThemeMode.LIGHT, AppThemeMode.DARK];
 
@@ -55,8 +52,7 @@ export struct SettingsPage {
   }
 
   private updateWidth(width: Length): void {
-    const numericWidth = typeof width === 'number' ? width : (typeof width === 'string' ? Number(width) : 0);
-    this.metrics = resolveResponsiveMetrics(Number.isFinite(numericWidth) ? numericWidth : 0);
+    this.metrics = resolveResponsiveMetrics(resolveContentWidth(width));
   }
 
   private themeLabel(theme: AppThemeMode): string {

@@ -2,12 +2,12 @@ import { describe, expect, it } from '@ohos/hypium';
 import {
   buildVpnNotificationPresentation,
   resolveNotificationNavigationTarget,
-  shouldRequestNotificationPermission,
-  VPN_NOTIFICATION_DASHBOARD_TARGET
-} from '../main/ets/models/NotificationModels';
-import { AppPage } from '../main/ets/models/NavigationModels';
-import { DashboardSnapshot, RuntimeMode } from '../main/ets/models/RuntimeModels';
-import { CoreServiceState, ProxyState } from '../main/ets/models/VpnModels';
+  shouldRequestNotificationPermission
+} from '../main/ets/utils/NotificationUtils';
+import { VPN_NOTIFICATION_DASHBOARD_TARGET } from '../main/ets/constants/NotificationConstants';
+import { AppPage } from '../main/ets/model/NavigationModels';
+import { DashboardSnapshot, RuntimeMode } from '../main/ets/model/RuntimeModels';
+import { CoreServiceState, ProxyState } from '../main/ets/model/VpnModels';
 
 export default function notificationModelsTest() {
   describe('notificationModels', () => {

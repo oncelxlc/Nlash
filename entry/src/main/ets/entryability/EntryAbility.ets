@@ -1,13 +1,11 @@
 import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
-import {
-  resolveNotificationNavigationTarget,
-  VPN_NOTIFICATION_TARGET_PARAMETER
-} from '../models/NotificationModels';
-import { Profile } from '../models/ProfileModels';
-import { AppPage } from '../models/NavigationModels';
-import { ProxyState, RuntimeLifecycleSnapshot } from '../models/VpnModels';
+import { resolveNotificationNavigationTarget } from '../utils/NotificationUtils';
+import { VPN_NOTIFICATION_TARGET_PARAMETER } from '../constants/NotificationConstants';
+import { Profile } from '../model/ProfileModels';
+import { AppPage } from '../model/NavigationModels';
+import { ProxyState, RuntimeLifecycleSnapshot } from '../model/VpnModels';
 import {
   publicNetworkService,
   shouldRefreshPublicNetworkAfterProxyStateChange

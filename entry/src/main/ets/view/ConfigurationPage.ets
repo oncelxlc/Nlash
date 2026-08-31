@@ -1,25 +1,22 @@
 import {
   DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES,
-  formatProfileRelativeTime,
-  getSubscriptionHost,
   MAX_PROFILE_UPDATE_INTERVAL_MINUTES,
-  MIN_PROFILE_UPDATE_INTERVAL_MINUTES,
+  MIN_PROFILE_UPDATE_INTERVAL_MINUTES
+} from '../constants/ProfileConstants';
+import { formatProfileRelativeTime, getSubscriptionHost, profileUsageRatio } from '../utils/ProfileUtils';
+import {
   Profile,
   ProfileEditDraft,
-  profileUsageRatio,
   ProfileStoreSnapshot,
   ProfileType,
   ProfileUpdateStage
-} from '../models/ProfileModels';
+} from '../model/ProfileModels';
 import { feedbackService } from '../services/FeedbackService';
 import { configurationEditorService } from '../services/ConfigurationEditorService';
 import { profileStore } from '../stores/ProfileStore';
-import {
-  ResponsiveMetrics,
-  ResponsiveSizeClass,
-  resolveResponsiveMetrics
-} from '../ui/ResponsiveMetrics';
-import { BUTTON_RADIUS } from '../ui/UiConstants';
+import { ResponsiveMetrics, ResponsiveSizeClass } from '../model/ResponsiveModels';
+import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
+import { BUTTON_RADIUS } from '../constants/UiConstants';
 
 @Component
 export struct ConfigurationPage {
@@ -74,10 +71,7 @@ export struct ConfigurationPage {
   }
 
   private updateWidth(width: Length): void {
-    const numericWidth = typeof width === 'number' ? width :
-      (typeof width === 'string' ? Number(width) : 0);
-    this.metrics = resolveResponsiveMetrics(Number.isFinite(numericWidth) ? numericWidth : 0,
-      this.forceExpanded);
+    this.metrics = resolveResponsiveMetrics(resolveContentWidth(width), this.forceExpanded);
   }
 
   private async addSubscription(): Promise<void> {

@@ -1,20 +1,16 @@
 import { display, window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
-import { FeedbackEvent, FeedbackLevel } from '../models/FeedbackModels';
-import { ConfigurationPage } from '../components/ConfigurationPage';
-import { ConnectionsPage } from '../components/ConnectionsPage';
-import { DashboardPage } from '../components/DashboardPage';
-import { NavigationBasePage } from '../components/NavigationBasePage';
-import { ProxyPage } from '../components/ProxyPage';
-import { RequestsPage } from '../components/RequestsPage';
-import { SettingsPage } from '../components/SettingsPage';
-import {
-  AppPage,
-  BOTTOM_NAV_PAGES,
-  NavigationLayout,
-  resolveNavigationLayout,
-  SIDE_NAV_PAGES
-} from '../models/NavigationModels';
+import { FeedbackEvent, FeedbackLevel } from '../model/FeedbackModels';
+import { ConfigurationPage } from '../view/ConfigurationPage';
+import { ConnectionsPage } from '../view/ConnectionsPage';
+import { DashboardPage } from '../view/DashboardPage';
+import { NavigationBasePage } from '../view/NavigationBasePage';
+import { ProxyPage } from '../view/ProxyPage';
+import { RequestsPage } from '../view/RequestsPage';
+import { SettingsPage } from '../view/SettingsPage';
+import { AppPage, NavigationLayout } from '../model/NavigationModels';
+import { BOTTOM_NAV_PAGES, SIDE_NAV_PAGES } from '../constants/NavigationConstants';
+import { resolveNavigationLayout } from '../utils/NavigationUtils';
 import { AppNavigationState, AppRoute } from '../navigation/AppNavigationState';
 import { feedbackService } from '../services/FeedbackService';
 import { configurationEditorService } from '../services/ConfigurationEditorService';
