@@ -17,7 +17,7 @@ import {
   resolveResponsiveMetrics,
   resolveContentWidth
 } from '../utils/ResponsiveUtils';
-import { BUTTON_RADIUS } from '../constants/UiConstants';
+import { BUTTON_RADIUS, FLOATING_NAVIGATION_INSET } from '../constants/UiConstants';
 
 const MODES: RuntimeMode[] = [RuntimeMode.RULE, RuntimeMode.GLOBAL, RuntimeMode.DIRECT];
 const VIEW_SYNC_INTERVAL_MS = 1000;
@@ -317,7 +317,10 @@ export struct DashboardPage {
       (this.isProxyActive() || (this.coreState === CoreServiceState.RUNNING &&
         this.getActiveProfile() !== undefined)))
     .accessibilityText(this.hasRunStarted() ? '关闭代理' : '开启代理')
-    .margin({ right: this.metrics.pagePadding, bottom: this.metrics.pagePadding })
+    .margin({
+      right: this.metrics.pagePadding,
+      bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
+    })
     .zIndex(2)
     .onClick((): void => { this.toggleProxy(!this.isProxyActive()); })
   }
@@ -479,7 +482,7 @@ export struct DashboardPage {
           top: this.metrics.pagePadding,
           left: this.metrics.pagePadding,
           right: this.metrics.pagePadding,
-          bottom: this.metrics.pagePadding + 80
+          bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
         })
       }
       .width('100%')

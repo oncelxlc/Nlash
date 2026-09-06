@@ -16,7 +16,7 @@ import { configurationEditorService } from '../services/ConfigurationEditorServi
 import { profileStore } from '../stores/ProfileStore';
 import { ResponsiveMetrics, ResponsiveSizeClass } from '../model/ResponsiveModels';
 import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
-import { BUTTON_RADIUS } from '../constants/UiConstants';
+import { BUTTON_RADIUS, FLOATING_NAVIGATION_INSET } from '../constants/UiConstants';
 
 @Component
 export struct ConfigurationPage {
@@ -595,7 +595,7 @@ export struct ConfigurationPage {
     .alignItems(HorizontalAlign.Start)
     .width('100%')
     .height('100%')
-    .padding(24)
+    .padding({ top: 24, left: 24, right: 24, bottom: 24 + FLOATING_NAVIGATION_INSET })
     .backgroundColor($r('app.color.app_background'))
   }
 
@@ -624,7 +624,7 @@ export struct ConfigurationPage {
           top: this.metrics.pagePadding,
           left: this.metrics.pagePadding,
           right: this.metrics.pagePadding,
-          bottom: this.metrics.pagePadding + 80
+          bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
         })
       }
       .width('100%')
@@ -641,7 +641,10 @@ export struct ConfigurationPage {
       .backgroundColor($r('app.color.nav_selected'))
       .enabled(this.busyProfileId.length === 0)
       .accessibilityText('添加或导入配置')
-      .margin({ right: this.metrics.pagePadding, bottom: this.metrics.pagePadding })
+      .margin({
+        right: this.metrics.pagePadding,
+        bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
+      })
       .onClick((): void => {
         this.showAddOptions();
       })

@@ -7,7 +7,7 @@ import { runtimeStore } from '../stores/RuntimeStore';
 import { settingsStore } from '../stores/SettingsStore';
 import { ResponsiveMetrics } from '../model/ResponsiveModels';
 import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
-import { BUTTON_RADIUS } from '../constants/UiConstants';
+import { BUTTON_RADIUS, FLOATING_NAVIGATION_INSET } from '../constants/UiConstants';
 
 const THEMES: AppThemeMode[] = [AppThemeMode.SYSTEM, AppThemeMode.LIGHT, AppThemeMode.DARK];
 
@@ -307,7 +307,12 @@ export struct SettingsPage {
       .alignItems(HorizontalAlign.Start)
       .width('100%')
       .constraintSize({ minHeight: '100%' })
-      .padding(this.metrics.pagePadding)
+      .padding({
+        top: this.metrics.pagePadding,
+        left: this.metrics.pagePadding,
+        right: this.metrics.pagePadding,
+        bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
+      })
     }
     .width('100%')
     .height('100%')

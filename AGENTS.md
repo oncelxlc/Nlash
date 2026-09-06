@@ -32,7 +32,9 @@ ArkTS uses two-space indentation, semicolons, single quotes, explicit API types,
 
 ## Testing Guidelines
 
-Use `@ohos/hypium` in `entry/src/test/` and `proxy_core/src/test/`; name suites `*.test.ets` and register them in the corresponding `List.test.ets`. Go uses standard `testing` with `*_test.go`. No coverage threshold is configured; add focused regression tests for changed behavior. Device suites live in `entry/src/ohosTest/`. VPN authorization, TUN, socket protection, network switching, and foldable behavior require real-device validation.
+Use `@ohos/hypium` in `entry/src/test/` and `proxy_core/src/test/`; name suites `*.test.ets` and register them in the corresponding `List.test.ets`. Go uses standard `testing` with `*_test.go`. No coverage threshold is configured; add focused regression tests for changed behavior. Device suites live in `entry/src/ohosTest/`.
+
+Prefer emulator validation for simple UI styling, layout, copy, basic navigation, and other hardware-independent changes. Use a real device only when explicitly requested or when hardware/system behavior makes emulator results insufficient, including VPN authorization, TUN, socket protection, network switching, sensor-driven handedness, and physical fold transitions.
 
 ## Commit & Pull Request Guidelines
 

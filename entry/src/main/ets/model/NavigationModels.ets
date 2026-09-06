@@ -6,8 +6,3 @@ export enum AppPage {
   CONNECTIONS,
   SETTINGS
 }
-
-export enum NavigationLayout {
-  SIDE,
-  BOTTOM
-}

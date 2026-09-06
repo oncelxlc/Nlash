@@ -6,7 +6,7 @@ import { feedbackService } from '../services/FeedbackService';
 import { runtimeStore } from '../stores/RuntimeStore';
 import { ResponsiveMetrics } from '../model/ResponsiveModels';
 import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
-import { BUTTON_RADIUS } from '../constants/UiConstants';
+import { BUTTON_RADIUS, FLOATING_NAVIGATION_INSET } from '../constants/UiConstants';
 
 enum RequestFilter {
   ALL = 'ALL',
@@ -181,7 +181,7 @@ export struct RequestsPage {
         top: this.metrics.pagePadding,
         left: this.metrics.pagePadding,
         right: this.metrics.pagePadding,
-        bottom: this.metrics.pagePadding + 80
+        bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
       })
     }
     .width('100%')
@@ -198,7 +198,10 @@ export struct RequestsPage {
         .padding({ left: 20, right: 20 })
         .fontColor(Color.White)
         .backgroundColor($r('app.color.nav_selected'))
-        .margin({ right: this.metrics.pagePadding, bottom: this.metrics.pagePadding })
+        .margin({
+          right: this.metrics.pagePadding,
+          bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
+        })
         .zIndex(2)
         .onClick((): void => {
           runtimeStore.clearRequests();

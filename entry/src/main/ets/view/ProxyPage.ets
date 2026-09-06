@@ -13,7 +13,7 @@ import { runtimeStore } from '../stores/RuntimeStore';
 import { settingsStore } from '../stores/SettingsStore';
 import { ResponsiveMetrics } from '../model/ResponsiveModels';
 import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
-import { BUTTON_RADIUS } from '../constants/UiConstants';
+import { BUTTON_RADIUS, FLOATING_NAVIGATION_INSET } from '../constants/UiConstants';
 import { LengthMetrics, LengthUnit } from '@kit.ArkUI';
 
 @Component
@@ -300,7 +300,7 @@ export struct ProxyPage {
         top: this.metrics.pagePadding,
         left: this.metrics.pagePadding,
         right: this.metrics.pagePadding,
-        bottom: this.metrics.pagePadding + 60
+        bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
       })
     }
     .width('100%')
@@ -318,7 +318,10 @@ export struct ProxyPage {
       .fontColor(Color.White)
       .enabled(!this.isGroupTesting() && !this.previewLoading && this.currentGroup() !== undefined)
       .accessibilityText('测试当前代理组延迟')
-      .margin({ right: this.metrics.pagePadding, bottom: this.metrics.pagePadding - 10 })
+      .margin({
+        right: this.metrics.pagePadding,
+        bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET - 10
+      })
       .zIndex(2)
       .onClick((): void => {
         this.testCurrentGroup();
