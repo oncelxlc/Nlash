@@ -29,7 +29,7 @@ export default function navigationModelsTest() {
 
     it('usesCurrentProxyColumns', 0, () => {
       expect(resolveResponsiveMetrics(360).proxyColumns).assertEqual('1fr 1fr');
-      expect(resolveResponsiveMetrics(700).proxyColumns).assertEqual('1fr 1fr');
+      expect(resolveResponsiveMetrics(700).proxyColumns).assertEqual('1fr 1fr 1fr 1fr');
       expect(resolveResponsiveMetrics(360, true).proxyColumns).assertEqual('1fr 1fr 1fr 1fr');
       expect(resolveResponsiveMetrics(1000).proxyColumns).assertEqual('1fr 1fr 1fr 1fr');
     });

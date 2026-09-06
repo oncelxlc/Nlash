@@ -25,7 +25,7 @@ export const MEDIUM_METRICS: ResponsiveMetrics = {
   dashboardCardWidth: '48%',
   dashboardCardHeight: 112,
   dashboardInfoCardHeight: 100,
-  proxyColumns: '1fr 1fr'
+  proxyColumns: '1fr 1fr 1fr 1fr'
 };
 
 export const EXPANDED_METRICS: ResponsiveMetrics = {
