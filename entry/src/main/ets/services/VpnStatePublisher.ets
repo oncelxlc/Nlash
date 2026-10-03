@@ -18,7 +18,9 @@ export function publishVpnState(
   proxyState: ProxyState,
   message: string = '',
   profileId: string = '',
-  profileSignature: string = ''
+  profileSignature: string = '',
+  sessionStartedAt: number = 0,
+  sessionEndedAt: number = 0
 ): void {
   const event: VpnStateEvent = {
     state: vpnStateFromProxyState(proxyState),
@@ -26,7 +28,9 @@ export function publishVpnState(
     proxyState: proxyState,
     profileId: profileId,
     profileSignature: profileSignature,
-    message: message
+    message: message,
+    sessionStartedAt: sessionStartedAt,
+    sessionEndedAt: sessionEndedAt
   };
   hilog.info(DOMAIN, TAG, 'core=%{public}s proxy=%{public}s message=%{public}s',
     coreState, proxyState, message);

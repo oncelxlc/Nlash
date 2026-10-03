@@ -26,6 +26,10 @@ export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     this.handleNavigationWant(want);
     vpnService.initialize(this.context.getApplicationContext());
+    const hostOperation = vpnService.ensureHost();
+    hostOperation.catch((): void => {
+      hilog.error(DOMAIN, 'NlashCore', 'Core host initialization failed');
+    });
     publicNetworkService.initialize();
     this.proxyState = vpnService.getProxyState();
     this.unsubscribeVpnLifecycle = vpnService.subscribeLifecycle((snapshot: RuntimeLifecycleSnapshot): void => {
@@ -44,20 +48,19 @@ export default class EntryAbility extends UIAbility {
     settingsOperation.catch((): void => {
       hilog.error(DOMAIN, 'NlashSettings', 'Settings initialization failed');
     });
-    Promise.all([profileOperation, settingsOperation]).then((): void => {
+    Promise.all([hostOperation, profileOperation, settingsOperation]).then((): void => {
       const snapshot = profileStore.getSnapshot();
       const active = snapshot.profiles.find((profile: Profile): boolean =>
         profile.id === snapshot.activeProfileId);
       if (active === undefined) {
-        vpnService.ensureHost().catch((): void => {
-          hilog.error(DOMAIN, 'NlashCore', 'Core host initialization failed');
-        });
         return;
       }
       const signature = `${active.id}:${active.localPath}:${active.updatedAt}`;
       vpnService.applyProfile(active.id, active.localPath, signature).catch((): void => {
         hilog.error(DOMAIN, 'NlashCore', 'Core profile initialization failed');
       });
+    }).catch((): void => {
+      hilog.error(DOMAIN, 'NlashCore', 'Application runtime initialization failed');
     });
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
   }

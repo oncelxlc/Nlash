@@ -4,6 +4,7 @@ import protectProtocolTest from './ProtectProtocol.test';
 import protectChannelServerTest from './ProtectChannelServer.test';
 import coreRecoveryPolicyTest from './CoreRecoveryPolicy.test';
 import vpnModelsTest from './VpnModels.test';
+import vpnServiceTest from './VpnService.test';
 import coreControlProtocolTest from './CoreControlProtocol.test';
 import runtimeModelsTest from './RuntimeModels.test';
 import profileFeaturesTest from './ProfileFeatures.test';
@@ -19,6 +20,7 @@ export default function testsuite() {
   protectChannelServerTest();
   coreRecoveryPolicyTest();
   vpnModelsTest();
+  vpnServiceTest();
   coreControlProtocolTest();
   runtimeModelsTest();
   profileFeaturesTest();

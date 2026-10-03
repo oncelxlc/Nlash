@@ -1,4 +1,35 @@
-import { VpnState, CoreServiceState, ProxyState, CoreRestartAction, VpnStateEnvelope } from '../model/VpnModels';
+import {
+  VpnState, CoreServiceState, ProxyState, CoreRestartAction, VpnStateEnvelope, ProxySessionTiming
+} from '../model/VpnModels';
+
+export class ProxySessionTimer {
+  private startedAt: number = 0;
+  private endedAt: number = 0;
+
+  connected(now: number): void {
+    if (this.startedAt === 0 || this.endedAt > 0) {
+      this.startedAt = Math.max(1, now);
+      this.endedAt = 0;
+    }
+  }
+
+  finish(now: number): void {
+    if (this.startedAt > 0 && this.endedAt === 0) {
+      this.endedAt = Math.max(this.startedAt, now);
+    }
+  }
+
+  getSnapshot(): ProxySessionTiming {
+    return { sessionStartedAt: this.startedAt, sessionEndedAt: this.endedAt };
+  }
+}
+
+export function proxySessionElapsedSeconds(startedAt: number, endedAt: number, now: number): number {
+  if (startedAt <= 0) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(((endedAt > 0 ? endedAt : now) - startedAt) / 1000));
+}
 
 export function resolveCoreRestartAction(state: VpnState): CoreRestartAction {
   if (state === VpnState.REQUESTING_PERMISSION || state === VpnState.STARTING || state === VpnState.STOPPING) {
@@ -44,10 +75,16 @@ export function decodeVpnStateEnvelope(data: string): VpnStateEnvelope | undefin
   } catch (error) {
     return undefined;
   }
-  if (typeof envelope.sourceId !== 'string' || envelope.sourceId.length === 0 || envelope.sourceId.length > 64 ||
+  if (envelope === null || typeof envelope !== 'object' ||
+    typeof envelope.sourceId !== 'string' || envelope.sourceId.length === 0 || envelope.sourceId.length > 64 ||
     !Number.isFinite(envelope.sourceStartedAt) || envelope.sourceStartedAt % 1 !== 0 || envelope.sourceStartedAt <= 0 ||
     !Number.isFinite(envelope.sequence) || envelope.sequence % 1 !== 0 || envelope.sequence <= 0 ||
-    envelope.event === undefined || typeof envelope.event.message !== 'string' || envelope.event.message.length > 1024 ||
+    envelope.event === undefined || envelope.event === null ||
+    !Number.isFinite(envelope.event.sessionStartedAt) || envelope.event.sessionStartedAt < 0 ||
+    !Number.isFinite(envelope.event.sessionEndedAt) || envelope.event.sessionEndedAt < 0 ||
+    (envelope.event.sessionEndedAt > 0 && (envelope.event.sessionStartedAt === 0 ||
+      envelope.event.sessionEndedAt < envelope.event.sessionStartedAt)) ||
+    typeof envelope.event.message !== 'string' || envelope.event.message.length > 1024 ||
     typeof envelope.event.profileId !== 'string' || envelope.event.profileId.length > 128 ||
     typeof envelope.event.profileSignature !== 'string' || envelope.event.profileSignature.length > 1024 ||
     !isCoreServiceState(envelope.event.coreState) || !isProxyState(envelope.event.proxyState)) {

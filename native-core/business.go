@@ -156,9 +156,6 @@ type setModePayload struct {
 }
 
 func (runtime *coreRuntime) executeCommand(raw string) string {
-	runtime.mu.RLock()
-	defer runtime.mu.RUnlock()
-
 	if len(raw) == 0 || len(raw) > maxCoreCommandBytes {
 		return marshalCommandResponse(commandFailure("INVALID_ARGUMENT", "command is empty or too large"))
 	}
@@ -166,6 +163,18 @@ func (runtime *coreRuntime) executeCommand(raw string) string {
 	if err := json.Unmarshal([]byte(raw), &command); err != nil || command.Type == "" {
 		return marshalCommandResponse(commandFailure("INVALID_ARGUMENT", "command is invalid"))
 	}
+	if command.Type == "applyConfig" {
+		var payload previewProxyPayload
+		if !decodeCommandPayload(command.Payload, &payload) || strings.TrimSpace(payload.ConfigPath) == "" {
+			return marshalCommandResponse(commandFailure("INVALID_ARGUMENT", "configuration path is invalid"))
+		}
+		return marshalCommandResponse(runtime.applyConfig(payload.ConfigPath, false))
+	}
+	if command.Type == "rollbackConfig" {
+		return marshalCommandResponse(runtime.applyConfig("", true))
+	}
+	runtime.mu.RLock()
+	defer runtime.mu.RUnlock()
 	if command.Type == "previewProxySnapshot" {
 		var payload previewProxyPayload
 		if !decodeCommandPayload(command.Payload, &payload) || strings.TrimSpace(payload.ConfigPath) == "" {
@@ -259,6 +268,22 @@ func (runtime *coreRuntime) executeCommand(raw string) string {
 		response = commandFailure("UNSUPPORTED", "command is unsupported")
 	}
 	return marshalCommandResponse(response)
+}
+
+func restoreProxySnapshot(snapshot proxySnapshot) error {
+	mode, ok := tunnel.ModeMapping[strings.ToLower(snapshot.Mode)]
+	if !ok {
+		return errors.New("previous mode is invalid")
+	}
+	tunnel.SetMode(mode)
+	for _, group := range snapshot.Groups {
+		if group.Selectable && group.Selected != "" {
+			if err := selectProxy(group.Name, group.Selected); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (runtime *coreRuntime) dashboardSnapshot() dashboardSnapshot {

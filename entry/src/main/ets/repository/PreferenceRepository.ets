@@ -138,7 +138,12 @@ class PreferenceRepository {
     await this.setActiveProfile('', '');
   }
 
-  async getAppSettings(): Promise<AppSettings> {
+  async getAppSettings(refreshContext?: common.Context): Promise<AppSettings> {
+    if (refreshContext !== undefined) {
+      // The VPN host must read settings flushed by the UI process before creating a new TUN.
+      await preferences.removePreferencesFromCache(refreshContext, { name: PREFERENCES_NAME });
+      await this.initializeInternal(refreshContext);
+    }
     const store = this.requireStore();
     const themeValue = await store.get(THEME_MODE, DEFAULT_APP_SETTINGS.themeMode);
     const mtuValue = await store.get(VPN_MTU, DEFAULT_APP_SETTINGS.mtu);

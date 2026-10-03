@@ -370,7 +370,7 @@ export struct ConfigurationPage {
       .width(CONTROL_HEIGHT)
       .height(CONTROL_HEIGHT)
       .borderRadius(BUTTON_RADIUS)
-      .backgroundColor($r('app.color.nav_selected'))
+      .backgroundColor($r('app.color.action_primary'))
       .enabled(this.busyProfileId.length === 0)
       .accessibilityText('添加订阅或导入配置')
       .onClick((): void => { this.showAddOptions(); })
@@ -543,7 +543,7 @@ export struct ConfigurationPage {
       Button(this.busyProfileId.length > 0 ? '保存中…' :
         (this.editingProfile()?.type === ProfileType.SUBSCRIPTION ? '保存并更新' : '保存名称'))
         .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
-        .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.nav_selected'))
+        .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.action_primary'))
         .enabled(this.busyProfileId.length === 0)
         .onClick((): void => { this.saveEditor(); })
     }
@@ -625,7 +625,7 @@ export struct ConfigurationPage {
       }
       Button(this.isAddingSubscription() ? this.getStageLabel() : '下载并校验')
         .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
-        .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.nav_selected'))
+        .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.action_primary'))
         .enabled(this.busyProfileId.length === 0 && this.addUrl.trim().length > 0)
         .onClick((): void => { this.addSubscription(); })
     }
@@ -639,7 +639,7 @@ export struct ConfigurationPage {
       Text('选择配置来源').fontSize(BODY_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
       Button('添加订阅')
         .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
-        .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.nav_selected'))
+        .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.action_primary'))
         .onClick((): void => { this.openAddSubscription(); })
       Button('导入本地 YAML')
         .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)

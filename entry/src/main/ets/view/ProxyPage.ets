@@ -265,7 +265,7 @@ export struct ProxyPage {
             .fontSize(14)
             .borderRadius(BUTTON_RADIUS)
             .fontColor($r('app.color.accent_foreground'))
-            .backgroundColor($r('app.color.nav_selected'))
+            .backgroundColor($r('app.color.action_primary'))
             .enabled(!this.isGroupTesting() && !this.previewLoading && this.currentGroup() !== undefined)
             .onClick((): void => { this.testCurrentGroup(); })
         }

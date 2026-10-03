@@ -1,12 +1,116 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/metacubex/mihomo/component/profile/cachefile"
 	"github.com/metacubex/mihomo/config"
 	C "github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/listener"
+	"github.com/metacubex/mihomo/tunnel"
 )
+
+func TestConfigurationHotApplyPreservesRuntimeAndAcceptedData(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "active.yaml")
+	bootstrap := []byte("port: 0\nsocks-port: 0\nmixed-port: 0\nexternal-controller: ''\n" +
+		"dns:\n  enable: false\ntun:\n  enable: false\nrules:\n  - MATCH,REJECT\n")
+	if err := os.WriteFile(path, bootstrap, 0600); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &coreRuntime{state: coreStopped}
+	if code := runtime.start(coreStartOptions{configPath: path, workDir: dir}); code != coreOK {
+		t.Fatalf("bootstrap failed: %v %s", code, runtime.lastError)
+	}
+	t.Cleanup(func() {
+		runtime.stop()
+		if cachefile.Cache().DB != nil {
+			if err := cachefile.Cache().Close(); err != nil {
+				t.Error(err)
+			}
+		}
+	})
+	if runtime.getState() != coreRunning || runtime.isProxyEnabled() || listener.GetTunConf().Enable {
+		t.Fatal("bootstrap must run without enabling proxy or TUN")
+	}
+	starts, stops := 0, 0
+	setCoreEventHandler(func(kind coreEventType, state coreRuntimeState, _ coreErrorCode, _ string) {
+		if kind == coreEventLifecycle && state == coreStarting {
+			starts++
+		}
+		if kind == coreEventLifecycle && state == coreStopping {
+			stops++
+		}
+	})
+	t.Cleanup(func() { setCoreEventHandler(nil) })
+	updated := append(append([]byte{}, bootstrap...), []byte("proxy-groups:\n  - name: Route\n    type: select\n    proxies: [DIRECT, REJECT]\n")...)
+	if err := os.WriteFile(path, updated, 0600); err != nil {
+		t.Fatal(err)
+	}
+	command, err := json.Marshal(map[string]any{"type": "applyConfig", "payload": map[string]any{"configPath": path}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := decodeTestCommandResponse(t, runtime.executeCommand(string(command)))
+	if !response.OK {
+		t.Fatalf("hot apply failed: %+v", response)
+	}
+	if tunnel.Proxies()["Route"] == nil {
+		t.Fatal("updated group is missing")
+	}
+	if response := decodeTestCommandResponse(t, runtime.executeCommand(`{"type":"selectProxy","payload":{"group":"Route","proxy":"REJECT"}}`)); !response.OK {
+		t.Fatalf("selection failed: %+v", response)
+	}
+	if response := decodeTestCommandResponse(t, runtime.executeCommand(`{"type":"setMode","payload":{"mode":"direct"}}`)); !response.OK {
+		t.Fatalf("mode change failed: %+v", response)
+	}
+	if err := os.WriteFile(path, []byte("proxy-groups: ["), 0600); err != nil {
+		t.Fatal(err)
+	}
+	response = decodeTestCommandResponse(t, runtime.executeCommand(string(command)))
+	if response.OK || response.Code != "CONFIG_INVALID" {
+		t.Fatalf("invalid config accepted: %+v", response)
+	}
+	if runtime.getState() != coreRunning || string(runtime.configData) != string(updated) {
+		t.Fatal("invalid overwrite replaced the accepted configuration")
+	}
+	if _, err := runtime.parseActiveConfig(); err != nil {
+		t.Fatalf("accepted config depends on overwritten file: %v", err)
+	}
+	if response := decodeTestCommandResponse(t, runtime.executeCommand(`{"type":"rollbackConfig"}`)); !response.OK {
+		t.Fatalf("rollback failed: %+v", response)
+	}
+	if string(runtime.configData) != string(bootstrap) || tunnel.Proxies()["Route"] != nil {
+		t.Fatal("rollback did not restore the previous accepted bytes")
+	}
+	if code := runtime.disableProxy(); code != coreOK {
+		t.Fatalf("idempotent proxy disable failed: %v", code)
+	}
+	if starts != 0 || stops != 0 {
+		t.Fatalf("hot operations restarted core: starts=%d stops=%d", starts, stops)
+	}
+}
+
+func TestReloadKeepsPlatformTunParameters(t *testing.T) {
+	previous := listener.LastTunConf
+	t.Cleanup(func() { listener.LastTunConf = previous })
+	active := &config.Config{General: &config.General{}}
+	configureHarmonyTun(active, 37, 1420)
+	listener.LastTunConf = active.General.Tun
+	replacement := &config.Config{General: &config.General{}}
+	configureReloadTun(replacement, true)
+	if !replacement.General.Tun.Equal(active.General.Tun) {
+		t.Fatal("reload changed platform TUN settings")
+	}
+	configureReloadTun(replacement, false)
+	if replacement.General.Tun.Enable || replacement.General.Tun.FileDescriptor != -1 {
+		t.Fatal("disabled proxy gained a TUN")
+	}
+}
 
 func TestConfigureHarmonyTunOverridesUnsafeRouting(t *testing.T) {
 	cfg := &config.Config{General: &config.General{}}

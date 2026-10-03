@@ -55,14 +55,17 @@ type coreProxyOptions struct {
 }
 
 type coreRuntime struct {
-	mu              sync.RWMutex
-	state           coreRuntimeState
-	lastError       string
-	protect         *protectClient
-	configPath      string
-	workDir         string
-	proxyEnabled    bool
-	proxyGroupOrder []string
+	mu                 sync.RWMutex
+	state              coreRuntimeState
+	lastError          string
+	protect            *protectClient
+	configPath         string
+	configData         []byte
+	previousConfigPath string
+	previousConfigData []byte
+	workDir            string
+	proxyEnabled       bool
+	proxyGroupOrder    []string
 }
 
 var runtimeInstance = &coreRuntime{state: coreStopped}
@@ -140,7 +143,11 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	}()
 	C.SetHomeDir(options.workDir)
 	C.SetConfig(options.configPath)
-	cfg, proxyGroupOrder, err := parseRuntimeConfigWithPath(options.configPath)
+	data, err := os.ReadFile(options.configPath)
+	if err != nil {
+		return runtime.setFailure(coreConfigInvalid, err)
+	}
+	cfg, proxyGroupOrder, err := parseRuntimeConfigData(data)
 	if err != nil {
 		return runtime.setFailure(coreConfigInvalid, err)
 	}
@@ -153,11 +160,89 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	dialer.DefaultSocketHook = nil
 	executor.ApplyConfig(cfg, true)
 	runtime.configPath = options.configPath
+	runtime.configData = data
+	runtime.previousConfigPath = ""
+	runtime.previousConfigData = nil
 	runtime.workDir = options.workDir
 	runtime.proxyGroupOrder = proxyGroupOrder
 	runtime.state = coreRunning
 	emitCoreEvent(coreEventLifecycle, runtime.state, coreOK, "core is running")
 	return coreOK
+}
+
+// applyConfig keeps the running core, platform TUN and socket protection in place.
+func (runtime *coreRuntime) applyConfig(configPath string, rollback bool) coreCommandResponse {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.state != coreRunning {
+		return commandFailure("CORE_NOT_RUNNING", "core is not running")
+	}
+	var data []byte
+	var err error
+	if rollback {
+		configPath, data = runtime.previousConfigPath, runtime.previousConfigData
+		if configPath == "" || len(data) == 0 {
+			return commandFailure("INVALID_STATE", "previous configuration is unavailable")
+		}
+	} else {
+		data, err = os.ReadFile(configPath)
+		if err != nil {
+			return commandFailure("CONFIG_INVALID", sanitizeCoreError(err))
+		}
+	}
+	C.SetHomeDir(runtime.workDir)
+	C.SetConfig(configPath)
+	cfg, order, err := parseRuntimeConfigData(data)
+	if err != nil {
+		C.SetConfig(runtime.configPath)
+		return commandFailure("CONFIG_INVALID", sanitizeCoreError(err))
+	}
+	configureReloadTun(cfg, runtime.proxyEnabled)
+	previous := runtime.proxySnapshot()
+	if err = applyRuntimeConfig(cfg); err != nil {
+		oldConfig, restoreErr := runtime.parseActiveConfig()
+		if restoreErr == nil {
+			// Use the original TUN settings even if the failed apply changed the listener state.
+			oldConfig.General.Tun = cfg.General.Tun
+			oldConfig.General.IPv6 = false
+			restoreErr = applyRuntimeConfig(oldConfig)
+		}
+		if restoreErr == nil {
+			restoreErr = restoreProxySnapshot(previous)
+		}
+		if restoreErr != nil {
+			failure := fmt.Errorf("configuration apply failed: %v; rollback failed: %v", err, restoreErr)
+			runtime.setFailure(coreInternalError, failure)
+			emitCoreEvent(coreEventUnexpectedExit, coreFailed, coreInternalError, runtime.lastError)
+			return commandFailure("ROLLBACK_FAILED", runtime.lastError)
+		}
+		return commandFailure("APPLY_FAILED", sanitizeCoreError(err))
+	}
+	runtime.previousConfigPath, runtime.previousConfigData = runtime.configPath, runtime.configData
+	runtime.configPath, runtime.configData = configPath, data
+	runtime.proxyGroupOrder = order
+	runtime.lastError = ""
+	return commandSuccess(runtime.proxySnapshot())
+}
+
+func configureReloadTun(cfg *config.Config, proxyEnabled bool) {
+	configureHarmonyCore(cfg)
+	if proxyEnabled {
+		cfg.General.Tun = listener.GetTunConf()
+	}
+}
+
+func applyRuntimeConfig(cfg *config.Config) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("mihomo apply panic: %v", recovered)
+		}
+	}()
+	executor.ApplyConfig(cfg, true)
+	if listener.GetTunConf().Enable != cfg.General.Tun.Enable {
+		return errors.New("TUN state changed during configuration apply")
+	}
+	return nil
 }
 
 func (runtime *coreRuntime) enableProxy(options coreProxyOptions) (code coreErrorCode) {
@@ -248,7 +333,8 @@ func (runtime *coreRuntime) parseActiveConfig() (*config.Config, error) {
 	}
 	C.SetHomeDir(runtime.workDir)
 	C.SetConfig(runtime.configPath)
-	return parseConfigWithPath(runtime.configPath)
+	cfg, _, err := parseRuntimeConfigData(runtime.configData)
+	return cfg, err
 }
 
 func (runtime *coreRuntime) applyCoreOnlyConfig() error {
@@ -305,6 +391,10 @@ func parseRuntimeConfigWithPath(configPath string) (*config.Config, []string, er
 	if err != nil {
 		return nil, nil, err
 	}
+	return parseRuntimeConfigData(data)
+}
+
+func parseRuntimeConfigData(data []byte) (*config.Config, []string, error) {
 	raw, err := config.UnmarshalRawConfig(data)
 	if err != nil {
 		return nil, nil, err
@@ -431,6 +521,9 @@ func (runtime *coreRuntime) stop() (code coreErrorCode) {
 	}
 	runtime.proxyEnabled = false
 	runtime.configPath = ""
+	runtime.configData = nil
+	runtime.previousConfigPath = ""
+	runtime.previousConfigData = nil
 	runtime.workDir = ""
 	runtime.proxyGroupOrder = nil
 	runtime.lastError = ""

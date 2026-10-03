@@ -2,11 +2,11 @@
   "color": [
     {
       "name": "start_window_background",
-      "value": "#F5F4EF"
+      "value": "#F5F5F5"
     },
     {
       "name": "app_background",
-      "value": "#F5F4EF"
+      "value": "#F5F5F5"
     },
     {
       "name": "card_background",
@@ -18,31 +18,31 @@
     },
     {
       "name": "nav_selected_background",
-      "value": "#EDF7F1"
+      "value": "#E4E4E7"
     },
     {
       "name": "nav_selected",
-      "value": "#147D6A"
+      "value": "#18181B"
     },
     {
       "name": "nav_unselected",
-      "value": "#5E6964"
+      "value": "#52525B"
     },
     {
       "name": "nav_divider",
-      "value": "#D8DFD9"
+      "value": "#D4D4D8"
     },
     {
       "name": "content_primary",
-      "value": "#202825"
+      "value": "#18181B"
     },
     {
       "name": "content_secondary",
-      "value": "#5E6964"
+      "value": "#52525B"
     },
     {
       "name": "skeleton_background",
-      "value": "#D8DFD9"
+      "value": "#D4D4D8"
     },
     {
       "name": "status_success",
@@ -58,35 +58,35 @@
     },
     {
       "name": "mode_unselected_background",
-      "value": "#EDEEE8"
+      "value": "#E4E4E7"
     },
     {
       "name": "mode_rule_background",
-      "value": "#EDF7F1"
+      "value": "#E4E4E7"
     },
     {
       "name": "mode_rule_foreground",
-      "value": "#147D6A"
+      "value": "#18181B"
     },
     {
       "name": "mode_global_background",
-      "value": "#EDF7F1"
+      "value": "#E4E4E7"
     },
     {
       "name": "mode_global_foreground",
-      "value": "#147D6A"
+      "value": "#18181B"
     },
     {
       "name": "mode_direct_background",
-      "value": "#EDF7F1"
+      "value": "#E4E4E7"
     },
     {
       "name": "mode_direct_foreground",
-      "value": "#147D6A"
+      "value": "#18181B"
     },
     {
       "name": "vpn_fab_background",
-      "value": "#147D6A"
+      "value": "#2563EB"
     },
     {
       "name": "vpn_fab_foreground",
@@ -98,11 +98,11 @@
     },
     {
       "name": "surface_muted",
-      "value": "#EDEEE8"
+      "value": "#E4E4E7"
     },
     {
       "name": "control_border",
-      "value": "#82948B"
+      "value": "#71717A"
     },
     {
       "name": "status_error_surface",
@@ -114,15 +114,19 @@
     },
     {
       "name": "chart_upload",
-      "value": "#466A97"
+      "value": "#18181B"
     },
     {
       "name": "chart_download",
-      "value": "#147D6A"
+      "value": "#52525B"
     },
     {
       "name": "chart_grid",
-      "value": "#D8DFD9"
+      "value": "#D4D4D8"
+    },
+    {
+      "name": "action_primary",
+      "value": "#2563EB"
     }
   ]
 }

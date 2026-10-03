@@ -14,6 +14,7 @@ import { profileRepository } from '../repository/ProfileRepository';
 import { subscriptionService } from '../services/SubscriptionService';
 import { feedbackService } from '../services/FeedbackService';
 import { vpnService } from '../services/VpnService';
+import { BOOTSTRAP_PROFILE_SIGNATURE } from '../constants/VpnConstants';
 
 class ProfileStore {
   private readonly autoUpdateTickMs: number = 60 * 1000;
@@ -86,7 +87,6 @@ class ProfileStore {
       await this.reload();
       if (this.activeProfileId.length === 0) {
         await this.activate(profile);
-        await this.synchronizeRuntime();
       }
       this.finishOperation('配置已添加并通过校验');
     } catch (error) {
@@ -107,7 +107,6 @@ class ProfileStore {
       await this.reload();
       if (this.activeProfileId.length === 0) {
         await this.activate(profile);
-        await this.synchronizeRuntime();
       }
       this.finishOperation('本地配置已导入并通过校验');
     } catch (error) {
@@ -203,7 +202,6 @@ class ProfileStore {
     this.beginOperation(id);
     try {
       await this.activate(profile);
-      await this.synchronizeRuntime();
       this.finishOperation('已切换活动配置');
     } catch (error) {
       const failure = this.toError(error);
@@ -219,20 +217,26 @@ class ProfileStore {
     const removedActiveProfile = this.activeProfileId === id;
     this.beginOperation(id);
     try {
-      await subscriptionService.remove(profile);
-      if (this.activeProfileId === id) {
-        await preferenceRepository.clearActiveProfile();
-        this.activeProfileId = '';
+      if (removedActiveProfile) {
+        const next = this.profiles.find((item: Profile): boolean => item.id !== id);
+        if (next !== undefined) {
+          await this.activate(next);
+        } else {
+          await vpnService.applyProfile('', '', BOOTSTRAP_PROFILE_SIGNATURE);
+          try {
+            await preferenceRepository.clearActiveProfile();
+          } catch (error) {
+            await this.applyRuntimeProfile(profile);
+            throw this.toError(error);
+          }
+          this.activeProfileId = '';
+          this.publish();
+        }
       }
+      await subscriptionService.remove(profile);
       await preferenceRepository.removeProxyState(id);
       this.autoUpdateRetryAt.delete(id);
       await this.reload();
-      if (this.activeProfileId.length === 0 && this.profiles.length > 0) {
-        await this.activate(this.profiles[0]);
-      }
-      if (removedActiveProfile) {
-        await this.synchronizeRuntime();
-      }
       this.finishOperation('配置已删除');
     } catch (error) {
       const failure = this.toError(error);
@@ -268,19 +272,30 @@ class ProfileStore {
   }
 
   private async activate(profile: Profile): Promise<void> {
-    await preferenceRepository.setActiveProfile(profile.id, profile.localPath);
+    const previous = this.profiles.find((item: Profile): boolean => item.id === this.activeProfileId);
+    await this.applyRuntimeProfile(profile);
+    try {
+      await preferenceRepository.setActiveProfile(profile.id, profile.localPath);
+    } catch (error) {
+      await this.applyRuntimeProfile(previous);
+      throw this.toError(error);
+    }
     this.activeProfileId = profile.id;
     this.publish();
   }
 
   private async synchronizeRuntime(): Promise<void> {
     const active = this.profiles.find((profile: Profile): boolean => profile.id === this.activeProfileId);
-    if (active === undefined) {
-      await vpnService.ensureHost();
+    await this.applyRuntimeProfile(active);
+  }
+
+  private async applyRuntimeProfile(profile?: Profile): Promise<void> {
+    if (profile === undefined) {
+      await vpnService.applyProfile('', '', BOOTSTRAP_PROFILE_SIGNATURE);
       return;
     }
-    await vpnService.applyProfile(active.id, active.localPath,
-      `${active.id}:${active.localPath}:${active.updatedAt}`);
+    await vpnService.applyProfile(profile.id, profile.localPath,
+      `${profile.id}:${profile.localPath}:${profile.updatedAt}`);
   }
 
   private startAutoUpdateScheduler(): void {

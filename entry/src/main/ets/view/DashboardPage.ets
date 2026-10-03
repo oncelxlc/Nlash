@@ -1,11 +1,12 @@
 import { RuntimeStatusCard } from './RuntimeStatusCard';
 import { RuntimeTrafficCard } from './RuntimeTrafficCard';
 import { RuntimeSpeedCard } from './RuntimeSpeedCard';
+import { systemDateTime } from '@kit.BasicServicesKit';
 import { Profile } from '../model/ProfileModels';
 import { DashboardSnapshot, PublicNetworkSnapshot, RuntimeMode, TrafficSample } from '../model/RuntimeModels';
 import { DEFAULT_RUNTIME_MODE } from '../constants/RuntimeConstants';
-import { CoreServiceState, ProxyState } from '../model/VpnModels';
-import { formatVpnRunDuration } from '../utils/VpnUtils';
+import { CoreServiceState, ProxyState, RuntimeLifecycleSnapshot } from '../model/VpnModels';
+import { formatVpnRunDuration, proxySessionElapsedSeconds } from '../utils/VpnUtils';
 import { feedbackService } from '../services/FeedbackService';
 import { publicNetworkService } from '../services/LocalNetworkService';
 import { vpnService } from '../services/VpnService';
@@ -42,14 +43,22 @@ export struct DashboardPage {
   @State restarting: boolean = false;
   @State selectedMode: RuntimeMode = DEFAULT_RUNTIME_MODE;
   @State runtimeBusyKey: string = '';
-  @State connectedAt: number = vpnService.getConnectedAt();
+  @State sessionStartedAt: number = 0;
+  @State sessionEndedAt: number = 0;
+  @State runtimeProfileId: string = '';
+  @State profileBusy: boolean = false;
+  @State proxyOperation: boolean = false;
   @State elapsedSeconds: number = 0;
   @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
   private unsubscribeNetwork: (() => void) | undefined = undefined;
+  private unsubscribeLifecycle: (() => void) | undefined = undefined;
   private viewSyncTimer: number | undefined = undefined;
   private lastTrafficSampleTimestamp: number = 0;
 
   aboutToAppear(): void {
+    this.unsubscribeLifecycle = vpnService.subscribeLifecycle((snapshot: RuntimeLifecycleSnapshot): void => {
+      this.applyLifecycle(snapshot);
+    });
     this.unsubscribeNetwork = publicNetworkService.subscribe((snapshot: PublicNetworkSnapshot): void => {
       this.applyPublicNetworkSnapshot(snapshot);
     });
@@ -59,6 +68,8 @@ export struct DashboardPage {
   }
 
   aboutToDisappear(): void {
+    this.unsubscribeLifecycle?.();
+    this.unsubscribeLifecycle = undefined;
     this.unsubscribeNetwork?.();
     this.unsubscribeNetwork = undefined;
     if (this.viewSyncTimer !== undefined) {
@@ -69,13 +80,11 @@ export struct DashboardPage {
 
   private syncViewState(): void {
     const lifecycle = vpnService.getLifecycleSnapshot();
-    this.coreState = lifecycle.coreState;
-    this.proxyState = lifecycle.proxyState;
-    this.message = lifecycle.message;
-    this.connectedAt = vpnService.getConnectedAt();
+    this.applyLifecycle(lifecycle);
     const profileSnapshot = profileStore.getSnapshot();
     this.profiles = profileSnapshot.profiles;
     this.activeProfileId = profileSnapshot.activeProfileId;
+    this.profileBusy = profileSnapshot.busyProfileId.length > 0;
 
     const runtimeSnapshot = runtimeStore.getSnapshot();
     this.runtime = runtimeSnapshot.dashboard;
@@ -94,6 +103,16 @@ export struct DashboardPage {
     }
 
     this.applyPublicNetworkSnapshot(publicNetworkService.getSnapshot());
+    this.updateElapsedSeconds();
+  }
+
+  private applyLifecycle(snapshot: RuntimeLifecycleSnapshot): void {
+    this.coreState = snapshot.coreState;
+    this.proxyState = snapshot.proxyState;
+    this.message = snapshot.message;
+    this.runtimeProfileId = snapshot.profileId;
+    this.sessionStartedAt = snapshot.sessionStartedAt;
+    this.sessionEndedAt = snapshot.sessionEndedAt;
     this.updateElapsedSeconds();
   }
 
@@ -125,7 +144,12 @@ export struct DashboardPage {
   }
 
   private isProxyBusy(): boolean {
-    return this.proxyState === ProxyState.ENABLING || this.proxyState === ProxyState.DISABLING;
+    return this.proxyOperation || this.proxyState === ProxyState.ENABLING || this.proxyState === ProxyState.DISABLING;
+  }
+
+  private isCoreBusy(): boolean {
+    return this.restarting || this.coreState === CoreServiceState.STARTING ||
+      this.coreState === CoreServiceState.RELOADING;
   }
 
   private isProxyActive(): boolean {
@@ -133,6 +157,10 @@ export struct DashboardPage {
   }
 
   private async toggleProxy(enabled: boolean): Promise<void> {
+    if (this.isProxyBusy() || this.isCoreBusy() || this.profileBusy) {
+      return;
+    }
+    this.proxyOperation = true;
     try {
       if (!enabled) {
         await vpnService.stop();
@@ -143,10 +171,16 @@ export struct DashboardPage {
       }
     } catch (error) {
       feedbackService.error(this.errorMessage(error));
+    } finally {
+      this.proxyOperation = false;
+      this.syncViewState();
     }
   }
 
   private coreStatus(): string {
+    if (this.restarting) {
+      return 'Core 重启中';
+    }
     if (this.coreState === CoreServiceState.RUNNING) {
       return 'Core 运行中';
     }
@@ -154,7 +188,7 @@ export struct DashboardPage {
       return 'Core 启动中';
     }
     if (this.coreState === CoreServiceState.RELOADING) {
-      return 'Core 重载中';
+      return 'Core 重启中';
     }
     if (this.coreState === CoreServiceState.WAITING_CONFIG) {
       return '等待活动配置';
@@ -189,17 +223,16 @@ export struct DashboardPage {
   }
 
   private confirmCoreRestart(): void {
-    if (this.coreState === CoreServiceState.STARTING || this.coreState === CoreServiceState.RELOADING ||
-      this.restarting) {
+    if (this.isCoreBusy() || this.isProxyBusy() || this.profileBusy) {
       return;
     }
-    if (this.getActiveProfile() === undefined) {
-      feedbackService.warning('请先添加并选择一份配置');
+    if (!this.isProxyActive()) {
+      this.restartCore();
       return;
     }
     AlertDialog.show({
       title: '重启 Core',
-      message: '确定重新加载当前配置吗？如代理已开启，完成后会自动重建 VPN。',
+      message: '重启会短暂中断代理，完成后自动恢复。本次使用时长将继续累计。',
       primaryButton: {
         value: '取消',
         action: (): void => {
@@ -215,13 +248,22 @@ export struct DashboardPage {
   }
 
   private async restartCore(): Promise<void> {
+    if (this.isCoreBusy() || this.isProxyBusy() || this.profileBusy) {
+      return;
+    }
     this.restarting = true;
     try {
       await vpnService.restart();
+      const active = this.getActiveProfile();
+      if (active !== undefined) {
+        await vpnService.applyProfile(active.id, active.localPath,
+          `${active.id}:${active.localPath}:${active.updatedAt}`);
+      }
     } catch (error) {
       feedbackService.error(this.errorMessage(error));
     } finally {
       this.restarting = false;
+      this.syncViewState();
     }
   }
 
@@ -232,8 +274,8 @@ export struct DashboardPage {
   }
 
   private updateElapsedSeconds(): void {
-    this.elapsedSeconds = this.connectedAt > 0 ?
-      Math.max(0, Math.floor((Date.now() - this.connectedAt) / 1000)) : 0;
+    this.elapsedSeconds = proxySessionElapsedSeconds(this.sessionStartedAt, this.sessionEndedAt,
+      systemDateTime.getUptime(systemDateTime.TimeType.STARTUP));
   }
 
 
@@ -250,22 +292,54 @@ export struct DashboardPage {
   @Builder
   private headerActions() {
     Button({ type: ButtonType.Normal }) {
-      Image($r('app.media.action_more'))
-        .width(24)
-        .height(24)
-        .fillColor($r('app.color.content_primary'))
+      Row({ space: 8 }) {
+        if (this.isCoreBusy()) {
+          LoadingProgress().width(16).height(16).color($r('app.color.content_secondary'))
+        } else {
+          Circle().width(8).height(8).fill(this.coreState === CoreServiceState.RUNNING ?
+            $r('app.color.status_success') : (this.coreState === CoreServiceState.ERROR ?
+              $r('app.color.status_error') : $r('app.color.content_secondary')))
+        }
+        Text(this.coreStatus()).fontSize(14).fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.content_primary')).maxLines(2).layoutWeight(1)
+      }
+      .width('100%')
     }
-    .width(CONTROL_HEIGHT)
-    .height(CONTROL_HEIGHT)
+    .width(152)
+    .constraintSize({ minHeight: CONTROL_HEIGHT })
+    .padding(12)
     .borderRadius(BUTTON_RADIUS)
     .backgroundColor($r('app.color.surface_muted'))
-    .accessibilityText('Core 操作')
-    .bindMenu([{
-      value: this.restarting ? '正在重启 Core…' : '重启 Core',
-      enabled: !this.restarting && this.coreState !== CoreServiceState.STARTING &&
-        this.coreState !== CoreServiceState.RELOADING,
-      action: (): void => { this.confirmCoreRestart(); }
-    }])
+    .enabled(!this.isCoreBusy() && !this.isProxyBusy() && !this.profileBusy)
+    .accessibilityText(`${this.coreStatus()}，点击重启 Core`)
+    .onClick((): void => { this.confirmCoreRestart(); })
+  }
+
+  @Builder
+  private proxyFloatingButton() {
+    Button({ type: ButtonType.Normal }) {
+      Row({ space: 10 }) {
+        if (this.isProxyBusy()) {
+          LoadingProgress().width(22).height(22).color($r('app.color.vpn_fab_foreground'))
+        } else {
+          Image(this.isProxyActive() ? $r('app.media.ic_public_pause') : $r('app.media.ic_public_play'))
+            .width(22).height(22).fillColor($r('app.color.vpn_fab_foreground'))
+        }
+        Text(this.isProxyBusy() ? '处理中…' : (this.isProxyActive() ? '关闭代理' : '开启代理'))
+          .fontSize(BODY_FONT_SIZE).fontWeight(FontWeight.Medium).fontColor($r('app.color.vpn_fab_foreground'))
+      }
+    }
+    .constraintSize({ minHeight: 56 })
+    .padding({ left: 20, right: 20, top: 16, bottom: 16 })
+    .borderRadius(28)
+    .backgroundColor($r('app.color.vpn_fab_background'))
+    .shadow(ShadowStyle.OUTER_DEFAULT_MD)
+    .enabled(!this.isProxyBusy() && !this.isCoreBusy() && !this.profileBusy && (this.isProxyActive() ||
+      (this.coreState === CoreServiceState.RUNNING && this.runtimeProfileId.length > 0 &&
+        this.runtimeProfileId === this.activeProfileId)))
+    .accessibilityText(this.isProxyActive() ? '关闭 VPN 代理' : '开启 VPN 代理')
+    .onClick((): void => { this.toggleProxy(!this.isProxyActive()); })
+    .margin({ right: this.metrics.pagePadding, bottom: FLOATING_NAVIGATION_INSET + 16 })
   }
 
   @Builder
@@ -274,10 +348,10 @@ export struct DashboardPage {
       Row({ space: 8 }) {
         Button({ type: ButtonType.Normal }) {
           Column({ space: 6 }) {
-            Text(this.connectedAt > 0 ? `已连接 · ${formatVpnRunDuration(this.elapsedSeconds)}` : this.proxyStatus())
+            Text(this.proxyStatus())
               .fontSize(CAPTION_FONT_SIZE)
               .fontColor(this.proxyState === ProxyState.ERROR ? $r('app.color.status_error') :
-                (this.proxyState === ProxyState.ENABLED ? $r('app.color.nav_selected') : $r('app.color.content_secondary')))
+                (this.proxyState === ProxyState.ENABLED ? $r('app.color.status_success') : $r('app.color.content_secondary')))
               .width('100%')
             Text(this.getActiveProfile()?.name ?? '添加配置')
               .fontSize(BODY_FONT_SIZE)
@@ -306,31 +380,31 @@ export struct DashboardPage {
           .constraintSize({ minWidth: 84 })
           .height(CONTROL_HEIGHT)
           .borderRadius(BUTTON_RADIUS)
-          .enabled(this.coreState === CoreServiceState.RUNNING && this.runtimeBusyKey.length === 0)
+          .enabled(this.coreState === CoreServiceState.RUNNING && !this.profileBusy &&
+            !this.isCoreBusy() && !this.isProxyBusy() && this.runtimeBusyKey.length === 0)
           .accessibilityText(`流量处理模式：${this.modeLabel(this.selectedMode)}`)
           .onSelect((index: number): void => {
             const mode = MODES[index];
             if (mode !== undefined) { this.setMode(mode); }
           })
-        Button(this.isProxyBusy() ? '处理中' : (this.isProxyActive() ? '断开' : '连接'))
-          .type(ButtonType.Normal)
-          .height(CONTROL_HEIGHT)
-          .constraintSize({ minWidth: 72 })
-          .padding({ left: 8, right: 8 })
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
-          .borderRadius(BUTTON_RADIUS)
-          .fontColor(this.isProxyActive() ? $r('app.color.nav_selected') : $r('app.color.accent_foreground'))
-          .backgroundColor(this.isProxyActive() ? $r('app.color.nav_selected_background') : $r('app.color.nav_selected'))
-          .enabled(!this.isProxyBusy() && (this.isProxyActive() ||
-            (this.coreState === CoreServiceState.RUNNING && this.getActiveProfile() !== undefined)))
-          .accessibilityText(this.isProxyActive() ? '断开 VPN 代理' : '连接 VPN 代理')
-          .onClick((): void => { this.toggleProxy(!this.isProxyActive()); })
       }
       .width('100%')
-      if (this.coreState === CoreServiceState.ERROR || this.proxyState === ProxyState.ERROR) {
+      if (this.sessionStartedAt > 0) {
+        Row() {
+          Text('本次使用').fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
+          Blank()
+          Text(formatVpnRunDuration(this.elapsedSeconds)).fontSize(18).fontFamily('monospace')
+            .fontColor($r('app.color.content_primary'))
+        }
+        .width('100%')
+      }
+      if (this.coreState === CoreServiceState.ERROR || this.proxyState === ProxyState.ERROR ||
+        this.message.startsWith('配置应用失败')) {
         Text(this.message || '连接遇到问题，请检查配置后重试。')
           .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.status_error')).width('100%')
+      } else if (this.runtimeProfileId.length === 0 && this.coreState === CoreServiceState.RUNNING) {
+        Text('Core 已就绪，选择有效配置后即可开启代理。')
+          .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
       }
     }
     .width('100%')
@@ -391,44 +465,54 @@ export struct DashboardPage {
   }
 
   build() {
-    Scroll() {
-      Column({ space: this.metrics.sectionGap }) {
-        PageHeader({
-          title: $r('app.string.nav_dashboard'), subtitle: this.coreStatus(),
-          actions: (): void => { this.headerActions(); }
-        })
-        this.controlPanel()
-        if (this.metrics.sizeClass === ResponsiveSizeClass.COMPACT) {
-          RuntimeSpeedCard({
-            runtime: this.runtime, history: this.history,
-            proxyState: this.proxyState, coreState: this.coreState
-          })
-          this.runtimeSummary()
-        } else {
-          Row({ space: this.metrics.cardGap }) {
-            Column() {
+    Stack({ alignContent: Alignment.BottomEnd }) {
+      Column() {
+        Scroll() {
+          Column({ space: this.metrics.sectionGap }) {
+            PageHeader({
+              title: $r('app.string.nav_dashboard'),
+              actions: (): void => { this.headerActions(); }
+            })
+            this.controlPanel()
+            if (this.metrics.sizeClass === ResponsiveSizeClass.COMPACT) {
               RuntimeSpeedCard({
                 runtime: this.runtime, history: this.history,
-                proxyState: this.proxyState, coreState: this.coreState,
-                cardHeight: 320
+                proxyState: this.proxyState, coreState: this.coreState
               })
+              this.runtimeSummary()
+            } else {
+              Row({ space: this.metrics.cardGap }) {
+                Column() {
+                  RuntimeSpeedCard({
+                    runtime: this.runtime, history: this.history,
+                    proxyState: this.proxyState, coreState: this.coreState,
+                    cardHeight: 320
+                  })
+                }
+                .layoutWeight(3)
+                Column() { this.runtimeSummary() }
+                  .layoutWeight(2)
+              }
+              .width('100%')
+              .alignItems(VerticalAlign.Top)
             }
-            .layoutWeight(3)
-            Column() { this.runtimeSummary() }
-              .layoutWeight(2)
           }
+          .alignItems(HorizontalAlign.Start)
           .width('100%')
-          .alignItems(VerticalAlign.Top)
+          .constraintSize({ minHeight: '100%' })
+          .justifyContent(FlexAlign.Start)
+          .padding({
+            top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
+            bottom: this.metrics.pagePadding
+          })
         }
+        .width('100%')
+        .layoutWeight(1)
       }
-      .alignItems(HorizontalAlign.Start)
       .width('100%')
-      .constraintSize({ minHeight: '100%' })
-      .justifyContent(FlexAlign.Start)
-      .padding({
-        top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
-        bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
-      })
+      .height('100%')
+      .padding({ bottom: FLOATING_NAVIGATION_INSET + 88 })
+      this.proxyFloatingButton()
     }
     .width('100%')
     .height('100%')

@@ -1,11 +1,13 @@
 import { Want } from '@kit.AbilityKit';
-import { BusinessError } from '@kit.BasicServicesKit';
+import { BusinessError, systemDateTime } from '@kit.BasicServicesKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { vpnExtension, VpnExtensionAbility } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { util } from '@kit.ArkTS';
 import { CoreEvent, CoreEventType, CoreResult, CoreRuntimeState } from '../model/CoreModels';
 import { DEFAULT_RUNTIME_MODE } from '../constants/RuntimeConstants';
+import { BOOTSTRAP_CORE_CONFIG, BOOTSTRAP_PROFILE_SIGNATURE } from '../constants/VpnConstants';
+import { ProxySessionTimer } from '../utils/VpnUtils';
 import {
   ProxyGroupSnapshot,
   ProxySelection,
@@ -39,6 +41,10 @@ interface ReloadCorePayload {
 
 interface SetProxyEnabledPayload {
   enabled: boolean;
+}
+
+interface ApplyConfigPayload {
+  configPath: string;
 }
 
 interface SetRuntimeModePayload {
@@ -87,20 +93,16 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
   private runtimeMtu: number = DEFAULT_MTU;
   private desiredProxyEnabled: boolean = false;
   private lastLifecycleMessage: string = '';
+  private sessionTimer: ProxySessionTimer = new ProxySessionTimer();
 
   onCreate(want: Want): void {
     this.destroying = false;
-    this.runtimeProfileId = this.stringParameter(want, 'profileId');
-    this.runtimeConfigPath = this.stringParameter(want, 'configPath');
-    this.runtimeProfileSignature = this.stringParameter(want, 'profileSignature');
     vpnNotificationService.start(this.context.getApplicationContext(), (): Promise<void> =>
       this.enqueue((): Promise<void> => this.disableProxy(false))).catch((): void => {
       hilog.warn(DOMAIN, TAG, 'notification service initialization failed');
     });
-    coreControlServer.start((command: string): Promise<string | undefined> =>
-      this.handleControlCommand(command)).catch((): void => {
-      this.setFailure('Core 控制通道初始化失败');
-    });
+    const controlReady = coreControlServer.start((command: string): Promise<string | undefined> =>
+      this.handleControlCommand(command));
     this.recoveryPolicy.reset();
     this.unsubscribeCore = coreClient.subscribe((event: CoreEvent): void => {
       if (event.type === CoreEventType.PROTECT_FAILURE) {
@@ -110,13 +112,12 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
       }
     });
     hilog.info(DOMAIN, TAG, 'onCreate profile=%{public}s', this.runtimeProfileId);
-    if (this.runtimeConfigPath.length === 0) {
-      this.coreState = CoreServiceState.WAITING_CONFIG;
-      this.publish('等待活动配置');
-      return;
-    }
-    this.enqueue((): Promise<void> => this.loadCore(
-      this.runtimeProfileId, this.runtimeConfigPath, this.runtimeProfileSignature, false)).catch((): void => {});
+    this.coreState = CoreServiceState.STARTING;
+    this.publish('正在启动 Core');
+    this.enqueue(async (): Promise<void> => {
+      await controlReady;
+      await this.loadCore('', await this.prepareBootstrapConfig(), BOOTSTRAP_PROFILE_SIGNATURE, false);
+    }).catch((error: Error): void => { this.setFailure(this.errorMessage(error)); });
   }
 
   onDestroy(): void {
@@ -145,6 +146,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
       return undefined;
     }
     if (command.type === 'lifecycleSnapshot') {
+      await this.lifecycleQueue;
       return this.successResponse();
     }
     if (command.type === 'setProxyEnabled') {
@@ -166,8 +168,8 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
         return this.failureResponse('INVALID_ARGUMENT', 'Core 重载参数无效');
       }
       try {
-        await this.enqueue((): Promise<void> => this.loadCore(
-          payload.profileId, payload.configPath, payload.profileSignature, true));
+        await this.enqueue((): Promise<void> => this.applyProfile(
+          payload.profileId, payload.configPath, payload.profileSignature));
         return this.successResponse();
       } catch (error) {
         return this.failureResponse('RELOAD_FAILED', this.errorMessage(error));
@@ -175,8 +177,11 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     }
     if (command.type === 'restartCore') {
       try {
-        await this.enqueue((): Promise<void> => this.loadCore(
-          this.runtimeProfileId, this.runtimeConfigPath, this.runtimeProfileSignature, true));
+        await this.enqueue(async (): Promise<void> => {
+          this.recoveryPolicy.reset();
+          await this.loadCore(this.runtimeProfileId, this.runtimeConfigPath || await this.prepareBootstrapConfig(),
+            this.runtimeProfileSignature || BOOTSTRAP_PROFILE_SIGNATURE, true);
+        });
         return this.successResponse();
       } catch (error) {
         return this.failureResponse('RESTART_FAILED', this.errorMessage(error));
@@ -225,8 +230,9 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     profileSignature: string, reloading: boolean): Promise<void> {
     const restoreProxy = this.desiredProxyEnabled || this.proxyState === ProxyState.ENABLED ||
       this.proxyState === ProxyState.ENABLING;
+    const previousMode = this.runtimeMode;
     this.coreState = reloading ? CoreServiceState.RELOADING : CoreServiceState.STARTING;
-    this.publish(reloading ? '正在重载 Core' : '正在启动 Core');
+    this.publish(reloading ? '正在重启 Core' : '正在启动 Core');
     try {
       await this.disableProxy(true);
       if (coreClient.getState() !== CoreRuntimeState.STOPPED) {
@@ -238,13 +244,6 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
       this.runtimeSelections = [];
       this.runtimeDefaultSelections = [];
       this.runtimeMode = DEFAULT_RUNTIME_MODE;
-      if (configPath.length === 0) {
-        this.coreState = CoreServiceState.WAITING_CONFIG;
-        this.proxyState = ProxyState.DISABLED;
-        this.desiredProxyEnabled = false;
-        this.publish('等待活动配置');
-        return;
-      }
       await preferenceRepository.initialize(this.context.getApplicationContext());
       this.runtimeMtu = (await preferenceRepository.getAppSettings()).mtu;
       if (!this.fileExists(configPath)) {
@@ -261,12 +260,14 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
         throw new Error(`Core start failed: ${result.code}: ${result.message}`);
       }
       await this.captureRuntimeDefaults();
+      if (reloading) {
+        this.runtimeMode = previousMode;
+      }
       await this.restoreRuntimeModeAndSelections();
       this.coreState = CoreServiceState.RUNNING;
       this.proxyState = ProxyState.DISABLED;
       this.publish('Core 已运行，代理未开启');
-      this.recoveryPolicy.reset();
-      if (restoreProxy && !this.destroying) {
+      if (restoreProxy && profileId.length > 0 && !this.destroying) {
         this.desiredProxyEnabled = true;
         await this.enableProxy();
       }
@@ -276,6 +277,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
       const nativeProxyEnabled = nativeRunning && coreClient.isProxyEnabled();
       if (!nativeProxyEnabled) {
         await this.cleanupProxyResources();
+        this.finishSession();
       }
       if (nativeProxyEnabled) {
         this.desiredProxyEnabled = true;
@@ -297,8 +299,68 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     }
   }
 
+  private async applyProfile(profileId: string, configPath: string, profileSignature: string): Promise<void> {
+    if (this.coreState !== CoreServiceState.RUNNING || coreClient.getState() !== CoreRuntimeState.RUNNING) {
+      throw new Error('Core 尚未就绪，请点击 Core 状态重试');
+    }
+    if (profileSignature === this.runtimeProfileSignature) {
+      return;
+    }
+    const path = profileId.length === 0 ? await this.prepareBootstrapConfig() : configPath;
+    const previousId = this.runtimeProfileId;
+    const previousPath = this.runtimeConfigPath;
+    const previousSignature = this.runtimeProfileSignature;
+    const previousMode = this.runtimeMode;
+    const previousDefaults = this.runtimeDefaultSelections.slice();
+    const previousSelections = this.runtimeSelections.slice();
+    let applied = false;
+    this.publish('正在应用配置');
+    try {
+      const payload: ApplyConfigPayload = { configPath: path };
+      const snapshot = await this.executeRequiredCommand<ProxySnapshot>('applyConfig', payload);
+      applied = true;
+      this.runtimeProfileId = profileId;
+      this.runtimeConfigPath = path;
+      this.runtimeProfileSignature = profileSignature;
+      await this.captureRuntimeDefaults(snapshot);
+      if (profileId === previousId) {
+        this.runtimeMode = previousMode;
+      }
+      await this.restoreRuntimeModeAndSelections();
+      if (profileId.length === 0) {
+        await this.disableProxy(false);
+      }
+      this.publish(profileId.length === 0 ? 'Core 已运行，请添加有效配置' : '配置已应用，Core 继续运行');
+    } catch (error) {
+      this.runtimeProfileId = previousId;
+      this.runtimeConfigPath = previousPath;
+      this.runtimeProfileSignature = previousSignature;
+      this.runtimeMode = previousMode;
+      this.runtimeDefaultSelections = previousDefaults;
+      this.runtimeSelections = previousSelections;
+      try {
+        if (applied) {
+          await this.executeRequiredOK('rollbackConfig');
+          const modePayload: SetRuntimeModePayload = { mode: previousMode };
+          await this.executeRequiredOK('setMode', modePayload);
+          await this.applyRuntimeSelections(previousSelections);
+        }
+      } catch (rollbackError) {
+        this.coreState = CoreServiceState.ERROR;
+        this.publish('配置应用失败，原配置恢复失败，正在尝试恢复 Core');
+        this.beginRecovery();
+        throw new Error('配置应用失败，原配置恢复失败');
+      }
+      if (coreClient.getState() !== CoreRuntimeState.RUNNING) {
+        this.coreState = CoreServiceState.ERROR;
+      }
+      const message = `配置应用失败，已保留原配置：${this.errorMessage(error)}`;
+      this.publish(message);
+      throw new Error(message);
+    }
+  }
+
   private async enableProxy(): Promise<void> {
-    this.desiredProxyEnabled = true;
     if (this.proxyState === ProxyState.ENABLED && coreClient.isProxyEnabled()) {
       return;
     }
@@ -306,11 +368,16 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
       this.desiredProxyEnabled = false;
       throw new Error('Core 尚未就绪');
     }
+    if (this.runtimeProfileId.length === 0) {
+      throw new Error('请先添加并选择有效配置');
+    }
+    this.desiredProxyEnabled = true;
     this.proxyState = ProxyState.ENABLING;
     this.publish('正在创建 VPN/TUN');
-    const connection = vpnExtension.createVpnConnection(this.context);
-    this.vpnConnection = connection;
     try {
+      this.runtimeMtu = (await preferenceRepository.getAppSettings(this.context.getApplicationContext())).mtu;
+      const connection = vpnExtension.createVpnConnection(this.context);
+      this.vpnConnection = connection;
       const fd = await connection.create(this.vpnConfig());
       if (fd < 0) {
         throw new Error(`VpnConnection.create returned invalid fd=${fd}`);
@@ -339,6 +406,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
       }
       await this.restoreRuntimeModeAndSelections();
       this.proxyState = ProxyState.ENABLED;
+      this.sessionTimer.connected(systemDateTime.getUptime(systemDateTime.TimeType.STARTUP));
       this.publish('代理已开启');
     } catch (error) {
       if (coreClient.getState() === CoreRuntimeState.RUNNING && coreClient.isProxyEnabled()) {
@@ -351,6 +419,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
       await this.cleanupProxyResources();
       this.desiredProxyEnabled = false;
       this.proxyState = ProxyState.ERROR;
+      this.finishSession();
       const message = this.errorMessage(error);
       this.publish(message);
       throw new Error(message);
@@ -365,6 +434,10 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
       this.tunFd >= 0 || coreClient.isProxyEnabled();
     if (!hasProxyResources) {
       this.proxyState = ProxyState.DISABLED;
+      if (!preserveDesired) {
+        this.finishSession();
+        this.publish('代理已关闭，Core 继续运行');
+      }
       return;
     }
     this.proxyState = ProxyState.DISABLING;
@@ -394,6 +467,9 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
       }
     }
     await this.cleanupProxyResources();
+    if (!preserveDesired) {
+      this.finishSession();
+    }
     if (restoreFailure !== undefined) {
       this.proxyState = ProxyState.ERROR;
       this.publish(`代理已关闭，但节点选择恢复失败：${restoreFailure.message}`);
@@ -454,6 +530,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
         await this.cleanupProxyResources();
         this.coreState = CoreServiceState.ERROR;
         this.proxyState = ProxyState.DISABLED;
+        this.finishSession();
         this.publish('Core exited again after one recovery');
       }).catch((): void => {});
       return;
@@ -470,6 +547,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
       if (this.proxyState !== ProxyState.ENABLED) {
         this.coreState = CoreServiceState.ERROR;
         this.proxyState = ProxyState.DISABLED;
+        this.finishSession();
         this.publish('Core recovery failed');
       }
     });
@@ -492,11 +570,12 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     this.unsubscribeCore = undefined;
     this.coreState = CoreServiceState.STOPPED;
     this.proxyState = ProxyState.DISABLED;
+    this.finishSession();
     this.publish('Core 已停止');
   }
 
-  private async captureRuntimeDefaults(): Promise<void> {
-    const snapshot = await this.runtimeProxySnapshot();
+  private async captureRuntimeDefaults(current?: ProxySnapshot): Promise<void> {
+    const snapshot = current ?? await this.runtimeProxySnapshot();
     this.runtimeMode = this.isRuntimeMode(snapshot.mode) ? snapshot.mode : DEFAULT_RUNTIME_MODE;
     this.runtimeDefaultSelections = snapshot.groups
       .filter((group: ProxyGroupSnapshot): boolean => group.selectable && group.selected.length > 0)
@@ -666,12 +745,15 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
   }
 
   private lifecycleSnapshot(): RuntimeLifecycleSnapshot {
+    const session = this.sessionTimer.getSnapshot();
     return {
       coreState: this.coreState,
       proxyState: this.proxyState,
       profileId: this.runtimeProfileId,
       profileSignature: this.runtimeProfileSignature,
-      message: this.lastLifecycleMessage
+      message: this.lastLifecycleMessage,
+      sessionStartedAt: session.sessionStartedAt,
+      sessionEndedAt: session.sessionEndedAt
     };
   }
 
@@ -698,14 +780,16 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
   private publish(message: string): void {
     this.lastLifecycleMessage = message;
     vpnNotificationService.updateLifecycle(this.coreState, this.proxyState);
+    const session = this.sessionTimer.getSnapshot();
     publishVpnState(this.context.getApplicationContext(), this.coreState, this.proxyState,
-      message, this.runtimeProfileId, this.runtimeProfileSignature);
+      message, this.runtimeProfileId, this.runtimeProfileSignature, session.sessionStartedAt, session.sessionEndedAt);
   }
 
   private setFailure(message: string): void {
     this.desiredProxyEnabled = false;
     this.coreState = CoreServiceState.ERROR;
     this.proxyState = ProxyState.ERROR;
+    this.finishSession();
     this.publish(message);
   }
 
@@ -717,9 +801,21 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     }
   }
 
-  private stringParameter(want: Want, name: string): string {
-    const value = want.parameters?.[name];
-    return typeof value === 'string' ? value : '';
+  private finishSession(): void {
+    this.sessionTimer.finish(systemDateTime.getUptime(systemDateTime.TimeType.STARTUP));
+  }
+
+  private async prepareBootstrapConfig(): Promise<string> {
+    const workDir = `${this.context.filesDir}/core/work`;
+    await this.ensureDirectory(workDir);
+    const path = `${workDir}/bootstrap.yaml`;
+    const file = await fileIo.open(path, fileIo.OpenMode.CREATE | fileIo.OpenMode.WRITE_ONLY | fileIo.OpenMode.TRUNC);
+    try {
+      await fileIo.write(file.fd, BOOTSTRAP_CORE_CONFIG);
+    } finally {
+      await fileIo.close(file);
+    }
+    return path;
   }
 
   private async ensureDirectory(path: string): Promise<void> {

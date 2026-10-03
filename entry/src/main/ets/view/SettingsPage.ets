@@ -5,7 +5,7 @@ import { feedbackService } from '../services/FeedbackService';
 import { coreClient } from '../services/CoreClient';
 import { runtimeStore } from '../stores/RuntimeStore';
 import { settingsStore } from '../stores/SettingsStore';
-import { ResponsiveMetrics } from '../model/ResponsiveModels';
+import { ResponsiveMetrics, ResponsiveSizeClass } from '../model/ResponsiveModels';
 import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
 import {
   BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
@@ -26,10 +26,13 @@ export struct SettingsPage {
   @State runtimeBusyKey: string = '';
   @State coreVersion: string = '--';
   @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
+  @State pageWidth: number = 0;
+  private sections: WaterFlowSections = new WaterFlowSections();
   private unsubscribeSettings: (() => void) | undefined = undefined;
   private unsubscribeRuntime: (() => void) | undefined = undefined;
 
   aboutToAppear(): void {
+    this.updateSections();
     this.unsubscribeSettings = settingsStore.subscribe((snapshot: SettingsStoreSnapshot): void => {
       this.settings = snapshot.settings;
       this.saving = snapshot.saving;
@@ -57,7 +60,30 @@ export struct SettingsPage {
   }
 
   private updateWidth(width: Length): void {
-    this.metrics = resolveResponsiveMetrics(resolveContentWidth(width));
+    this.pageWidth = resolveContentWidth(width);
+    const next = resolveResponsiveMetrics(this.pageWidth);
+    if (next.sizeClass !== this.metrics.sizeClass) {
+      this.metrics = next;
+      this.updateSections();
+    }
+  }
+
+  private settingsCardWidth(): Length {
+    if (this.pageWidth <= 0) {
+      return '100%';
+    }
+    const columns = this.metrics.sizeClass === ResponsiveSizeClass.COMPACT ? 1 : 2;
+    // Percentage children of a section resolve against the full WaterFlow width.
+    return (this.pageWidth - this.metrics.pagePadding * 2 - (columns - 1) * 12) / columns;
+  }
+
+  private updateSections(): void {
+    this.sections.splice(0, this.sections.length(), [
+      { itemsCount: 1, crossCount: 1, margin: { bottom: 16 } },
+      { itemsCount: 4, crossCount: this.metrics.sizeClass === ResponsiveSizeClass.COMPACT ? 1 : 2,
+        columnsGap: 12, rowsGap: 12 },
+      { itemsCount: 1, crossCount: 1, margin: { top: 16 } }
+    ]);
   }
 
   private themeLabel(theme: AppThemeMode): string {
@@ -133,14 +159,19 @@ export struct SettingsPage {
   private themeCard() {
     Column({ space: 16 }) {
       this.sectionTitle('外观', '选择适合当前环境的配色')
-      Column({ space: 8 }) {
+      Row({ space: 8 }) {
         ForEach(THEMES, (theme: AppThemeMode) => {
           Button(this.themeLabel(theme))
-            .type(ButtonType.Normal).height(CONTROL_HEIGHT).width('100%').borderRadius(BUTTON_RADIUS)
+            .type(ButtonType.Normal).constraintSize({ minHeight: CONTROL_HEIGHT }).layoutWeight(1)
+            .padding({ left: 4, right: 4, top: 12, bottom: 12 })
             .fontSize(BODY_FONT_SIZE)
+            .labelStyle({ maxLines: 2 })
             .fontColor(this.settings.themeMode === theme ? $r('app.color.nav_selected') : $r('app.color.content_primary'))
             .backgroundColor(this.settings.themeMode === theme ?
               $r('app.color.nav_selected_background') : $r('app.color.surface_muted'))
+            .border({ width: 2, color: this.settings.themeMode === theme ?
+              $r('app.color.nav_selected') : Color.Transparent })
+            .borderRadius(BUTTON_RADIUS)
             .accessibilitySelected(this.settings.themeMode === theme)
             .enabled(!this.saving)
             .onClick((): void => { this.changeTheme(theme); })
@@ -148,7 +179,7 @@ export struct SettingsPage {
       }
       .width('100%')
     }
-    .width(this.metrics.dashboardCardWidth).padding(16).margin({ bottom: 16 })
+    .width(this.settingsCardWidth()).padding(16)
     .borderRadius(CARD_RADIUS).backgroundColor($r('app.color.card_background'))
   }
 
@@ -176,13 +207,13 @@ export struct SettingsPage {
         Text(this.networkError).fontSize(14).fontColor($r('app.color.status_error')).width('100%')
       }
       Button(this.saving ? '保存中…' : '保存网络设置')
-        .type(ButtonType.Normal).height(CONTROL_HEIGHT).width('100%').borderRadius(BUTTON_RADIUS)
-        .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.nav_selected'))
+        .type(ButtonType.Normal).constraintSize({ minHeight: CONTROL_HEIGHT }).width('100%').borderRadius(BUTTON_RADIUS)
+        .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.action_primary'))
         .enabled(!this.saving)
         .onClick((): void => { this.saveNetworkSettings(); })
     }
     .alignItems(HorizontalAlign.Start)
-    .width(this.metrics.dashboardCardWidth).padding(16).margin({ bottom: 16 })
+    .width(this.settingsCardWidth()).padding(16)
     .borderRadius(CARD_RADIUS).backgroundColor($r('app.color.card_background'))
   }
 
@@ -190,15 +221,19 @@ export struct SettingsPage {
   private dataCard() {
     Column({ space: 16 }) {
       this.sectionTitle('运行数据', '速度、连接与节点信息的刷新间隔')
-      Row({ space: 8 }) {
+      Flex({ wrap: FlexWrap.Wrap }) {
         ForEach(REFRESH_INTERVAL_OPTIONS, (seconds: number) => {
           Button(`${seconds} 秒`)
-            .type(ButtonType.Normal).height(CONTROL_HEIGHT).layoutWeight(1).borderRadius(BUTTON_RADIUS)
+            .type(ButtonType.Normal).constraintSize({ minHeight: CONTROL_HEIGHT, minWidth: 64 })
+            .padding({ left: 12, right: 12, top: 10, bottom: 10 }).margin({ right: 8, bottom: 8 })
             .fontSize(14)
             .fontColor(this.settings.refreshIntervalSeconds === seconds ?
               $r('app.color.nav_selected') : $r('app.color.content_secondary'))
             .backgroundColor(this.settings.refreshIntervalSeconds === seconds ?
               $r('app.color.nav_selected_background') : $r('app.color.surface_muted'))
+            .border({ width: 2, color: this.settings.refreshIntervalSeconds === seconds ?
+              $r('app.color.nav_selected') : Color.Transparent })
+            .borderRadius(BUTTON_RADIUS)
             .accessibilitySelected(this.settings.refreshIntervalSeconds === seconds)
             .enabled(!this.saving)
             .onClick((): void => { this.changeRefreshInterval(seconds); })
@@ -206,7 +241,7 @@ export struct SettingsPage {
       }
       .width('100%')
     }
-    .width(this.metrics.dashboardCardWidth).padding(16).margin({ bottom: 16 })
+    .width(this.settingsCardWidth()).padding(16)
     .borderRadius(CARD_RADIUS).backgroundColor($r('app.color.card_background'))
   }
 
@@ -215,30 +250,29 @@ export struct SettingsPage {
     Column({ space: 12 }) {
       this.sectionTitle('数据管理', '管理当前累计统计和会话记录')
       Button(this.runtimeBusyKey.length > 0 ? '处理中…' : '重置 Core 流量统计')
-        .type(ButtonType.Normal).height(CONTROL_HEIGHT).width('100%').borderRadius(BUTTON_RADIUS)
+        .type(ButtonType.Normal).constraintSize({ minHeight: CONTROL_HEIGHT }).width('100%').borderRadius(BUTTON_RADIUS)
         .fontSize(14).fontColor($r('app.color.status_error')).backgroundColor($r('app.color.status_error_surface'))
         .enabled(this.runtimeAvailable && this.runtimeBusyKey.length === 0)
         .onClick((): void => { this.resetTraffic(); })
       Button('清空会话请求记录')
-        .type(ButtonType.Normal).height(CONTROL_HEIGHT).width('100%').borderRadius(BUTTON_RADIUS)
+        .type(ButtonType.Normal).constraintSize({ minHeight: CONTROL_HEIGHT }).width('100%').borderRadius(BUTTON_RADIUS)
         .fontSize(14).fontColor($r('app.color.status_error')).backgroundColor($r('app.color.status_error_surface'))
         .onClick((): void => { this.clearRequests(); })
     }
-    .width(this.metrics.dashboardCardWidth).padding(16).margin({ bottom: 16 })
+    .width(this.settingsCardWidth()).padding(16)
     .borderRadius(CARD_RADIUS).backgroundColor($r('app.color.card_background'))
   }
 
   build() {
-    Scroll() {
-      Column({ space: this.metrics.sectionGap }) {
+    WaterFlow({ sections: this.sections }) {
+      FlowItem() {
         PageHeader({ title: $r('app.string.nav_settings'), subtitle: '按你的习惯调整 Nlash' })
-        Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
-          this.themeCard()
-          this.networkCard()
-          this.dataCard()
-          this.cleanupCard()
-        }
-        .width('100%')
+      }
+      FlowItem() { this.themeCard() }
+      FlowItem() { this.networkCard() }
+      FlowItem() { this.dataCard() }
+      FlowItem() { this.cleanupCard() }
+      FlowItem() {
         Column({ space: 12 }) {
           this.sectionTitle('关于 Nlash', `1.0.0 · ${this.coreVersion}`)
           Divider().color($r('app.color.nav_divider'))
@@ -250,15 +284,12 @@ export struct SettingsPage {
         .alignItems(HorizontalAlign.Start).width('100%').padding(16)
         .borderRadius(CARD_RADIUS).backgroundColor($r('app.color.card_background'))
       }
-      .alignItems(HorizontalAlign.Start)
-      .width('100%')
-      .constraintSize({ minHeight: '100%' })
-      .justifyContent(FlexAlign.Start)
-      .padding({
-        top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
-        bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
-      })
     }
+    .cachedCount(6)
+    .padding({
+      top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
+      bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
+    })
     .width('100%').height('100%')
     .backgroundColor($r('app.color.app_background'))
     .onAreaChange((_old: Area, area: Area): void => { this.updateWidth(area.width); })

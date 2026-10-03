@@ -31,16 +31,17 @@ export enum CoreRestartAction {
   BLOCKED = 'BLOCKED'
 }
 
-export interface VpnStateEvent {
+export interface VpnStateEvent extends RuntimeLifecycleSnapshot {
   state: VpnState;
-  coreState: CoreServiceState;
-  proxyState: ProxyState;
-  profileId: string;
-  profileSignature: string;
-  message: string;
 }
 
-export interface RuntimeLifecycleSnapshot {
+export interface ProxySessionTiming {
+  // Monotonic milliseconds since system startup, including sleep; zero means no start/end.
+  sessionStartedAt: number;
+  sessionEndedAt: number;
+}
+
+export interface RuntimeLifecycleSnapshot extends ProxySessionTiming {
   coreState: CoreServiceState;
   proxyState: ProxyState;
   profileId: string;
