@@ -22,7 +22,7 @@
     },
     {
       "name": "nav_dashboard",
-      "value": "仪表盘"
+      "value": "概览"
     },
     {
       "name": "nav_proxy",
@@ -47,6 +47,10 @@
     {
       "name": "feature_coming_soon",
       "value": "功能开发中"
+    },
+    {
+      "name": "nav_activity",
+      "value": "活动"
     }
   ]
 }

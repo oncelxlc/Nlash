@@ -7,17 +7,21 @@ import { DEFAULT_RUNTIME_MODE } from '../constants/RuntimeConstants';
 import { CoreServiceState, ProxyState } from '../model/VpnModels';
 import { formatVpnRunDuration } from '../utils/VpnUtils';
 import { feedbackService } from '../services/FeedbackService';
-import { countryCodeFlag, publicNetworkService } from '../services/LocalNetworkService';
+import { publicNetworkService } from '../services/LocalNetworkService';
 import { vpnService } from '../services/VpnService';
 import { profileStore } from '../stores/ProfileStore';
 import { runtimeStore } from '../stores/RuntimeStore';
 import { ResponsiveMetrics, ResponsiveSizeClass } from '../model/ResponsiveModels';
 import {
-  resolveDashboardSpeedCardHeight,
   resolveResponsiveMetrics,
   resolveContentWidth
 } from '../utils/ResponsiveUtils';
-import { BUTTON_RADIUS, FLOATING_NAVIGATION_INSET } from '../constants/UiConstants';
+import {
+  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
+} from '../constants/UiConstants';
+import { PageHeader } from '../components/PageHeader';
+import { AppPage } from '../model/NavigationModels';
+import { navigationIntentService } from '../services/NavigationIntentService';
 
 const MODES: RuntimeMode[] = [RuntimeMode.RULE, RuntimeMode.GLOBAL, RuntimeMode.DIRECT];
 const VIEW_SYNC_INTERVAL_MS = 1000;
@@ -33,10 +37,8 @@ export struct DashboardPage {
   @State history: TrafficSample[] = [];
   @State publicIpv4: string = '未知';
   @State publicCountry: string = '未知地区';
-  @State publicCountryCode: string = '';
   @State publicNetworkChecking: boolean = true;
   @State publicNetworkError: string = '';
-  @State publicNetworkCardPressed: boolean = false;
   @State restarting: boolean = false;
   @State selectedMode: RuntimeMode = DEFAULT_RUNTIME_MODE;
   @State runtimeBusyKey: string = '';
@@ -98,7 +100,6 @@ export struct DashboardPage {
   private applyPublicNetworkSnapshot(snapshot: PublicNetworkSnapshot): void {
     this.publicIpv4 = snapshot.publicIpv4;
     this.publicCountry = snapshot.country;
-    this.publicCountryCode = snapshot.countryCode;
     this.publicNetworkChecking = snapshot.checking;
     this.publicNetworkError = snapshot.errorMessage;
   }
@@ -108,7 +109,7 @@ export struct DashboardPage {
   }
 
   private publicNetworkDetail(): string {
-    const location = `${countryCodeFlag(this.publicCountryCode)} ${this.publicCountry}`;
+    const location = this.publicCountry;
     if (this.publicNetworkChecking) {
       return this.publicIpv4 === '未知' ? '正在查询公网 IPv4…' : `${location} · 正在刷新`;
     }
@@ -235,264 +236,203 @@ export struct DashboardPage {
       Math.max(0, Math.floor((Date.now() - this.connectedAt) / 1000)) : 0;
   }
 
-  private hasRunStarted(): boolean {
-    return this.connectedAt > 0;
+
+  private proxyStatus(): string {
+    switch (this.proxyState) {
+      case ProxyState.ENABLED: return '代理已连接';
+      case ProxyState.ENABLING: return '正在连接…';
+      case ProxyState.DISABLING: return '正在断开…';
+      case ProxyState.ERROR: return '连接异常';
+      default: return '代理未连接';
+    }
   }
 
   @Builder
-  private cardTitle(title: string) {
-    Text(title)
-      .fontSize(14)
-      .fontWeight(FontWeight.Medium)
-      .fontColor($r('app.color.content_primary'))
-      .width('100%')
+  private headerActions() {
+    Button({ type: ButtonType.Normal }) {
+      Image($r('app.media.action_more'))
+        .width(24)
+        .height(24)
+        .fillColor($r('app.color.content_primary'))
+    }
+    .width(CONTROL_HEIGHT)
+    .height(CONTROL_HEIGHT)
+    .borderRadius(BUTTON_RADIUS)
+    .backgroundColor($r('app.color.surface_muted'))
+    .accessibilityText('Core 操作')
+    .bindMenu([{
+      value: this.restarting ? '正在重启 Core…' : '重启 Core',
+      enabled: !this.restarting && this.coreState !== CoreServiceState.STARTING &&
+        this.coreState !== CoreServiceState.RELOADING,
+      action: (): void => { this.confirmCoreRestart(); }
+    }])
   }
 
   @Builder
-  private vpnCard(cardWidth: Length) {
-    Column({ space: 8 }) {
-      this.cardTitle('VPN 代理模式')
-      Text(this.coreState === CoreServiceState.RUNNING ?
-        '选择 Core 的流量处理方式，代理开启时生效' : 'Core 就绪后可切换模式')
-        .fontSize(12)
-        .fontColor($r('app.color.content_secondary'))
-        .maxLines(1)
-        .width('100%')
+  private controlPanel() {
+    Column({ space: 12 }) {
       Row({ space: 8 }) {
-        ForEach(MODES, (mode: RuntimeMode) => {
-          Button(this.modeLabel(mode))
-            .type(ButtonType.Normal)
-            .borderRadius(BUTTON_RADIUS)
-            .layoutWeight(1)
-            .height(32)
-            .fontSize(13)
-            .fontColor(mode === RuntimeMode.RULE ? $r('app.color.mode_rule_foreground') :
-              (mode === RuntimeMode.GLOBAL ? $r('app.color.mode_global_foreground') :
-                $r('app.color.mode_direct_foreground')))
-            .backgroundColor(this.selectedMode !== mode ? $r('app.color.mode_unselected_background') :
-              (mode === RuntimeMode.RULE ? $r('app.color.mode_rule_background') :
-                (mode === RuntimeMode.GLOBAL ? $r('app.color.mode_global_background') :
-                  $r('app.color.mode_direct_background'))))
-            .enabled(this.coreState === CoreServiceState.RUNNING && this.runtimeBusyKey.length === 0)
-            .onClick((): void => { this.setMode(mode); })
-        }, (mode: RuntimeMode): string => mode)
+        Button({ type: ButtonType.Normal }) {
+          Column({ space: 6 }) {
+            Text(this.connectedAt > 0 ? `已连接 · ${formatVpnRunDuration(this.elapsedSeconds)}` : this.proxyStatus())
+              .fontSize(CAPTION_FONT_SIZE)
+              .fontColor(this.proxyState === ProxyState.ERROR ? $r('app.color.status_error') :
+                (this.proxyState === ProxyState.ENABLED ? $r('app.color.nav_selected') : $r('app.color.content_secondary')))
+              .width('100%')
+            Text(this.getActiveProfile()?.name ?? '添加配置')
+              .fontSize(BODY_FONT_SIZE)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.content_primary'))
+              .width('100%')
+              .maxLines(2)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+          }
+          .alignItems(HorizontalAlign.Start)
+          .width('100%')
+        }
+        .layoutWeight(1)
+        .constraintSize({ minHeight: CONTROL_HEIGHT })
+        .padding(0)
+        .borderRadius(0)
+        .backgroundColor(Color.Transparent)
+        .accessibilityText(`当前配置：${this.getActiveProfile()?.name ?? '未选择'}，打开配置页`)
+        .onClick((): void => { navigationIntentService.publish(AppPage.CONFIGURATION); })
+        Select([{ value: '规则模式' }, { value: '全局模式' }, { value: '直连模式' }])
+          .selected(MODES.indexOf(this.selectedMode))
+          .value(this.modeLabel(this.selectedMode))
+          .font({ size: 14, weight: FontWeight.Medium })
+          .fontColor($r('app.color.nav_selected'))
+          .backgroundColor($r('app.color.nav_selected_background'))
+          .constraintSize({ minWidth: 84 })
+          .height(CONTROL_HEIGHT)
+          .borderRadius(BUTTON_RADIUS)
+          .enabled(this.coreState === CoreServiceState.RUNNING && this.runtimeBusyKey.length === 0)
+          .accessibilityText(`流量处理模式：${this.modeLabel(this.selectedMode)}`)
+          .onSelect((index: number): void => {
+            const mode = MODES[index];
+            if (mode !== undefined) { this.setMode(mode); }
+          })
+        Button(this.isProxyBusy() ? '处理中' : (this.isProxyActive() ? '断开' : '连接'))
+          .type(ButtonType.Normal)
+          .height(CONTROL_HEIGHT)
+          .constraintSize({ minWidth: 72 })
+          .padding({ left: 8, right: 8 })
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .borderRadius(BUTTON_RADIUS)
+          .fontColor(this.isProxyActive() ? $r('app.color.nav_selected') : $r('app.color.accent_foreground'))
+          .backgroundColor(this.isProxyActive() ? $r('app.color.nav_selected_background') : $r('app.color.nav_selected'))
+          .enabled(!this.isProxyBusy() && (this.isProxyActive() ||
+            (this.coreState === CoreServiceState.RUNNING && this.getActiveProfile() !== undefined)))
+          .accessibilityText(this.isProxyActive() ? '断开 VPN 代理' : '连接 VPN 代理')
+          .onClick((): void => { this.toggleProxy(!this.isProxyActive()); })
       }
       .width('100%')
+      if (this.coreState === CoreServiceState.ERROR || this.proxyState === ProxyState.ERROR) {
+        Text(this.message || '连接遇到问题，请检查配置后重试。')
+          .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.status_error')).width('100%')
+      }
     }
+    .width('100%')
     .alignItems(HorizontalAlign.Start)
-    .width(cardWidth)
-    .height(this.metrics.dashboardCardHeight)
-    .padding(12)
-    .borderRadius(16)
+    .padding(16)
+    .borderRadius(CARD_RADIUS)
     .backgroundColor($r('app.color.card_background'))
   }
 
   @Builder
-  private floatingVpnButton() {
-    Button({ type: ButtonType.Normal }) {
-      Row({ space: 8 }) {
-        if (this.hasRunStarted()) {
-          Image($r('app.media.ic_public_pause'))
-            .width(20)
-            .height(20)
-            .colorFilter($r('app.color.vpn_fab_foreground'))
-          Text(formatVpnRunDuration(this.elapsedSeconds))
-            .fontSize(14)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.vpn_fab_foreground'))
+  private publicNetworkCard() {
+    Row({ space: 12 }) {
+      Column({ space: 6 }) {
+        Text('公网出口')
+          .fontSize(CAPTION_FONT_SIZE)
+          .fontColor($r('app.color.content_secondary'))
+        Text(this.publicIpv4 === '未知' ? '—' : this.publicIpv4)
+          .fontSize(20)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.content_primary'))
+          .wordBreak(WordBreak.BREAK_ALL)
+        Text(this.publicNetworkDetail())
+          .fontSize(CAPTION_FONT_SIZE)
+          .fontColor(this.publicNetworkError.length > 0 ? $r('app.color.status_error') : $r('app.color.content_secondary'))
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+      Button({ type: ButtonType.Normal }) {
+        if (this.publicNetworkChecking) {
+          LoadingProgress().width(20).height(20).color($r('app.color.nav_selected'))
         } else {
-          Image($r('app.media.ic_public_play'))
-            .width(20)
-            .height(20)
-            .colorFilter($r('app.color.vpn_fab_foreground'))
+          Image($r('app.media.action_refresh'))
+            .width(20).height(20).fillColor($r('app.color.nav_selected'))
         }
       }
-      .justifyContent(FlexAlign.Center)
+      .width(CONTROL_HEIGHT)
+      .height(CONTROL_HEIGHT)
+      .borderRadius(BUTTON_RADIUS)
+      .backgroundColor($r('app.color.surface_muted'))
+      .enabled(!this.publicNetworkChecking)
+      .accessibilityText('刷新公网出口')
+      .onClick((): void => { publicNetworkService.refresh(); })
     }
-    .width(this.hasRunStarted() ? 126 : 56)
-    .height(56)
-    .borderRadius(BUTTON_RADIUS)
-    .backgroundColor($r('app.color.vpn_fab_background'))
-    .enabled(!this.isProxyBusy() &&
-      (this.isProxyActive() || (this.coreState === CoreServiceState.RUNNING &&
-        this.getActiveProfile() !== undefined)))
-    .accessibilityText(this.hasRunStarted() ? '关闭代理' : '开启代理')
-    .margin({
-      right: this.metrics.pagePadding,
-      bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
-    })
-    .zIndex(2)
-    .onClick((): void => { this.toggleProxy(!this.isProxyActive()); })
-  }
-
-  @Builder
-  private infoCard(title: string, value: string, detail: string, cardWidth: Length) {
-    Column({ space: 5 }) {
-      this.cardTitle(title)
-      Text(value)
-        .fontSize(20)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.content_primary'))
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-      Text(detail)
-        .fontSize(12)
-        .fontColor($r('app.color.content_secondary'))
-        .maxLines(2)
-    }
-    .alignItems(HorizontalAlign.Start)
-    .justifyContent(FlexAlign.Center)
-    .width(cardWidth)
-    .height(this.metrics.dashboardInfoCardHeight)
-    .padding(12)
-    .borderRadius(16)
+    .width('100%')
+    .padding(16)
+    .borderRadius(CARD_RADIUS)
     .backgroundColor($r('app.color.card_background'))
   }
 
   @Builder
-  private publicNetworkCard(cardWidth: Length) {
-    Column({ space: 5 }) {
-      this.cardTitle('公网出口')
-      Text(this.publicIpv4)
-        .fontSize(20)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.content_primary'))
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-      Text(this.publicNetworkDetail())
-        .fontSize(12)
-        .fontColor($r('app.color.content_secondary'))
-        .maxLines(2)
+  private runtimeSummary() {
+    Column({ space: 12 }) {
+      RuntimeTrafficCard({ runtime: this.runtime })
+      RuntimeStatusCard({ runtime: this.runtime })
+      this.publicNetworkCard()
     }
-    .alignItems(HorizontalAlign.Start)
-    .justifyContent(FlexAlign.Center)
-    .width(cardWidth)
-    .height(this.metrics.dashboardInfoCardHeight)
-    .padding(12)
-    .borderRadius(16)
-    .backgroundColor($r('app.color.card_background'))
-    .scale({ x: this.publicNetworkCardPressed ? 0.98 : 1, y: this.publicNetworkCardPressed ? 0.98 : 1 })
-    .opacity(this.publicNetworkCardPressed ? 0.86 : 1)
-    .animation({ duration: 120, curve: Curve.EaseOut })
-    .accessibilityText('刷新公网出口')
-    .onTouch((event: TouchEvent): void => {
-      if (event.type === TouchType.Down) {
-        this.publicNetworkCardPressed = true;
-      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.publicNetworkCardPressed = false;
-      }
-    })
-    .onClick((): void => {
-      publicNetworkService.refresh();
-    })
+    .width('100%')
   }
 
   build() {
-    Stack({ alignContent: Alignment.BottomEnd }) {
-      Scroll() {
-        Column({ space: this.metrics.sectionGap }) {
-          Row({ space: 12 }) {
-            Column({ space: 4 }) {
-              Text($r('app.string.nav_dashboard'))
-                .fontSize(28)
-                .fontWeight(FontWeight.Bold)
-                .fontColor($r('app.color.content_primary'))
+    Scroll() {
+      Column({ space: this.metrics.sectionGap }) {
+        PageHeader({
+          title: $r('app.string.nav_dashboard'), subtitle: this.coreStatus(),
+          actions: (): void => { this.headerActions(); }
+        })
+        this.controlPanel()
+        if (this.metrics.sizeClass === ResponsiveSizeClass.COMPACT) {
+          RuntimeSpeedCard({
+            runtime: this.runtime, history: this.history,
+            proxyState: this.proxyState, coreState: this.coreState
+          })
+          this.runtimeSummary()
+        } else {
+          Row({ space: this.metrics.cardGap }) {
+            Column() {
+              RuntimeSpeedCard({
+                runtime: this.runtime, history: this.history,
+                proxyState: this.proxyState, coreState: this.coreState,
+                cardHeight: 320
+              })
             }
-            .alignItems(HorizontalAlign.Start)
-            .layoutWeight(1)
-            Text(this.coreStatus())
-              .fontSize(12)
-              .fontColor(this.coreState === CoreServiceState.RUNNING ?
-                $r('app.color.status_success') : $r('app.color.content_secondary'))
-              .enabled(this.coreState !== CoreServiceState.STARTING &&
-                this.coreState !== CoreServiceState.RELOADING && !this.restarting)
-              .opacity(this.coreState === CoreServiceState.STARTING ||
-                this.coreState === CoreServiceState.RELOADING || this.restarting ? 0.55 : 1)
-              .onClick((): void => { this.confirmCoreRestart(); })
+            .layoutWeight(3)
+            Column() { this.runtimeSummary() }
+              .layoutWeight(2)
           }
           .width('100%')
-
-          if (this.metrics.sizeClass === ResponsiveSizeClass.COMPACT) {
-            Column({ space: this.metrics.cardGap }) {
-              RuntimeSpeedCard({
-                runtime: this.runtime,
-                history: this.history,
-                proxyState: this.proxyState,
-                coreState: this.coreState,
-                cardWidth: '100%',
-                cardHeight: resolveDashboardSpeedCardHeight(this.metrics)
-              })
-              RuntimeTrafficCard({
-                runtime: this.runtime,
-                cardWidth: '100%',
-                cardHeight: this.metrics.dashboardCardHeight
-              })
-              this.vpnCard('100%')
-              RuntimeStatusCard({
-                runtime: this.runtime,
-                cardWidth: '100%',
-                cardHeight: this.metrics.dashboardInfoCardHeight
-              })
-              this.publicNetworkCard('100%')
-            }
-            .width('100%')
-          } else {
-            Column({ space: this.metrics.cardGap }) {
-              Row() {
-                RuntimeSpeedCard({
-                  runtime: this.runtime,
-                  history: this.history,
-                  proxyState: this.proxyState,
-                  coreState: this.coreState,
-                  cardWidth: this.metrics.dashboardCardWidth,
-                  cardHeight: resolveDashboardSpeedCardHeight(this.metrics)
-                })
-                Column({ space: this.metrics.cardGap }) {
-                  RuntimeTrafficCard({
-                    runtime: this.runtime,
-                    cardWidth: '100%',
-                    cardHeight: this.metrics.dashboardCardHeight
-                  })
-                  this.vpnCard('100%')
-                }
-                .width(this.metrics.dashboardCardWidth)
-              }
-              .width('100%')
-              .justifyContent(FlexAlign.SpaceBetween)
-              .alignItems(VerticalAlign.Top)
-              Row() {
-                RuntimeStatusCard({
-                  runtime: this.runtime,
-                  cardWidth: this.metrics.dashboardCardWidth,
-                  cardHeight: this.metrics.dashboardInfoCardHeight
-                })
-                this.publicNetworkCard(this.metrics.dashboardCardWidth)
-              }
-              .width('100%')
-              .justifyContent(FlexAlign.SpaceBetween)
-            }
-            .width('100%')
-          }
+          .alignItems(VerticalAlign.Top)
         }
-        .justifyContent(FlexAlign.Start)
-        .alignItems(HorizontalAlign.Start)
-        .width('100%')
-        .constraintSize({ minHeight: '100%' })
-        .padding({
-          top: this.metrics.pagePadding,
-          left: this.metrics.pagePadding,
-          right: this.metrics.pagePadding,
-          bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
-        })
       }
+      .alignItems(HorizontalAlign.Start)
       .width('100%')
-      .height('100%')
-
-      this.floatingVpnButton()
+      .constraintSize({ minHeight: '100%' })
+      .justifyContent(FlexAlign.Start)
+      .padding({
+        top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
+        bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
+      })
     }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.app_background'))
-    .onAreaChange((_oldValue: Area, newValue: Area): void => { this.updateWidth(newValue.width); })
+    .onAreaChange((_old: Area, area: Area): void => { this.updateWidth(area.width); })
   }
 }

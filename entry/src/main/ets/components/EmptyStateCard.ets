@@ -1,3 +1,6 @@
+import {
+  CARD_RADIUS, BODY_FONT_SIZE
+} from '../constants/UiConstants';
 @Component
 export struct EmptyStateCard {
   @Prop title: ResourceStr = '';
@@ -10,14 +13,14 @@ export struct EmptyStateCard {
         .fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.content_primary'))
       Text(this.description)
-        .fontSize(14)
+        .fontSize(BODY_FONT_SIZE)
         .fontColor($r('app.color.content_secondary'))
         .textAlign(TextAlign.Start)
     }
     .alignItems(HorizontalAlign.Start)
     .width('100%')
-    .padding(32)
-    .borderRadius(18)
+    .padding(24)
+    .borderRadius(CARD_RADIUS)
     .backgroundColor($r('app.color.card_background'))
   }
 }

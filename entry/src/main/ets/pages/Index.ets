@@ -2,12 +2,11 @@ import { common } from '@kit.AbilityKit';
 import { HdsTabs, hdsMaterial } from '@kit.UIDesignKit';
 import { FeedbackEvent, FeedbackLevel } from '../model/FeedbackModels';
 import { ConfigurationPage } from '../view/ConfigurationPage';
-import { ConnectionsPage } from '../view/ConnectionsPage';
+import { ActivityPage } from '../view/ActivityPage';
 import { DashboardPage } from '../view/DashboardPage';
 import { ProxyPage } from '../view/ProxyPage';
-import { RequestsPage } from '../view/RequestsPage';
 import { SettingsPage } from '../view/SettingsPage';
-import { AppPage } from '../model/NavigationModels';
+import { ActivityTab, AppPage } from '../model/NavigationModels';
 import { NAVIGATION_PAGES } from '../constants/NavigationConstants';
 import { AppNavigationState } from '../navigation/AppNavigationState';
 import { feedbackService } from '../services/FeedbackService';
@@ -72,6 +71,8 @@ struct Index {
         return $r('app.string.nav_connections');
       case AppPage.SETTINGS:
         return $r('app.string.nav_settings');
+      case AppPage.ACTIVITY:
+        return $r('app.string.nav_activity');
     }
   }
 
@@ -89,6 +90,8 @@ struct Index {
         return $r('app.media.nav_connections');
       case AppPage.SETTINGS:
         return $r('app.media.nav_settings');
+      case AppPage.ACTIVITY:
+        return $r('app.media.nav_activity');
     }
   }
 
@@ -126,10 +129,11 @@ struct Index {
       ProxyPage()
     } else if (page === AppPage.CONFIGURATION) {
       ConfigurationPage()
-    } else if (page === AppPage.REQUESTS) {
-      RequestsPage()
-    } else if (page === AppPage.CONNECTIONS) {
-      ConnectionsPage()
+    } else if (page === AppPage.ACTIVITY) {
+      ActivityPage({
+        selectedTab: this.navigationState.activityTab,
+        onTabChange: (tab: ActivityTab): void => { this.navigationState.selectActivityTab(tab); }
+      })
     } else if (page === AppPage.SETTINGS) {
       SettingsPage()
     }

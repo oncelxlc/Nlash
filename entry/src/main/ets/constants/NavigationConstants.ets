@@ -4,7 +4,6 @@ export const NAVIGATION_PAGES: AppPage[] = [
   AppPage.DASHBOARD,
   AppPage.PROXY,
   AppPage.CONFIGURATION,
-  AppPage.REQUESTS,
-  AppPage.CONNECTIONS,
+  AppPage.ACTIVITY,
   AppPage.SETTINGS
 ];

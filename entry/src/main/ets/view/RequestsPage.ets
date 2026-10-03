@@ -4,24 +4,20 @@ import { formatBytes } from '../utils/RuntimeUtils';
 import { RequestRecord, RuntimeStoreSnapshot } from '../model/RuntimeModels';
 import { feedbackService } from '../services/FeedbackService';
 import { runtimeStore } from '../stores/RuntimeStore';
-import { ResponsiveMetrics } from '../model/ResponsiveModels';
-import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
-import { BUTTON_RADIUS, FLOATING_NAVIGATION_INSET } from '../constants/UiConstants';
-
-enum RequestFilter {
-  ALL = 'ALL',
-  ACTIVE = 'ACTIVE',
-  COMPLETED = 'COMPLETED'
-}
+import { RequestFilter } from '../model/NavigationModels';
+import { StatusBadge } from '../components/StatusBadge';
+import {
+  BUTTON_RADIUS, CONTROL_HEIGHT, CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
+} from '../constants/UiConstants';
 
 const FILTERS: RequestFilter[] = [RequestFilter.ALL, RequestFilter.ACTIVE, RequestFilter.COMPLETED];
 
 @Component
 export struct RequestsPage {
   @State requests: RequestRecord[] = [];
-  @State filter: RequestFilter = RequestFilter.ALL;
-  @State query: string = '';
-  @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
+  @Link filter: RequestFilter;
+  @Link query: string;
+  @State expandedId: string = '';
   private unsubscribe: (() => void) | undefined = undefined;
 
   aboutToAppear(): void {
@@ -33,10 +29,6 @@ export struct RequestsPage {
   aboutToDisappear(): void {
     this.unsubscribe?.();
     this.unsubscribe = undefined;
-  }
-
-  private updateWidth(width: Length): void {
-    this.metrics = resolveResponsiveMetrics(resolveContentWidth(width));
   }
 
   private filterLabel(filter: RequestFilter): string {
@@ -71,155 +63,142 @@ export struct RequestsPage {
   }
 
   @Builder
-  private requestCard(record: RequestRecord) {
-    Column({ space: 10 }) {
-      Row({ space: 8 }) {
-        Text(this.title(record))
-          .fontSize(17)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.content_primary'))
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
+  private detailLine(value: string) {
+    Text(value)
+      .fontSize(CAPTION_FONT_SIZE)
+      .fontColor($r('app.color.content_secondary'))
+      .width('100%')
+      .wordBreak(WordBreak.BREAK_ALL)
+  }
+
+  @Builder
+  private requestRow(record: RequestRecord) {
+    Column({ space: 8 }) {
+      Button({ type: ButtonType.Normal }) {
+        Row({ space: 8 }) {
+          Column({ space: 6 }) {
+            Text(this.title(record))
+              .fontSize(BODY_FONT_SIZE)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.content_primary'))
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .width('100%')
+            Text(`${record.network.toUpperCase()} · ${formatLocalTime(record.start)}`)
+              .fontSize(CAPTION_FONT_SIZE)
+              .fontColor($r('app.color.content_secondary'))
+              .width('100%')
+            Text(`↑ ${formatBytes(record.upload)}  ↓ ${formatBytes(record.download)}`)
+              .fontSize(CAPTION_FONT_SIZE)
+              .fontColor($r('app.color.content_secondary'))
+              .width('100%')
+          }
+          .alignItems(HorizontalAlign.Start)
           .layoutWeight(1)
-        Text(record.active ? '进行中' : '已完成')
-          .fontSize(12)
-          .fontColor(record.active ? $r('app.color.status_success') : $r('app.color.content_secondary'))
+          StatusBadge({ text: record.active ? '进行中' : '已完成', active: record.active })
+          Image($r('app.media.action_chevron_down'))
+            .width(16)
+            .height(16)
+            .fillColor($r('app.color.content_secondary'))
+            .rotate({ angle: this.expandedId === record.id ? 180 : 0 })
+        }
+        .width('100%')
       }
       .width('100%')
-      Text(record.destination)
-        .fontSize(12)
-        .fontColor($r('app.color.content_secondary'))
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
+      .constraintSize({ minHeight: 64 })
+      .padding({ top: 12, bottom: 12 })
+      .borderRadius(0)
+      .backgroundColor(Color.Transparent)
+      .accessibilityText(`${this.title(record)}，${this.expandedId === record.id ? '收起' : '展开'}请求详情`)
+      .onClick((): void => { this.expandedId = this.expandedId === record.id ? '' : record.id; })
+      if (this.expandedId === record.id) {
+        Column({ space: 8 }) {
+          this.detailLine(`主机：${this.title(record)}`)
+          this.detailLine(`地址：${record.destination}`)
+          this.detailLine(`规则：${record.rule || '未报告'}${record.rulePayload.length > 0 ? ` / ${record.rulePayload}` : ''}`)
+          this.detailLine(`链路：${record.chains.length > 0 ? record.chains.join(' → ') : '直连或未报告'}`)
+          this.detailLine(`进程：${record.process || '未报告'}`)
+        }
         .width('100%')
-      Text(record.rule.length > 0 ?
-        `规则：${record.rule}${record.rulePayload.length > 0 ? ` / ${record.rulePayload}` : ''}` : '规则：未报告')
-        .fontSize(13)
-        .fontColor($r('app.color.content_secondary'))
-        .maxLines(2)
-        .width('100%')
-      Text(record.chains.length > 0 ? `链路：${record.chains.join(' → ')}` : '链路：直连或未报告')
-        .fontSize(13)
-        .fontColor($r('app.color.content_secondary'))
-        .maxLines(2)
-        .width('100%')
-      Row() {
-        Text(`${record.network.toUpperCase()} · ${formatLocalTime(record.start)}`)
-          .fontSize(12)
-          .fontColor($r('app.color.content_secondary'))
-          .layoutWeight(1)
-        Text(`↑ ${formatBytes(record.upload)}  ↓ ${formatBytes(record.download)}`)
-          .fontSize(12)
-          .fontColor($r('app.color.content_secondary'))
+        .alignItems(HorizontalAlign.Start)
+        .padding({ bottom: 16 })
       }
-      .width('100%')
+      Divider().color($r('app.color.nav_divider'))
     }
-    .alignItems(HorizontalAlign.Start)
-    .width(this.metrics.profileCardWidth)
-    .padding(16)
-    .margin({ bottom: this.metrics.cardGap })
-    .borderRadius(16)
+    .width('100%')
+    .padding({ left: 16, right: 16 })
     .backgroundColor($r('app.color.card_background'))
   }
 
-  @Builder
-  private pageContent() {
-    Scroll() {
-      Column({ space: this.metrics.sectionGap }) {
-        Row({ space: 10 }) {
-          Column({ space: 4 }) {
-            Text($r('app.string.nav_requests'))
-              .fontSize(28)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.content_primary'))
-          }
+  build() {
+    Column({ space: 12 }) {
+      TextInput({ placeholder: '搜索主机、地址、规则或进程', text: this.query })
+        .height(CONTROL_HEIGHT)
+        .fontSize(BODY_FONT_SIZE)
+        .fontColor($r('app.color.content_primary'))
+        .placeholderColor($r('app.color.content_secondary'))
+        .backgroundColor($r('app.color.card_background'))
+        .border({ width: 1, color: $r('app.color.control_border') })
+        .borderRadius(BUTTON_RADIUS)
+        .accessibilityText('搜索请求记录')
+        .onChange((value: string): void => { this.query = value; })
+      Row({ space: 8 }) {
+        ForEach(FILTERS, (item: RequestFilter) => {
+          Button(this.filterLabel(item))
+            .type(ButtonType.Normal)
+            .height(CONTROL_HEIGHT)
+            .layoutWeight(1)
+            .fontSize(14)
+            .borderRadius(BUTTON_RADIUS)
+            .fontColor(this.filter === item ? $r('app.color.nav_selected') : $r('app.color.content_secondary'))
+            .backgroundColor(this.filter === item ? $r('app.color.nav_selected_background') : Color.Transparent)
+            .accessibilitySelected(this.filter === item)
+            .onClick((): void => { this.filter = item; })
+        }, (item: RequestFilter): string => item)
+      }
+      .width('100%')
+      Row() {
+        Text(`${this.visibleRequests().length} 条记录`)
+          .fontSize(CAPTION_FONT_SIZE)
+          .fontColor($r('app.color.content_secondary'))
           .layoutWeight(1)
-          .alignItems(HorizontalAlign.Start)
-        }
-        .width('100%')
-
-        TextInput({ placeholder: '搜索主机、地址、规则或进程', text: this.query })
-          .height(48)
-          .backgroundColor($r('app.color.card_background'))
-          .onChange((value: string): void => {
-            this.query = value;
+        Button('清空记录')
+          .type(ButtonType.Normal)
+          .height(CONTROL_HEIGHT)
+          .borderRadius(BUTTON_RADIUS)
+          .fontSize(14)
+          .fontColor($r('app.color.status_error'))
+          .backgroundColor(Color.Transparent)
+          .enabled(this.requests.length > 0)
+          .onClick((): void => {
+            runtimeStore.clearRequests();
+            this.expandedId = '';
+            feedbackService.success('请求记录已清空');
           })
-
-        Row({ space: 8 }) {
-          ForEach(FILTERS, (item: RequestFilter) => {
-            Button(this.filterLabel(item))
-              .type(ButtonType.Normal)
-              .borderRadius(BUTTON_RADIUS)
-              .fontColor(this.filter === item ? Color.White : $r('app.color.content_primary'))
-              .backgroundColor(this.filter === item ? $r('app.color.nav_selected') : $r('app.color.card_background'))
-              .onClick((): void => {
-                this.filter = item;
-              })
-          }, (item: RequestFilter): string => item)
-        }
-        .width('100%')
-
+      }
+      .width('100%')
+      List() {
         if (this.visibleRequests().length === 0) {
-          EmptyStateCard({
-            title: '暂无请求记录',
-            description: '建立 VPN 并产生网络连接后，此处会保留最多 200 条会话内记录。'
-          })
-        } else {
-          Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
-            ForEach(this.visibleRequests(), (record: RequestRecord) => {
-              this.requestCard(record)
-            }, (record: RequestRecord): string => `${record.id}:${record.active}`)
+          ListItem() {
+            EmptyStateCard({
+              title: this.requests.length === 0 ? '暂无请求记录' : '没有匹配的请求',
+              description: this.requests.length === 0 ?
+                '产生网络连接后，这里会保留最多 200 条本次会话记录。' : '尝试其他关键词，或切换为全部状态。'
+            })
           }
-          .width('100%')
+        } else {
+          ForEach(this.visibleRequests(), (record: RequestRecord) => {
+            ListItem() { this.requestRow(record) }
+          }, (record: RequestRecord): string => record.id)
         }
       }
-      .justifyContent(FlexAlign.Start)
-      .alignItems(HorizontalAlign.Start)
       .width('100%')
-      .constraintSize({ minHeight: '100%' })
-      .padding({
-        top: this.metrics.pagePadding,
-        left: this.metrics.pagePadding,
-        right: this.metrics.pagePadding,
-        bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
-      })
+      .layoutWeight(1)
+      .borderRadius(CARD_RADIUS)
+      .clip(true)
+      .scrollBar(BarState.Auto)
     }
     .width('100%')
-    .height('100%')
-  }
-
-  @Builder
-  private floatingClearButton() {
-    if (this.requests.length > 0) {
-      Button('清空记录')
-        .type(ButtonType.Normal)
-        .borderRadius(BUTTON_RADIUS)
-        .height(52)
-        .padding({ left: 20, right: 20 })
-        .fontColor(Color.White)
-        .backgroundColor($r('app.color.nav_selected'))
-        .margin({
-          right: this.metrics.pagePadding,
-          bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
-        })
-        .zIndex(2)
-        .onClick((): void => {
-          runtimeStore.clearRequests();
-          feedbackService.success('请求记录已清空');
-        })
-    }
-  }
-
-  build() {
-    Stack({ alignContent: Alignment.BottomEnd }) {
-      this.pageContent()
-      this.floatingClearButton()
-    }
-    .width('100%')
-    .height('100%')
-    .backgroundColor($r('app.color.app_background'))
-    .onAreaChange((_oldValue: Area, newValue: Area): void => {
-      this.updateWidth(newValue.width);
-    })
+    .layoutWeight(1)
   }
 }

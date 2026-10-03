@@ -7,7 +7,11 @@ import { runtimeStore } from '../stores/RuntimeStore';
 import { settingsStore } from '../stores/SettingsStore';
 import { ResponsiveMetrics } from '../model/ResponsiveModels';
 import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
-import { BUTTON_RADIUS, FLOATING_NAVIGATION_INSET } from '../constants/UiConstants';
+import {
+  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
+} from '../constants/UiConstants';
+
+import { PageHeader } from '../components/PageHeader';
 
 const THEMES: AppThemeMode[] = [AppThemeMode.SYSTEM, AppThemeMode.LIGHT, AppThemeMode.DARK];
 
@@ -15,6 +19,7 @@ const THEMES: AppThemeMode[] = [AppThemeMode.SYSTEM, AppThemeMode.LIGHT, AppThem
 export struct SettingsPage {
   @State settings: AppSettings = settingsStore.getSnapshot().settings;
   @State saving: boolean = false;
+  @State networkError: string = '';
   @State mtuInput: string = '1400';
   @State delayUrlInput: string = '';
   @State runtimeAvailable: boolean = false;
@@ -66,11 +71,13 @@ export struct SettingsPage {
   }
 
   private async saveNetworkSettings(): Promise<void> {
+    this.networkError = '';
     try {
       await settingsStore.setNetworkSettings(Number(this.mtuInput), this.delayUrlInput);
       feedbackService.success('网络设置已保存');
     } catch (error) {
-      feedbackService.error(this.errorMessage(error));
+      this.networkError = this.errorMessage(error);
+      feedbackService.error(this.networkError);
     }
   }
 
@@ -113,17 +120,10 @@ export struct SettingsPage {
   }
 
   @Builder
-  private cardHeader(title: string, subtitle: string) {
-    Column({ space: 3 }) {
-      Text(title)
-        .fontSize(18)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.content_primary'))
-        .width('100%')
-      Text(subtitle)
-        .fontSize(13)
-        .fontColor($r('app.color.content_secondary'))
-        .width('100%')
+  private sectionTitle(title: string, subtitle: string) {
+    Column({ space: 6 }) {
+      Text(title).fontSize(18).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary')).width('100%')
+      Text(subtitle).fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
     }
     .alignItems(HorizontalAlign.Start)
     .width('100%')
@@ -131,194 +131,136 @@ export struct SettingsPage {
 
   @Builder
   private themeCard() {
-    Column({ space: 14 }) {
-      this.cardHeader('主题', '选择跟随系统、浅色或深色。')
-      this.themeContent()
+    Column({ space: 16 }) {
+      this.sectionTitle('外观', '选择适合当前环境的配色')
+      Column({ space: 8 }) {
+        ForEach(THEMES, (theme: AppThemeMode) => {
+          Button(this.themeLabel(theme))
+            .type(ButtonType.Normal).height(CONTROL_HEIGHT).width('100%').borderRadius(BUTTON_RADIUS)
+            .fontSize(BODY_FONT_SIZE)
+            .fontColor(this.settings.themeMode === theme ? $r('app.color.nav_selected') : $r('app.color.content_primary'))
+            .backgroundColor(this.settings.themeMode === theme ?
+              $r('app.color.nav_selected_background') : $r('app.color.surface_muted'))
+            .accessibilitySelected(this.settings.themeMode === theme)
+            .enabled(!this.saving)
+            .onClick((): void => { this.changeTheme(theme); })
+        }, (theme: AppThemeMode): string => theme)
+      }
+      .width('100%')
     }
-    .alignItems(HorizontalAlign.Start)
-    .width(this.metrics.dashboardCardWidth)
-    .padding(18)
-    .margin({ bottom: this.metrics.cardGap })
-    .borderRadius(16)
-    .backgroundColor($r('app.color.card_background'))
+    .width(this.metrics.dashboardCardWidth).padding(16).margin({ bottom: 16 })
+    .borderRadius(CARD_RADIUS).backgroundColor($r('app.color.card_background'))
   }
 
   @Builder
   private networkCard() {
-    Column({ space: 14 }) {
-      this.cardHeader('网络', 'MTU 范围 1280–9000；延迟测试只接受 HTTP(S)。')
-      this.networkContent()
+    Column({ space: 12 }) {
+      this.sectionTitle('网络', '配置 VPN 与节点延迟测试')
+      Text('VPN MTU').fontSize(14).fontColor($r('app.color.content_secondary')).width('100%')
+      TextInput({ placeholder: '1280–9000', text: this.mtuInput })
+        .type(InputType.Number).height(CONTROL_HEIGHT).width('100%').fontSize(BODY_FONT_SIZE)
+        .fontColor($r('app.color.content_primary')).placeholderColor($r('app.color.content_secondary'))
+        .backgroundColor($r('app.color.surface_muted'))
+        .border({ width: 1, color: $r('app.color.control_border') }).borderRadius(BUTTON_RADIUS)
+        .enabled(!this.saving).accessibilityText('VPN MTU，1280 至 9000')
+        .onChange((value: string): void => { this.mtuInput = value; })
+      Text('延迟测试地址 · HTTP(S)').fontSize(14).fontColor($r('app.color.content_secondary')).width('100%')
+      TextInput({ placeholder: 'https://', text: this.delayUrlInput })
+        .type(InputType.URL).height(CONTROL_HEIGHT).width('100%').fontSize(BODY_FONT_SIZE)
+        .fontColor($r('app.color.content_primary')).placeholderColor($r('app.color.content_secondary'))
+        .backgroundColor($r('app.color.surface_muted'))
+        .border({ width: 1, color: $r('app.color.control_border') }).borderRadius(BUTTON_RADIUS)
+        .enabled(!this.saving).accessibilityText('延迟测试 HTTP 或 HTTPS 地址')
+        .onChange((value: string): void => { this.delayUrlInput = value; })
+      if (this.networkError.length > 0) {
+        Text(this.networkError).fontSize(14).fontColor($r('app.color.status_error')).width('100%')
+      }
+      Button(this.saving ? '保存中…' : '保存网络设置')
+        .type(ButtonType.Normal).height(CONTROL_HEIGHT).width('100%').borderRadius(BUTTON_RADIUS)
+        .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.nav_selected'))
+        .enabled(!this.saving)
+        .onClick((): void => { this.saveNetworkSettings(); })
     }
     .alignItems(HorizontalAlign.Start)
-    .width(this.metrics.dashboardCardWidth)
-    .padding(18)
-    .margin({ bottom: this.metrics.cardGap })
-    .borderRadius(16)
-    .backgroundColor($r('app.color.card_background'))
+    .width(this.metrics.dashboardCardWidth).padding(16).margin({ bottom: 16 })
+    .borderRadius(CARD_RADIUS).backgroundColor($r('app.color.card_background'))
   }
 
   @Builder
   private dataCard() {
-    Column({ space: 14 }) {
-      this.cardHeader('运行数据', '设置流量、速度、连接和代理数据的全局刷新频率。')
-      this.dataContent()
-    }
-    .alignItems(HorizontalAlign.Start)
-    .width(this.metrics.dashboardCardWidth)
-    .padding(18)
-    .margin({ bottom: this.metrics.cardGap })
-    .borderRadius(16)
-    .backgroundColor($r('app.color.card_background'))
-  }
-
-  @Builder
-  private themeContent() {
-    Row({ space: 8 }) {
-      ForEach(THEMES, (theme: AppThemeMode) => {
-        Button(this.themeLabel(theme))
-          .type(ButtonType.Normal)
-          .borderRadius(BUTTON_RADIUS)
-          .layoutWeight(1)
-          .fontColor(this.settings.themeMode === theme ? Color.White : $r('app.color.content_primary'))
-          .backgroundColor(this.settings.themeMode === theme ?
-            $r('app.color.nav_selected') : $r('app.color.app_background'))
-          .enabled(!this.saving)
-          .onClick((): void => {
-            this.changeTheme(theme);
-          })
-      }, (theme: AppThemeMode): string => theme)
-    }
-    .width('100%')
-  }
-
-  @Builder
-  private networkContent() {
-    Column({ space: 10 }) {
-      TextInput({ placeholder: 'VPN MTU', text: this.mtuInput })
-        .type(InputType.Number)
-        .height(46)
-        .onChange((value: string): void => {
-          this.mtuInput = value;
-        })
-      TextInput({ placeholder: '延迟测试 HTTP(S) 地址', text: this.delayUrlInput })
-        .type(InputType.URL)
-        .height(46)
-        .onChange((value: string): void => {
-          this.delayUrlInput = value;
-        })
-      Button('保存网络设置')
-        .type(ButtonType.Normal)
-        .borderRadius(BUTTON_RADIUS)
-        .width('100%')
-        .enabled(!this.saving)
-        .onClick((): void => {
-          this.saveNetworkSettings();
-        })
-    }
-    .width('100%')
-  }
-
-  @Builder
-  private dataContent() {
-    Column({ space: 8 }) {
-      Text('数据刷新间隔')
-        .fontSize(13)
-        .fontColor($r('app.color.content_secondary'))
-        .width('100%')
+    Column({ space: 16 }) {
+      this.sectionTitle('运行数据', '速度、连接与节点信息的刷新间隔')
       Row({ space: 8 }) {
         ForEach(REFRESH_INTERVAL_OPTIONS, (seconds: number) => {
           Button(`${seconds} 秒`)
-            .type(ButtonType.Normal)
-            .borderRadius(BUTTON_RADIUS)
-            .layoutWeight(1)
+            .type(ButtonType.Normal).height(CONTROL_HEIGHT).layoutWeight(1).borderRadius(BUTTON_RADIUS)
+            .fontSize(14)
             .fontColor(this.settings.refreshIntervalSeconds === seconds ?
-              Color.White : $r('app.color.content_primary'))
+              $r('app.color.nav_selected') : $r('app.color.content_secondary'))
             .backgroundColor(this.settings.refreshIntervalSeconds === seconds ?
-              $r('app.color.nav_selected') : $r('app.color.app_background'))
+              $r('app.color.nav_selected_background') : $r('app.color.surface_muted'))
+            .accessibilitySelected(this.settings.refreshIntervalSeconds === seconds)
             .enabled(!this.saving)
-            .onClick((): void => {
-              this.changeRefreshInterval(seconds);
-            })
+            .onClick((): void => { this.changeRefreshInterval(seconds); })
         }, (seconds: number): string => seconds.toString())
       }
       .width('100%')
-      Button('重置 Core 流量统计')
-        .type(ButtonType.Normal)
-        .borderRadius(BUTTON_RADIUS)
-        .width('100%')
-        .enabled(this.runtimeAvailable && this.runtimeBusyKey.length === 0)
-        .onClick((): void => {
-          this.resetTraffic();
-        })
-      Button('清空会话请求记录')
-        .type(ButtonType.Normal)
-        .borderRadius(BUTTON_RADIUS)
-        .width('100%')
-        .onClick((): void => {
-          this.clearRequests();
-        })
     }
-    .width('100%')
+    .width(this.metrics.dashboardCardWidth).padding(16).margin({ bottom: 16 })
+    .borderRadius(CARD_RADIUS).backgroundColor($r('app.color.card_background'))
+  }
+
+  @Builder
+  private cleanupCard() {
+    Column({ space: 12 }) {
+      this.sectionTitle('数据管理', '管理当前累计统计和会话记录')
+      Button(this.runtimeBusyKey.length > 0 ? '处理中…' : '重置 Core 流量统计')
+        .type(ButtonType.Normal).height(CONTROL_HEIGHT).width('100%').borderRadius(BUTTON_RADIUS)
+        .fontSize(14).fontColor($r('app.color.status_error')).backgroundColor($r('app.color.status_error_surface'))
+        .enabled(this.runtimeAvailable && this.runtimeBusyKey.length === 0)
+        .onClick((): void => { this.resetTraffic(); })
+      Button('清空会话请求记录')
+        .type(ButtonType.Normal).height(CONTROL_HEIGHT).width('100%').borderRadius(BUTTON_RADIUS)
+        .fontSize(14).fontColor($r('app.color.status_error')).backgroundColor($r('app.color.status_error_surface'))
+        .onClick((): void => { this.clearRequests(); })
+    }
+    .width(this.metrics.dashboardCardWidth).padding(16).margin({ bottom: 16 })
+    .borderRadius(CARD_RADIUS).backgroundColor($r('app.color.card_background'))
   }
 
   build() {
     Scroll() {
       Column({ space: this.metrics.sectionGap }) {
-        Column({ space: 4 }) {
-          Text($r('app.string.nav_settings'))
-            .fontSize(28)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.content_primary'))
-            .width('100%')
-        }
-        .alignItems(HorizontalAlign.Start)
-        .width('100%')
-
+        PageHeader({ title: $r('app.string.nav_settings'), subtitle: '按你的习惯调整 Nlash' })
         Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
           this.themeCard()
           this.networkCard()
           this.dataCard()
+          this.cleanupCard()
         }
         .width('100%')
-
-        Column({ space: 8 }) {
-          Text('关于')
-            .fontSize(18)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.content_primary'))
-            .width('100%')
-          Text(`Nlash 1.0.0 · ${this.coreVersion}`)
-            .fontSize(13)
-            .fontColor($r('app.color.content_secondary'))
-            .width('100%')
-          Text('Core 固定 Mihomo v1.19.30；配置与订阅仅保存在应用沙箱。')
-            .fontSize(13)
-            .fontColor($r('app.color.content_secondary'))
-            .width('100%')
+        Column({ space: 12 }) {
+          this.sectionTitle('关于 Nlash', `1.0.0 · ${this.coreVersion}`)
+          Divider().color($r('app.color.nav_divider'))
+          Text('Mihomo v1.19.30')
+            .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.content_primary')).width('100%')
+          Text('配置与订阅保存在应用沙箱中。')
+            .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
         }
-        .alignItems(HorizontalAlign.Start)
-        .width('100%')
-        .padding(18)
-        .borderRadius(16)
-        .backgroundColor($r('app.color.card_background'))
-
+        .alignItems(HorizontalAlign.Start).width('100%').padding(16)
+        .borderRadius(CARD_RADIUS).backgroundColor($r('app.color.card_background'))
       }
-      .justifyContent(FlexAlign.Start)
       .alignItems(HorizontalAlign.Start)
       .width('100%')
       .constraintSize({ minHeight: '100%' })
+      .justifyContent(FlexAlign.Start)
       .padding({
-        top: this.metrics.pagePadding,
-        left: this.metrics.pagePadding,
-        right: this.metrics.pagePadding,
+        top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
         bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
       })
     }
-    .width('100%')
-    .height('100%')
+    .width('100%').height('100%')
     .backgroundColor($r('app.color.app_background'))
-    .onAreaChange((_oldValue: Area, newValue: Area): void => {
-      this.updateWidth(newValue.width);
-    })
+    .onAreaChange((_old: Area, area: Area): void => { this.updateWidth(area.width); })
   }
 }

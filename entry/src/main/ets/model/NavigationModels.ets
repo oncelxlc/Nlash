@@ -4,5 +4,17 @@ export enum AppPage {
   CONFIGURATION,
   REQUESTS,
   CONNECTIONS,
-  SETTINGS
+  SETTINGS,
+  ACTIVITY
+}
+
+export enum ActivityTab {
+  CONNECTIONS,
+  REQUESTS
+}
+
+export enum RequestFilter {
+  ALL = 'ALL',
+  ACTIVE = 'ACTIVE',
+  COMPLETED = 'COMPLETED'
 }

@@ -13,13 +13,18 @@ import { runtimeStore } from '../stores/RuntimeStore';
 import { settingsStore } from '../stores/SettingsStore';
 import { ResponsiveMetrics } from '../model/ResponsiveModels';
 import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
-import { BUTTON_RADIUS, FLOATING_NAVIGATION_INSET } from '../constants/UiConstants';
-import { LengthMetrics, LengthUnit } from '@kit.ArkUI';
+import {
+  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
+} from '../constants/UiConstants';
+import { PageHeader } from '../components/PageHeader';
+import { EmptyStateCard } from '../components/EmptyStateCard';
+import { StatusBadge } from '../components/StatusBadge';
 
 @Component
 export struct ProxyPage {
   @Prop forceExpanded: boolean = false;
   @State coreAvailable: boolean = false;
+  @State selecting: boolean = false;
   @State previewLoading: boolean = false;
   @State groups: ProxyGroupSnapshot[] = [];
   @State selections: ProxySelection[] = [];
@@ -102,12 +107,15 @@ export struct ProxyPage {
 
   private async selectNode(node: ProxyNodeSnapshot): Promise<void> {
     const group = this.currentGroup();
-    if (group !== undefined && group.selectable) {
+    if (group !== undefined && group.selectable && !this.selecting) {
+      this.selecting = true;
       try {
         await runtimeStore.selectProxy(group.name, node.name);
         feedbackService.success(`已选择 ${node.name}`);
       } catch (error) {
         feedbackService.error(this.errorMessage(error));
+      } finally {
+        this.selecting = false;
       }
     }
   }
@@ -149,193 +157,144 @@ export struct ProxyPage {
       exception.message : '代理操作失败';
   }
 
-  private currentGroupNodesLength(): number {
-    return this.currentGroup()?.nodes.length ?? 0;
+  private groupOptions(): SelectOption[] {
+    return this.groups.map((group: ProxyGroupSnapshot): SelectOption => ({ value: group.name }));
   }
 
   @Builder
   private nodeCard(node: ProxyNodeSnapshot) {
-    Stack({ alignContent: Alignment.BottomEnd }) {
-      Column({ space: 0 }) {
-        Row() {
-          Text(node.name)
-            .fontSize(15)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.content_primary'))
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .layoutWeight(1)
-        }
-        .width('100%')
-        Row({ space: 4 }) {
-          Text(`${node.type} ${node.udp ? 'UDP' : 'TCP'}`)
-            .fontSize(11)
-            .fontColor($r('app.color.content_secondary'))
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .layoutWeight(1)
-          Text(proxyDelayLabel(node, this.isNodeTesting(node)))
-            .fontSize(12)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(this.delayColor(node, this.isNodeTesting(node)))
-            .textAlign(TextAlign.End)
-            .accessibilityText(`测试 ${node.name} 延迟`)
-            .padding({top: 4,right: 4, bottom: 4, left: 8})
-            .margin({right: -4})
-            .onTouch((event: TouchEvent): void => {
-              event.stopPropagation();
-              if (event.type === TouchType.Up && !this.isDirectNodeTesting(node)) {
-                this.testNode(node);
-              }
-            })
-            .hitTestBehavior(HitTestMode.Block)
-        }
-        .width('100%')
-      }
-      .alignItems(HorizontalAlign.Start)
-      .width('100%')
-      .padding({ top: 12, bottom: 10, left: 12, right: 10 })
-      .border({ width: 1,
-        color: this.isNodeSelected(node) ? $r('app.color.status_success') : $r('app.color.card_background') })
-      .borderRadius(14)
-      .backgroundColor($r('app.color.card_background'))
-      .onClick((): void => { this.selectNode(node); })
-    }
-    .width('100%')
-  }
-
-  @Builder
-  private pageContent() {
-    Scroll() {
-      Column({ space: this.metrics.sectionGap }) {
-        Row({ space: 12 }) {
-          Column({ space: 4 }) {
-            Text($r('app.string.nav_proxy'))
-              .fontSize(28)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.content_primary'))
-          }
-          .layoutWeight(1)
-          .alignItems(HorizontalAlign.Start)
-          Text(this.source === ProxySnapshotSource.RUNTIME ? '运行中' :
-            (this.source === ProxySnapshotSource.CONFIG ? '配置预览' : '无配置'))
-            .fontSize(12)
-            .fontColor(this.coreAvailable ?
-              $r('app.color.status_success') : $r('app.color.content_secondary'))
-        }
-        .width('100%')
-        if (this.groups.length === 0) {
-          Column({ space: 8 }) {
-            Text(this.previewLoading ? '正在解析活动配置…' : '暂无可用代理组')
-              .fontSize(18)
+    Row({ space: 8 }) {
+      Button({ type: ButtonType.Normal }) {
+        Column({ space: 8 }) {
+          Row({ space: 8 }) {
+            Text(node.name)
+              .fontSize(BODY_FONT_SIZE)
               .fontWeight(FontWeight.Medium)
               .fontColor($r('app.color.content_primary'))
-            Text('请在配置页添加并选择一份有效配置。')
-              .fontSize(14)
-              .fontColor($r('app.color.content_secondary'))
+              .maxLines(2)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .layoutWeight(1)
+            if (this.isNodeSelected(node)) {
+              Image($r('app.media.action_check'))
+                .width(20).height(20).fillColor($r('app.color.nav_selected'))
+            }
           }
-          .alignItems(HorizontalAlign.Start)
           .width('100%')
-          .padding(20)
-          .borderRadius(16)
-          .backgroundColor($r('app.color.card_background'))
-        } else {
-          Scroll() {
-            Row({ space: 8 }) {
-              ForEach(this.groups, (group: ProxyGroupSnapshot) => {
-                Button(group.name)
-                  .type(ButtonType.Normal)
-                  .borderRadius(BUTTON_RADIUS)
-                  .fontColor(this.selectedGroup === group.name ? Color.White : $r('app.color.content_primary'))
-                  .backgroundColor(this.selectedGroup === group.name ?
-                    $r('app.color.nav_selected') : $r('app.color.card_background'))
-                  .onClick((): void => { this.selectGroup(group.name); })
-              }, (group: ProxyGroupSnapshot): string => group.name)
-            }
-          }
-          .scrollable(ScrollDirection.Horizontal)
-          .scrollBar(BarState.Off)
-          .width('100%')
-          if (this.currentGroup() !== undefined) {
-            Row() {
-              Text(`${this.currentGroup()?.name ?? ''} · ${this.currentGroup()?.nodes.length ?? 0} 个节点`)
-                .fontSize(16)
-                .fontWeight(FontWeight.Medium)
-                .fontColor($r('app.color.content_primary'))
-                .layoutWeight(1)
-              Text(this.currentGroup()?.selectable ? '点击卡片选择' : '只读组')
-                .fontSize(12)
-                .fontColor($r('app.color.content_secondary'))
-            }
+          Text(`${node.type} · ${node.udp ? 'UDP / TCP' : 'TCP'}${this.isNodeSelected(node) ? ' · 已选择' : ''}`)
+            .fontSize(CAPTION_FONT_SIZE)
+            .fontColor($r('app.color.content_secondary'))
             .width('100%')
-            Grid(new Scroller(), {
-              regularSize: [1, 1],
-              irregularIndexes: [this.currentGroupNodesLength()],
-              onGetIrregularSizeByIndex: (): [number, number] => [1, this.metrics.proxyColumns.split(' ').length]
-            }) {
-              ForEach(this.currentGroup()?.nodes ?? [], (node: ProxyNodeSnapshot) => {
-                GridItem() {
-                  this.nodeCard(node)
-                }
-              }, (node: ProxyNodeSnapshot): string => proxyNodeRenderKey(node))
-              GridItem()
-                .height(this.metrics.pagePadding + 130)
-                .width('100%')
-            }
-            .columnsTemplate(this.metrics.proxyColumns)
-            .columnsGap(this.metrics.cardGap)
-            .rowsGap(this.metrics.cardGap)
-            .width('100%')
-            .scrollBar(BarState.Off)
-          }
         }
-
+        .alignItems(HorizontalAlign.Start)
       }
-      .justifyContent(FlexAlign.Start)
-      .alignItems(HorizontalAlign.Start)
-      .width('100%')
-      .height('100%')
-      .constraintSize({ minHeight: '100%' })
-      .padding({
-        top: this.metrics.pagePadding,
-        left: this.metrics.pagePadding,
-        right: this.metrics.pagePadding,
-        bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
-      })
+      .layoutWeight(1)
+      .constraintSize({ minHeight: 64 })
+      .padding(0)
+      .borderRadius(0)
+      .backgroundColor(Color.Transparent)
+      .enabled(this.currentGroup()?.selectable === true && !this.selecting)
+      .accessibilityText(`${node.name}${this.isNodeSelected(node) ? '，已选择' : ''}`)
+      .accessibilitySelected(this.isNodeSelected(node))
+      .onClick((): void => { this.selectNode(node); })
+      Button(proxyDelayLabel(node, this.isNodeTesting(node)))
+        .type(ButtonType.Normal)
+        .constraintSize({ minWidth: 72 })
+        .height(CONTROL_HEIGHT)
+        .padding({ left: 8, right: 8 })
+        .fontSize(CAPTION_FONT_SIZE)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(this.delayColor(node, this.isNodeTesting(node)))
+        .borderRadius(BUTTON_RADIUS)
+        .backgroundColor($r('app.color.surface_muted'))
+        .enabled(!this.isNodeTesting(node) && !this.previewLoading)
+        .accessibilityText(`测试 ${node.name} 延迟，${proxyDelayLabel(node, this.isNodeTesting(node))}`)
+        .onClick((): void => { this.testNode(node); })
     }
     .width('100%')
-    .height('100%')
-  }
-
-  @Builder
-  private floatingDelayButton() {
-    Button(this.isGroupTesting() ? '测速中…' : '⚡ 测试全部')
-      .type(ButtonType.Normal)
-      .borderRadius(BUTTON_RADIUS)
-      .height(52)
-      .padding({ left: 20, right: 20 })
-      .backgroundColor($r('app.color.nav_selected'))
-      .fontColor(Color.White)
-      .enabled(!this.isGroupTesting() && !this.previewLoading && this.currentGroup() !== undefined)
-      .accessibilityText('测试当前代理组延迟')
-      .margin({
-        right: this.metrics.pagePadding,
-        bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET - 10
-      })
-      .zIndex(2)
-      .onClick((): void => {
-        this.testCurrentGroup();
-      })
+    .padding(16)
+    .borderRadius(CARD_RADIUS)
+    .border({ width: 1, color: this.isNodeSelected(node) ?
+      $r('app.color.nav_selected') : $r('app.color.nav_divider') })
+    .backgroundColor(this.isNodeSelected(node) ?
+      $r('app.color.nav_selected_background') : $r('app.color.card_background'))
   }
 
   build() {
-    Stack({ alignContent: Alignment.BottomEnd }) {
-      this.pageContent()
-      this.floatingDelayButton()
+    Column({ space: 16 }) {
+      PageHeader({
+        title: $r('app.string.nav_proxy'),
+        subtitle: this.source === ProxySnapshotSource.RUNTIME ? '选择流量出口，查看节点延迟' : '连接前也可预选节点与测试延迟'
+      })
+      Row({ space: 8 }) {
+        StatusBadge({
+          text: this.source === ProxySnapshotSource.RUNTIME ? '运行中' :
+            (this.source === ProxySnapshotSource.CONFIG ? '配置预览' : '无配置'),
+          active: this.coreAvailable
+        })
+        Text(this.currentGroup()?.selectable === false ? '当前代理组由规则自动选择' : '点击节点选择，点击延迟单独测速')
+          .fontSize(CAPTION_FONT_SIZE)
+          .fontColor($r('app.color.content_secondary'))
+          .layoutWeight(1)
+      }
+      .width('100%')
+      if (this.groups.length === 0) {
+        EmptyStateCard({
+          title: this.previewLoading ? '正在解析活动配置…' : '暂无可用代理组',
+          description: this.previewLoading ? '解析完成后会显示节点。' : '在配置页添加并选择一份有效配置后，即可查看节点。'
+        })
+        Blank()
+      } else {
+        Row({ space: 12 }) {
+          Select(this.groupOptions())
+            .selected(this.groups.findIndex((group: ProxyGroupSnapshot): boolean => group.name === this.selectedGroup))
+            .value(this.selectedGroup)
+            .font({ size: 16 })
+            .fontColor($r('app.color.content_primary'))
+            .backgroundColor($r('app.color.card_background'))
+            .borderRadius(BUTTON_RADIUS)
+            .height(CONTROL_HEIGHT)
+            .layoutWeight(1)
+            .accessibilityText('当前代理组')
+            .onSelect((index: number): void => {
+              const group = this.groups[index];
+              if (group !== undefined) { this.selectGroup(group.name); }
+            })
+          Button(this.isGroupTesting() ? '测速中…' : '测试当前组')
+            .type(ButtonType.Normal)
+            .height(CONTROL_HEIGHT)
+            .fontSize(14)
+            .borderRadius(BUTTON_RADIUS)
+            .fontColor($r('app.color.accent_foreground'))
+            .backgroundColor($r('app.color.nav_selected'))
+            .enabled(!this.isGroupTesting() && !this.previewLoading && this.currentGroup() !== undefined)
+            .onClick((): void => { this.testCurrentGroup(); })
+        }
+        .width('100%')
+        Text(`${this.currentGroup()?.nodes.length ?? 0} 个节点`)
+          .fontSize(CAPTION_FONT_SIZE)
+          .fontColor($r('app.color.content_secondary'))
+          .width('100%')
+        Grid() {
+          ForEach(this.currentGroup()?.nodes ?? [], (node: ProxyNodeSnapshot) => {
+            GridItem() { this.nodeCard(node) }
+          }, (node: ProxyNodeSnapshot): string => proxyNodeRenderKey(node))
+        }
+        .columnsTemplate(this.metrics.proxyColumns)
+        .columnsGap(this.metrics.cardGap)
+        .rowsGap(this.metrics.cardGap)
+        .width('100%')
+        .layoutWeight(1)
+        .scrollBar(BarState.Auto)
+      }
     }
+    .alignItems(HorizontalAlign.Start)
     .width('100%')
     .height('100%')
+    .padding({
+      top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
+      bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
+    })
     .backgroundColor($r('app.color.app_background'))
-    .onAreaChange((_oldValue: Area, newValue: Area): void => { this.updateWidth(newValue.width); })
+    .onAreaChange((_old: Area, area: Area): void => { this.updateWidth(area.width); })
   }
 }

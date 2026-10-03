@@ -5,7 +5,8 @@ import {
   shouldRequestNotificationPermission
 } from '../main/ets/utils/NotificationUtils';
 import { VPN_NOTIFICATION_DASHBOARD_TARGET } from '../main/ets/constants/NotificationConstants';
-import { AppPage } from '../main/ets/model/NavigationModels';
+import { ActivityTab, AppPage } from '../main/ets/model/NavigationModels';
+import { AppNavigationState } from '../main/ets/navigation/AppNavigationState';
 import { DashboardSnapshot, RuntimeMode } from '../main/ets/model/RuntimeModels';
 import { CoreServiceState, ProxyState } from '../main/ets/model/VpnModels';
 
@@ -59,8 +60,15 @@ export default function notificationModelsTest() {
     });
 
     it('acceptsOnlyTheDashboardNotificationTarget', 0, () => {
-      expect(resolveNotificationNavigationTarget(VPN_NOTIFICATION_DASHBOARD_TARGET))
-        .assertEqual(AppPage.DASHBOARD);
+      const target = resolveNotificationNavigationTarget(VPN_NOTIFICATION_DASHBOARD_TARGET);
+      expect(target).assertEqual(AppPage.DASHBOARD);
+      const navigationState = new AppNavigationState();
+      navigationState.selectPage(AppPage.REQUESTS);
+      if (target !== undefined) {
+        navigationState.selectPage(target);
+      }
+      expect(navigationState.selectedPage).assertEqual(AppPage.DASHBOARD);
+      expect(navigationState.activityTab).assertEqual(ActivityTab.REQUESTS);
       expect(resolveNotificationNavigationTarget('proxy')).assertUndefined();
       expect(resolveNotificationNavigationTarget(undefined)).assertUndefined();
     });

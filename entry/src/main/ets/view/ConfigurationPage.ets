@@ -14,9 +14,15 @@ import {
 import { feedbackService } from '../services/FeedbackService';
 import { configurationEditorService } from '../services/ConfigurationEditorService';
 import { profileStore } from '../stores/ProfileStore';
-import { ResponsiveMetrics, ResponsiveSizeClass } from '../model/ResponsiveModels';
+import { ResponsiveMetrics } from '../model/ResponsiveModels';
 import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
-import { BUTTON_RADIUS, FLOATING_NAVIGATION_INSET } from '../constants/UiConstants';
+import {
+  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
+} from '../constants/UiConstants';
+
+import { PageHeader } from '../components/PageHeader';
+import { StatusBadge } from '../components/StatusBadge';
+import { EmptyStateCard } from '../components/EmptyStateCard';
 
 @Component
 export struct ConfigurationPage {
@@ -36,6 +42,7 @@ export struct ConfigurationPage {
   @State editAutoUpdateEnabled: boolean = false;
   @State editIntervalMinutes: string = `${DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES}`;
   @State editorDirty: boolean = false;
+  @State formError: string = '';
   @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
   private unsubscribe: (() => void) | undefined = undefined;
   private editorBackUnsubscribe: (() => void) | undefined = undefined;
@@ -75,6 +82,7 @@ export struct ConfigurationPage {
   }
 
   private async addSubscription(): Promise<void> {
+    this.formError = '';
     const name = this.addName;
     const url = this.addUrl;
     try {
@@ -82,7 +90,8 @@ export struct ConfigurationPage {
       this.showProfileSheet = false;
       feedbackService.success('配置已添加并通过校验');
     } catch (error) {
-      feedbackService.error(this.errorMessage(error));
+      this.formError = this.errorMessage(error);
+      feedbackService.error(this.formError);
     }
   }
 
@@ -126,6 +135,7 @@ export struct ConfigurationPage {
   }
 
   private showAddOptions(): void {
+    this.formError = '';
     this.sheetMode = 'SOURCE';
     this.showProfileSheet = true;
   }
@@ -144,6 +154,7 @@ export struct ConfigurationPage {
   }
 
   private openEditor(profile: Profile): void {
+    this.formError = '';
     this.editingProfileId = profile.id;
     this.editName = profile.name;
     this.editUrl = profile.sourceUrl;
@@ -201,6 +212,7 @@ export struct ConfigurationPage {
   }
 
   private async saveEditor(): Promise<void> {
+    this.formError = '';
     const profile = this.editingProfile();
     if (profile === undefined) {
       return;
@@ -218,7 +230,8 @@ export struct ConfigurationPage {
       this.closeEditorImmediately();
       feedbackService.success(profile.type === ProfileType.SUBSCRIPTION ? '配置已保存并更新' : '配置已重命名');
     } catch (error) {
-      feedbackService.error(this.errorMessage(error));
+      this.formError = this.errorMessage(error);
+      feedbackService.error(this.formError);
     }
   }
 
@@ -339,436 +352,318 @@ export struct ConfigurationPage {
   }
 
   @Builder
-  private pageHeader() {
-    Row({ space: 12 }) {
-      Text($r('app.string.nav_configuration'))
-        .fontSize(28)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.content_primary'))
-        .layoutWeight(1)
+  private headerActions() {
+    Row({ space: 8 }) {
       Button({ type: ButtonType.Normal }) {
-        Image($r('app.media.action_refresh'))
-          .width(22)
-          .height(22)
-          .fillColor($r('app.color.content_primary'))
+        Image($r('app.media.action_refresh')).width(20).height(20).fillColor($r('app.color.content_primary'))
       }
-      .width(44)
-      .height(44)
+      .width(CONTROL_HEIGHT)
+      .height(CONTROL_HEIGHT)
       .borderRadius(BUTTON_RADIUS)
-      .backgroundColor($r('app.color.card_background'))
+      .backgroundColor($r('app.color.surface_muted'))
       .enabled(this.busyProfileId.length === 0 && this.hasSubscription())
-      .accessibilityText('刷新全部订阅')
-      .onClick((): void => {
-        this.updateAll();
-      })
+      .accessibilityText('更新全部订阅')
+      .onClick((): void => { this.updateAll(); })
+      Button({ type: ButtonType.Normal }) {
+        Image($r('app.media.action_add')).width(24).height(24).fillColor($r('app.color.accent_foreground'))
+      }
+      .width(CONTROL_HEIGHT)
+      .height(CONTROL_HEIGHT)
+      .borderRadius(BUTTON_RADIUS)
+      .backgroundColor($r('app.color.nav_selected'))
+      .enabled(this.busyProfileId.length === 0)
+      .accessibilityText('添加订阅或导入配置')
+      .onClick((): void => { this.showAddOptions(); })
     }
-    .width('100%')
-    .alignItems(VerticalAlign.Center)
   }
 
   @Builder
   private statusBanner() {
     if (this.busyProfileId.length > 0 && this.getStageLabel().length > 0) {
-      Row({ space: 10 }) {
-        LoadingProgress()
-          .width(18)
-          .height(18)
-        Text(this.getStageLabel())
-          .fontSize(14)
-          .fontColor($r('app.color.content_secondary'))
-          .layoutWeight(1)
+      Row({ space: 12 }) {
+        LoadingProgress().width(20).height(20).color($r('app.color.nav_selected'))
+        Text(this.getStageLabel()).fontSize(14).fontColor($r('app.color.nav_selected')).layoutWeight(1)
       }
       .width('100%')
-      .padding(12)
-      .borderRadius(12)
-      .backgroundColor($r('app.color.card_background'))
+      .padding(16)
+      .borderRadius(BUTTON_RADIUS)
+      .backgroundColor($r('app.color.nav_selected_background'))
     }
   }
 
   @Builder
-  private profileCard(profile: Profile) {
+  private profileCard(profile: Profile, cardWidth: Length) {
     Column({ space: 12 }) {
       Row({ space: 8 }) {
-        Text(profile.name)
-          .fontSize(18)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.content_primary'))
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .layoutWeight(1)
-        Text('⋮')
-          .fontSize(28)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.content_secondary'))
-          .width(40)
-          .height(40)
-          .textAlign(TextAlign.Center)
-          .bindMenu(this.profileActions(profile))
-          .onTouch((event: TouchEvent): void => {
-            event.stopPropagation();
-          })
+        Column({ space: 6 }) {
+          if (profile.id === this.activeProfileId) {
+            StatusBadge({ text: '当前使用', active: true })
+          }
+          Text(profile.name)
+            .fontSize(18)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.content_primary'))
+            .width('100%')
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+        Button({ type: ButtonType.Normal }) {
+          Image($r('app.media.action_more'))
+            .width(24).height(24).fillColor($r('app.color.content_secondary'))
+        }
+        .width(CONTROL_HEIGHT)
+        .height(CONTROL_HEIGHT)
+        .borderRadius(BUTTON_RADIUS)
+        .backgroundColor(Color.Transparent)
+        .enabled(this.busyProfileId.length === 0)
+        .accessibilityText(`${profile.name} 的更多操作`)
+        .bindMenu(this.profileActions(profile))
+        .onTouch((event: TouchEvent): void => { event.stopPropagation(); })
       }
       .width('100%')
-      .alignItems(VerticalAlign.Center)
-
       if ((profile.totalBytes ?? 0) > 0) {
         Progress({ value: profileUsageRatio(profile) * 100, total: 100, type: ProgressType.Linear })
           .width('100%')
-          .height(8)
           .color($r('app.color.nav_selected'))
           .backgroundColor($r('app.color.skeleton_background'))
-        Row() {
-          Text(`${this.formatBytes(this.usedBytes(profile))} / ${this.formatBytes(profile.totalBytes ?? 0)}`)
-            .fontSize(14)
-            .fontColor($r('app.color.content_secondary'))
-            .layoutWeight(1)
-          if (profile.expireAt !== undefined && profile.expireAt > 0) {
-            Text(new Date(profile.expireAt).toLocaleDateString())
-              .fontSize(14)
-              .fontColor($r('app.color.content_secondary'))
-          }
-        }
-        .width('100%')
+        Text(`已用 ${this.formatBytes(this.usedBytes(profile))} / ${this.formatBytes(profile.totalBytes ?? 0)}`)
+          .fontSize(14)
+          .fontColor($r('app.color.content_secondary'))
+          .width('100%')
       }
-
+      if (profile.expireAt !== undefined && profile.expireAt > 0) {
+        Text(`到期 ${new Date(profile.expireAt).toLocaleDateString()}`)
+          .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
+      }
       Text(this.profileSubline(profile))
-        .fontSize(13)
+        .fontSize(CAPTION_FONT_SIZE)
         .fontColor($r('app.color.content_secondary'))
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
         .width('100%')
+        .maxLines(2)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
     }
     .alignItems(HorizontalAlign.Start)
-    .width(this.metrics.profileCardWidth)
-    .padding(18)
+    .width(cardWidth)
+    .padding(16)
     .margin({ bottom: this.metrics.cardGap })
-    .borderRadius(18)
-    .backgroundColor(profile.id === this.activeProfileId ?
-      $r('app.color.nav_selected_background') : $r('app.color.card_background'))
-    .border({
-      width: profile.id === this.activeProfileId ? 2 : 1,
-      color: profile.id === this.activeProfileId ?
-        $r('app.color.nav_selected') : $r('app.color.skeleton_background')
-    })
-    .onClick((): void => {
-      this.selectProfile(profile.id);
-    })
+    .borderRadius(CARD_RADIUS)
+    .backgroundColor($r('app.color.card_background'))
+    .border({ width: 1, color: profile.id === this.activeProfileId ?
+      $r('app.color.nav_selected') : $r('app.color.nav_divider') })
+    .accessibilityText(`${profile.name}，${profile.id === this.activeProfileId ? '当前使用' : '点击设为活动配置'}`)
+    .accessibilitySelected(profile.id === this.activeProfileId)
+    .onClick((): void => { this.selectProfile(profile.id); })
   }
 
   @Builder
-  private emptyState() {
+  private fieldLabel(label: string) {
+    Text(label).fontSize(14).fontColor($r('app.color.content_secondary')).width('100%')
+  }
+
+  @Builder
+  private editorFields() {
     Column({ space: 12 }) {
-      Text('还没有配置')
-        .fontSize(20)
-        .fontWeight(FontWeight.Medium)
+      this.fieldLabel('名称')
+      TextInput({ placeholder: '配置名称', text: this.editName })
+        .width('100%').height(CONTROL_HEIGHT)
         .fontColor($r('app.color.content_primary'))
-      Text('添加订阅后，Nlash 会先用 Mihomo Core 校验，再允许设为活动配置。')
-        .fontSize(14)
-        .fontColor($r('app.color.content_secondary'))
-      Text('使用右下角的添加按钮选择订阅或本地 YAML。')
-        .fontSize(13)
-        .fontColor($r('app.color.content_secondary'))
+        .backgroundColor($r('app.color.card_background'))
+        .border({ width: 1, color: $r('app.color.control_border') })
+        .borderRadius(BUTTON_RADIUS)
+        .enabled(this.busyProfileId.length === 0)
+        .accessibilityText('配置名称')
+        .onChange((value: string): void => { this.editName = value; this.editorDirty = true; })
+      if (this.editingProfile()?.type === ProfileType.SUBSCRIPTION) {
+        this.fieldLabel('订阅 URL')
+        TextInput({ placeholder: 'https://example.com/subscription', text: this.editUrl })
+          .type(InputType.URL).width('100%').height(CONTROL_HEIGHT)
+          .fontColor($r('app.color.content_primary'))
+          .backgroundColor($r('app.color.card_background'))
+          .border({ width: 1, color: $r('app.color.control_border') })
+          .borderRadius(BUTTON_RADIUS)
+          .enabled(this.busyProfileId.length === 0)
+          .accessibilityText('订阅 URL')
+          .onChange((value: string): void => { this.editUrl = value; this.editorDirty = true; })
+        Row({ space: 12 }) {
+          Column({ space: 4 }) {
+            Text('自动更新').fontSize(BODY_FONT_SIZE).fontColor($r('app.color.content_primary'))
+            Text('启动、回到前台及到期后检查').fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
+          }
+          .layoutWeight(1).alignItems(HorizontalAlign.Start)
+          Toggle({ type: ToggleType.Switch, isOn: this.editAutoUpdateEnabled })
+            .selectedColor($r('app.color.nav_selected'))
+            .enabled(this.busyProfileId.length === 0)
+            .accessibilityText('自动更新订阅')
+            .onChange((value: boolean): void => { this.editAutoUpdateEnabled = value; this.editorDirty = true; })
+        }
+        .width('100%').padding({ top: 12, bottom: 12 })
+        this.fieldLabel(`更新间隔 · 分钟（${MIN_PROFILE_UPDATE_INTERVAL_MINUTES}–${MAX_PROFILE_UPDATE_INTERVAL_MINUTES}）`)
+        TextInput({ placeholder: `${DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES}`, text: this.editIntervalMinutes })
+          .type(InputType.Number).width('100%').height(CONTROL_HEIGHT)
+          .fontColor($r('app.color.content_primary'))
+          .backgroundColor($r('app.color.card_background'))
+          .border({ width: 1, color: $r('app.color.control_border') })
+          .borderRadius(BUTTON_RADIUS)
+          .enabled(this.busyProfileId.length === 0)
+          .accessibilityText('自动更新间隔，分钟')
+          .onChange((value: string): void => { this.editIntervalMinutes = value; this.editorDirty = true; })
+      } else {
+        Text('本地 YAML 支持修改名称。').fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
+      }
+      this.statusBanner()
+      if (this.formError.length > 0) {
+        Text(this.formError).fontSize(14).fontColor($r('app.color.status_error')).width('100%')
+      }
     }
-    .alignItems(HorizontalAlign.Start)
     .width('100%')
-    .padding(24)
-    .borderRadius(16)
-    .backgroundColor($r('app.color.card_background'))
+    .constraintSize({ minHeight: '100%' })
+    .justifyContent(FlexAlign.Start)
+    .alignItems(HorizontalAlign.Start)
   }
 
   @Builder
   private editorContent() {
-    Column({ space: 20 }) {
+    Column({ space: 16 }) {
       Row({ space: 12 }) {
-        Button('‹')
-          .type(ButtonType.Normal)
-          .width(44)
-          .height(44)
-          .fontSize(28)
-          .borderRadius(BUTTON_RADIUS)
-          .backgroundColor(Color.Transparent)
-          .fontColor($r('app.color.content_primary'))
-          .onClick((): void => {
-            this.requestCloseEditor();
-          })
-        Text('编辑配置')
-          .fontSize(24)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.content_primary'))
+        Button({ type: ButtonType.Normal }) {
+          Image($r('app.media.action_back')).width(24).height(24).fillColor($r('app.color.content_primary'))
+        }
+        .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
+        .backgroundColor($r('app.color.surface_muted'))
+        .accessibilityText('返回配置列表')
+        .onClick((): void => { this.requestCloseEditor(); })
+        Text('编辑配置').fontSize(24).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary'))
           .layoutWeight(1)
       }
       .width('100%')
-      .alignItems(VerticalAlign.Center)
-
-      Text('名称')
-        .fontSize(14)
-        .fontColor($r('app.color.content_secondary'))
-        .width('100%')
-      TextInput({ placeholder: '配置名称', text: this.editName })
-        .width('100%')
+      Scroll() { this.editorFields() }
+        .width('100%').layoutWeight(1)
+      Button(this.busyProfileId.length > 0 ? '保存中…' :
+        (this.editingProfile()?.type === ProfileType.SUBSCRIPTION ? '保存并更新' : '保存名称'))
+        .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
+        .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.nav_selected'))
         .enabled(this.busyProfileId.length === 0)
-        .onChange((value: string): void => {
-          this.editName = value;
-          this.editorDirty = true;
-        })
-
-      if (this.editingProfile()?.type === ProfileType.SUBSCRIPTION) {
-        Text('订阅 URL')
-          .fontSize(14)
-          .fontColor($r('app.color.content_secondary'))
-          .width('100%')
-        TextInput({ placeholder: 'https://example.com/subscription', text: this.editUrl })
-          .width('100%')
-          .type(InputType.URL)
-          .enabled(this.busyProfileId.length === 0)
-          .onChange((value: string): void => {
-            this.editUrl = value;
-            this.editorDirty = true;
-          })
-
-        Row({ space: 12 }) {
-          Column({ space: 4 }) {
-            Text('自动更新')
-              .fontSize(16)
-              .fontColor($r('app.color.content_primary'))
-            Text('应用启动、回到前台及到期后检查')
-              .fontSize(12)
-              .fontColor($r('app.color.content_secondary'))
-          }
-          .layoutWeight(1)
-          .alignItems(HorizontalAlign.Start)
-          Toggle({ type: ToggleType.Switch, isOn: this.editAutoUpdateEnabled })
-            .enabled(this.busyProfileId.length === 0)
-            .onChange((value: boolean): void => {
-              this.editAutoUpdateEnabled = value;
-              this.editorDirty = true;
-            })
-        }
-        .width('100%')
-        .alignItems(VerticalAlign.Center)
-
-        Text(`更新间隔（分钟，${MIN_PROFILE_UPDATE_INTERVAL_MINUTES}–${MAX_PROFILE_UPDATE_INTERVAL_MINUTES}）`)
-          .fontSize(14)
-          .fontColor($r('app.color.content_secondary'))
-          .width('100%')
-        TextInput({ placeholder: `${DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES}`, text: this.editIntervalMinutes })
-          .width('100%')
-          .type(InputType.Number)
-          .enabled(this.busyProfileId.length === 0)
-          .onChange((value: string): void => {
-            this.editIntervalMinutes = value;
-            this.editorDirty = true;
-          })
-      } else {
-        Text('本地 YAML 只支持修改名称。')
-          .fontSize(13)
-          .fontColor($r('app.color.content_secondary'))
-          .width('100%')
-      }
-
-      if (this.busyProfileId === this.editingProfileId && this.getStageLabel().length > 0) {
-        Row({ space: 10 }) {
-          LoadingProgress()
-            .width(18)
-            .height(18)
-          Text(this.getStageLabel())
-            .fontSize(14)
-            .fontColor($r('app.color.content_secondary'))
-        }
-        .width('100%')
-      }
-
-      Blank()
-      Row({ space: 12 }) {
-        Button(this.editingProfile()?.type === ProfileType.SUBSCRIPTION ? '保存并更新' : '保存')
-          .type(ButtonType.Normal)
-          .layoutWeight(1)
-          .height(48)
-          .borderRadius(BUTTON_RADIUS)
-          .enabled(this.busyProfileId.length === 0)
-          .onClick((): void => {
-            this.saveEditor();
-          })
-      }
-      .width('100%')
+        .onClick((): void => { this.saveEditor(); })
     }
-    .alignItems(HorizontalAlign.Start)
     .width('100%')
+    .constraintSize({ maxWidth: 720 })
     .height('100%')
-    .padding({ top: 24, left: 24, right: 24, bottom: 24 + FLOATING_NAVIGATION_INSET })
+    .padding({
+      top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
+      bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
+    })
     .backgroundColor($r('app.color.app_background'))
   }
 
   @Builder
   private mainContent() {
-    Stack({ alignContent: Alignment.BottomEnd }) {
-      Scroll() {
-        Column({ space: this.metrics.sectionGap }) {
-          this.pageHeader()
-          this.statusBanner()
-          if (this.profiles.length === 0) {
-            this.emptyState()
-          } else {
+    Scroll() {
+      Column({ space: this.metrics.sectionGap }) {
+        PageHeader({
+          title: $r('app.string.nav_configuration'), subtitle: `${this.profiles.length} 份配置 · 保存在本机`,
+          actions: (): void => { this.headerActions(); }
+        })
+        this.statusBanner()
+        if (this.profiles.length === 0) {
+          EmptyStateCard({ title: '从一份配置开始', description: '点击右上角添加订阅或导入本地 YAML，校验通过后即可使用。' })
+        } else {
+          Column() {
+            ForEach(this.profiles.filter((profile: Profile): boolean => profile.id === this.activeProfileId),
+              (profile: Profile) => { this.profileCard(profile, '100%') }, (profile: Profile): string => profile.id)
+          }
+          .width('100%')
+          if (this.profiles.some((profile: Profile): boolean => profile.id !== this.activeProfileId)) {
+            Text(this.activeProfileId.length > 0 ? '其他配置' : '选择一份配置')
+              .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_secondary')).width('100%')
             Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
-              ForEach(this.profiles, (profile: Profile) => {
-                this.profileCard(profile)
-              }, (profile: Profile): string => profile.id)
+              ForEach(this.profiles.filter((profile: Profile): boolean => profile.id !== this.activeProfileId),
+                (profile: Profile) => { this.profileCard(profile, this.metrics.profileCardWidth) },
+                (profile: Profile): string => profile.id)
             }
             .width('100%')
           }
         }
-        .alignItems(HorizontalAlign.Start)
-        .width('100%')
-        .constraintSize({ minHeight: '100%' })
-        .padding({
-          top: this.metrics.pagePadding,
-          left: this.metrics.pagePadding,
-          right: this.metrics.pagePadding,
-          bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
-        })
       }
+      .alignItems(HorizontalAlign.Start)
+      .justifyContent(FlexAlign.Start)
       .width('100%')
-      .height('100%')
-      Button({ type: ButtonType.Normal }) {
-        Text('+')
-          .fontSize(30)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(Color.White)
-      }
-      .width(56)
-      .height(56)
-      .borderRadius(BUTTON_RADIUS)
-      .backgroundColor($r('app.color.nav_selected'))
-      .enabled(this.busyProfileId.length === 0)
-      .accessibilityText('添加或导入配置')
-      .margin({
-        right: this.metrics.pagePadding,
+      .constraintSize({ minHeight: '100%' })
+      .padding({
+        top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
         bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
       })
-      .onClick((): void => {
-        this.showAddOptions();
-      })
     }
-    .width('100%')
-    .height('100%')
+    .width('100%').height('100%')
   }
 
   @Builder
   private addProfileSheet() {
-    Column({ space: 18 }) {
-      Text('添加订阅')
-        .fontSize(22)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.content_primary'))
-        .width('100%')
-      TextInput({ placeholder: '配置名称（可选）', text: this.addName })
-        .width('100%')
-        .onChange((value: string): void => {
-          this.addName = value;
-        })
+    Column({ space: 12 }) {
+      Text('添加订阅').fontSize(24).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary')).width('100%')
+      this.fieldLabel('名称 · 可选')
+      TextInput({ placeholder: '配置名称', text: this.addName })
+        .width('100%').height(CONTROL_HEIGHT)
+        .fontColor($r('app.color.content_primary')).backgroundColor($r('app.color.surface_muted'))
+        .border({ width: 1, color: $r('app.color.control_border') }).borderRadius(BUTTON_RADIUS)
+        .enabled(!this.isAddingSubscription())
+        .accessibilityText('订阅名称，可选')
+        .onChange((value: string): void => { this.addName = value; })
+      this.fieldLabel('订阅 URL')
       TextInput({ placeholder: 'https://example.com/subscription', text: this.addUrl })
-        .width('100%')
-        .type(InputType.URL)
-        .onChange((value: string): void => {
-          this.addUrl = value;
-        })
-      Text('名称留空时会优先读取订阅标题，再使用文件名或服务主机名。完整地址不会显示在卡片或写入日志。')
-        .fontSize(13)
-        .fontColor($r('app.color.content_secondary'))
-        .width('100%')
-      Button() {
-        Row({ space: 8 }) {
-          if (this.isAddingSubscription()) {
-            LoadingProgress()
-              .width(20)
-              .height(20)
-              .color(Color.White)
-          }
-          Text(this.isAddingSubscription() ? this.getStageLabel() : '下载并校验')
-            .fontColor(Color.White)
-        }
+        .width('100%').height(CONTROL_HEIGHT).type(InputType.URL)
+        .fontColor($r('app.color.content_primary')).backgroundColor($r('app.color.surface_muted'))
+        .border({ width: 1, color: $r('app.color.control_border') }).borderRadius(BUTTON_RADIUS)
+        .enabled(!this.isAddingSubscription())
+        .accessibilityText('订阅 URL')
+        .onChange((value: string): void => { this.addUrl = value; })
+      Text('名称留空时自动读取订阅标题。完整地址仅保存在应用沙箱，不显示在配置列表或写入日志。')
+        .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
+      if (this.formError.length > 0) {
+        Text(this.formError).fontSize(14).fontColor($r('app.color.status_error')).width('100%')
       }
-      .type(ButtonType.Normal)
-      .borderRadius(BUTTON_RADIUS)
-      .width('100%')
-      .height(48)
-      .enabled(this.busyProfileId.length === 0 && this.addUrl.trim().length > 0)
-      .onClick((): void => {
-        this.addSubscription();
-      })
+      Button(this.isAddingSubscription() ? this.getStageLabel() : '下载并校验')
+        .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
+        .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.nav_selected'))
+        .enabled(this.busyProfileId.length === 0 && this.addUrl.trim().length > 0)
+        .onClick((): void => { this.addSubscription(); })
     }
-    .alignItems(HorizontalAlign.Start)
-    .width('100%')
-    .padding(24)
+    .alignItems(HorizontalAlign.Start).width('100%').padding(24)
   }
 
   @Builder
   private addSourceSheet() {
-    Column({ space: 14 }) {
-      Text('添加配置')
-        .fontSize(22)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.content_primary'))
-        .width('100%')
-      Text('请选择配置来源')
-        .fontSize(14)
-        .fontColor($r('app.color.content_secondary'))
-        .width('100%')
+    Column({ space: 16 }) {
+      Text('添加配置').fontSize(24).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary')).width('100%')
+      Text('选择配置来源').fontSize(BODY_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
       Button('添加订阅')
-        .type(ButtonType.Normal)
-        .borderRadius(BUTTON_RADIUS)
-        .width('100%')
-        .height(48)
-        .onClick((): void => {
-          this.openAddSubscription();
-        })
+        .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
+        .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.nav_selected'))
+        .onClick((): void => { this.openAddSubscription(); })
       Button('导入本地 YAML')
-        .type(ButtonType.Normal)
-        .borderRadius(BUTTON_RADIUS)
-        .width('100%')
-        .height(48)
-        .onClick((): void => {
-          this.showProfileSheet = false;
-          this.importLocal();
-        })
+        .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
+        .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.nav_selected')).backgroundColor($r('app.color.nav_selected_background'))
+        .onClick((): void => { this.showProfileSheet = false; this.importLocal(); })
     }
-    .alignItems(HorizontalAlign.Start)
-    .width('100%')
-    .padding(24)
+    .alignItems(HorizontalAlign.Start).width('100%').padding(24)
   }
 
   @Builder
   private profileSheet() {
-    if (this.sheetMode === 'SOURCE') {
-      this.addSourceSheet()
-    } else {
-      this.addProfileSheet()
-    }
+    if (this.sheetMode === 'SOURCE') { this.addSourceSheet() } else { this.addProfileSheet() }
   }
 
   build() {
-    Stack({ alignContent: Alignment.TopEnd }) {
-      if (this.showEditor && this.metrics.sizeClass !== ResponsiveSizeClass.EXPANDED) {
-        this.editorContent()
-      } else {
-        this.mainContent()
-        if (this.showEditor) {
-          Column() {
-            this.editorContent()
-          }
-          .width(420)
-          .height('100%')
-        }
-      }
+    Stack({ alignContent: Alignment.Top }) {
+      if (this.showEditor) { this.editorContent() } else { this.mainContent() }
     }
-    .width('100%')
-    .height('100%')
+    .width('100%').height('100%')
     .backgroundColor($r('app.color.app_background'))
-    .onAreaChange((_oldValue: Area, newValue: Area): void => {
-      this.updateWidth(newValue.width);
-    })
+    .onAreaChange((_old: Area, area: Area): void => { this.updateWidth(area.width); })
     .bindSheet(this.showProfileSheet, this.profileSheet(), {
       height: SheetSize.FIT_CONTENT,
+      backgroundColor: $r('app.color.card_background'),
       onDisappear: (): void => {
         this.showProfileSheet = false;
         this.clearSheetInputs();

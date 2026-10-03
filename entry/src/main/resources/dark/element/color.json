@@ -2,95 +2,127 @@
   "color": [
     {
       "name": "start_window_background",
-      "value": "#000000"
+      "value": "#141A18"
     },
     {
       "name": "app_background",
-      "value": "#101114"
+      "value": "#141A18"
     },
     {
       "name": "card_background",
-      "value": "#191B20"
+      "value": "#1D2622"
     },
     {
       "name": "nav_surface",
-      "value": "#191B20"
+      "value": "#1D2622"
     },
     {
       "name": "nav_selected_background",
-      "value": "#253451"
+      "value": "#243D32"
     },
     {
       "name": "nav_selected",
-      "value": "#8AB4FF"
+      "value": "#6BCEB2"
     },
     {
       "name": "nav_unselected",
-      "value": "#AEB4C0"
+      "value": "#ACBBB3"
     },
     {
       "name": "nav_divider",
-      "value": "#30343B"
+      "value": "#3A4941"
     },
     {
       "name": "content_primary",
-      "value": "#F4F5F7"
+      "value": "#EDF3EF"
     },
     {
       "name": "content_secondary",
-      "value": "#A6ADBB"
+      "value": "#ACBBB3"
     },
     {
       "name": "skeleton_background",
-      "value": "#2A2D34"
+      "value": "#3A4941"
     },
     {
       "name": "status_success",
-      "value": "#68D391"
+      "value": "#6BCEB2"
     },
     {
       "name": "status_success_surface",
-      "value": "#173D25"
+      "value": "#243D32"
     },
     {
       "name": "status_error",
-      "value": "#FF8A8A"
+      "value": "#FF9BA3"
     },
     {
       "name": "mode_unselected_background",
-      "value": "#595959"
+      "value": "#28342E"
     },
     {
       "name": "mode_rule_background",
-      "value": "#4F9A9D"
+      "value": "#243D32"
     },
     {
       "name": "mode_rule_foreground",
-      "value": "#DBEBFF"
+      "value": "#6BCEB2"
     },
     {
       "name": "mode_global_background",
-      "value": "#D98245"
+      "value": "#243D32"
     },
     {
       "name": "mode_global_foreground",
-      "value": "#101114"
+      "value": "#6BCEB2"
     },
     {
       "name": "mode_direct_background",
-      "value": "#8B5BD6"
+      "value": "#243D32"
     },
     {
       "name": "mode_direct_foreground",
-      "value": "#F4F5F7"
+      "value": "#6BCEB2"
     },
     {
       "name": "vpn_fab_background",
-      "value": "#B9C9CE"
+      "value": "#6BCEB2"
     },
     {
       "name": "vpn_fab_foreground",
-      "value": "#434343"
+      "value": "#10251D"
+    },
+    {
+      "name": "accent_foreground",
+      "value": "#10251D"
+    },
+    {
+      "name": "surface_muted",
+      "value": "#28342E"
+    },
+    {
+      "name": "control_border",
+      "value": "#82948B"
+    },
+    {
+      "name": "status_error_surface",
+      "value": "#40272E"
+    },
+    {
+      "name": "on_error",
+      "value": "#3B1019"
+    },
+    {
+      "name": "chart_upload",
+      "value": "#94B6ED"
+    },
+    {
+      "name": "chart_download",
+      "value": "#6BCEB2"
+    },
+    {
+      "name": "chart_grid",
+      "value": "#3A4941"
     }
   ]
 }
