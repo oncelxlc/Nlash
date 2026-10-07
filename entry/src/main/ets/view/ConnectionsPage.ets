@@ -5,7 +5,7 @@ import { connectionTitle, formatBytes } from '../utils/RuntimeUtils';
 import { feedbackService } from '../services/FeedbackService';
 import { runtimeStore } from '../stores/RuntimeStore';
 import {
-  BUTTON_RADIUS, CONTROL_HEIGHT, CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
+  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
 } from '../constants/UiConstants';
 
 @Component
@@ -199,6 +199,7 @@ export struct ConnectionsPage {
       .width('100%')
       .layoutWeight(1)
       .borderRadius(CARD_RADIUS)
+      .contentEndOffset(FLOATING_NAVIGATION_INSET + 16)
       .clip(true)
       .scrollBar(BarState.Auto)
     }

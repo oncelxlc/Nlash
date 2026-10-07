@@ -33,7 +33,7 @@ export const EXPANDED_METRICS: ResponsiveMetrics = {
   pagePadding: 32,
   sectionGap: 24,
   cardGap: 12,
-  profileColumns: '1fr 1fr',
+  profileColumns: '1fr 1fr 1fr',
   dashboardColumns: '1fr 1fr',
   profileCardWidth: '48%',
   dashboardCardWidth: '48%',

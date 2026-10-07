@@ -286,9 +286,9 @@ export struct SettingsPage {
       }
     }
     .cachedCount(6)
+    .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
     .padding({
-      top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
-      bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
+      top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding
     })
     .width('100%').height('100%')
     .backgroundColor($r('app.color.app_background'))

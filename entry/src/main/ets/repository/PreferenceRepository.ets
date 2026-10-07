@@ -8,6 +8,7 @@ import { isRefreshIntervalSeconds } from '../utils/SettingsUtils';
 const PREFERENCES_NAME = 'nlash_settings';
 const ACTIVE_PROFILE_ID = 'activeProfileId';
 const ACTIVE_PROFILE_PATH = 'activeProfilePath';
+const PROFILE_ORDER = 'profileOrder';
 const THEME_MODE = 'themeMode';
 const VPN_MTU = 'vpnMtu';
 const DELAY_TEST_URL = 'delayTestUrl';
@@ -136,6 +137,26 @@ class PreferenceRepository {
 
   async clearActiveProfile(): Promise<void> {
     await this.setActiveProfile('', '');
+  }
+
+  async getProfileOrder(): Promise<string[]> {
+    const value = await this.requireStore().get(PROFILE_ORDER, []);
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return (value as string[]).filter((id: string): boolean => typeof id === 'string' && id.length > 0);
+  }
+
+  async setProfileOrder(ids: string[]): Promise<void> {
+    const store = this.requireStore();
+    const previous = await store.get(PROFILE_ORDER, []);
+    try {
+      await store.put(PROFILE_ORDER, ids);
+      await store.flush();
+    } catch (error) {
+      await store.put(PROFILE_ORDER, previous);
+      throw new Error('保存配置顺序失败，请重试');
+    }
   }
 
   async getAppSettings(refreshContext?: common.Context): Promise<AppSettings> {

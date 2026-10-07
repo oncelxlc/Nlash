@@ -7,7 +7,7 @@ import { runtimeStore } from '../stores/RuntimeStore';
 import { RequestFilter } from '../model/NavigationModels';
 import { StatusBadge } from '../components/StatusBadge';
 import {
-  BUTTON_RADIUS, CONTROL_HEIGHT, CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
+  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
 } from '../constants/UiConstants';
 
 const FILTERS: RequestFilter[] = [RequestFilter.ALL, RequestFilter.ACTIVE, RequestFilter.COMPLETED];
@@ -195,6 +195,7 @@ export struct RequestsPage {
       .width('100%')
       .layoutWeight(1)
       .borderRadius(CARD_RADIUS)
+      .contentEndOffset(FLOATING_NAVIGATION_INSET + 16)
       .clip(true)
       .scrollBar(BarState.Auto)
     }

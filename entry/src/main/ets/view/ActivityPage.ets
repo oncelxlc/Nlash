@@ -3,7 +3,7 @@ import { ActivityTab, RequestFilter } from '../model/NavigationModels';
 import { ResponsiveMetrics } from '../model/ResponsiveModels';
 import { resolveContentWidth, resolveResponsiveMetrics } from '../utils/ResponsiveUtils';
 import {
-  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CARD_RADIUS, BODY_FONT_SIZE
+  BUTTON_RADIUS, CONTROL_HEIGHT, CARD_RADIUS, BODY_FONT_SIZE
 } from '../constants/UiConstants';
 import { ConnectionsPage } from './ConnectionsPage';
 import { RequestsPage } from './RequestsPage';
@@ -53,8 +53,7 @@ export struct ActivityPage {
     .width('100%')
     .height('100%')
     .padding({
-      top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
-      bottom: FLOATING_NAVIGATION_INSET
+      top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding
     })
     .backgroundColor($r('app.color.app_background'))
     .onAreaChange((_old: Area, area: Area): void => {

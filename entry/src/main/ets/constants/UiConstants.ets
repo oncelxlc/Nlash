@@ -6,3 +6,4 @@ export const METRIC_FONT_SIZE: number = 32;
 export const BODY_FONT_SIZE: number = 16;
 export const CAPTION_FONT_SIZE: number = 13;
 export const FLOATING_NAVIGATION_INSET: number = 80;
+export const FLOATING_ACTION_INSET: number = 88;

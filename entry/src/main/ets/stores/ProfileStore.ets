@@ -1,5 +1,5 @@
 import { common } from '@kit.AbilityKit';
-import { isProfileUpdateDue } from '../utils/ProfileUtils';
+import { isProfileUpdateDue, moveProfile, orderProfiles } from '../utils/ProfileUtils';
 import {
   Profile,
   ProfileEditDraft,
@@ -210,6 +210,29 @@ class ProfileStore {
     }
   }
 
+  async move(id: string, to: number): Promise<void> {
+    if (!this.initialized) {
+      await this.ensureReady();
+    }
+    this.assertIdle();
+    const from = this.profiles.findIndex((profile: Profile): boolean => profile.id === id);
+    if (from < 0 || !Number.isInteger(to) || to < 0 || to >= this.profiles.length || from === to) {
+      return;
+    }
+    const previous = this.profiles;
+    this.profiles = moveProfile(this.profiles, from, to);
+    this.beginOperation(id);
+    try {
+      await preferenceRepository.setProfileOrder(this.profiles.map((profile: Profile): string => profile.id));
+      this.finishOperation('配置顺序已保存');
+    } catch (error) {
+      this.profiles = previous;
+      const failure = this.toError(error);
+      this.failOperation(failure.message);
+      throw failure;
+    }
+  }
+
   async remove(id: string): Promise<void> {
     await this.ensureReady();
     this.assertIdle();
@@ -248,7 +271,7 @@ class ProfileStore {
   private async initializeInternal(context: common.UIAbilityContext): Promise<void> {
     await preferenceRepository.initialize(context);
     await profileRepository.initialize(context);
-    this.profiles = await profileRepository.list();
+    this.profiles = orderProfiles(await profileRepository.list(), await preferenceRepository.getProfileOrder());
     this.activeProfileId = await preferenceRepository.getActiveProfileId();
     if (this.activeProfileId.length > 0 && !this.profiles.some((profile: Profile): boolean =>
       profile.id === this.activeProfileId)) {
@@ -267,7 +290,7 @@ class ProfileStore {
   }
 
   private async reload(): Promise<void> {
-    this.profiles = await profileRepository.list();
+    this.profiles = orderProfiles(await profileRepository.list(), await preferenceRepository.getProfileOrder());
     this.publish();
   }
 

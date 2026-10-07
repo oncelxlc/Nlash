@@ -14,7 +14,8 @@ import { settingsStore } from '../stores/SettingsStore';
 import { ResponsiveMetrics } from '../model/ResponsiveModels';
 import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
 import {
-  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
+  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, FLOATING_ACTION_INSET,
+  CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
 } from '../constants/UiConstants';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyStateCard } from '../components/EmptyStateCard';
@@ -157,10 +158,6 @@ export struct ProxyPage {
       exception.message : '代理操作失败';
   }
 
-  private groupOptions(): SelectOption[] {
-    return this.groups.map((group: ProxyGroupSnapshot): SelectOption => ({ value: group.name }));
-  }
-
   @Builder
   private nodeCard(node: ProxyNodeSnapshot) {
     Row({ space: 8 }) {
@@ -219,7 +216,55 @@ export struct ProxyPage {
       $r('app.color.nav_selected_background') : $r('app.color.card_background'))
   }
 
-  build() {
+  @Builder
+  private groupTabs() {
+    Scroll() {
+      Row({ space: 8 }) {
+        ForEach(this.groups, (group: ProxyGroupSnapshot) => {
+          Button(group.name)
+            .type(ButtonType.Normal)
+            .height(CONTROL_HEIGHT)
+            .constraintSize({ minWidth: CONTROL_HEIGHT })
+            .padding({ left: 12, right: 12 })
+            .borderRadius(0)
+            .fontSize(BODY_FONT_SIZE)
+            .fontWeight(group.name === this.selectedGroup ? FontWeight.Medium : FontWeight.Normal)
+            .fontColor(group.name === this.selectedGroup ?
+              $r('app.color.nav_selected') : $r('app.color.content_secondary'))
+            .backgroundColor(Color.Transparent)
+            .border({ width: { bottom: 2 }, color: group.name === this.selectedGroup ?
+              $r('app.color.nav_selected') : Color.Transparent })
+            .accessibilityText(`代理组：${group.name}`)
+            .accessibilitySelected(group.name === this.selectedGroup)
+            .onClick((): void => { this.selectGroup(group.name); })
+        }, (group: ProxyGroupSnapshot): string => group.name)
+      }
+    }
+    .width('100%').height(CONTROL_HEIGHT)
+    .scrollable(ScrollDirection.Horizontal)
+    .scrollBar(BarState.Off)
+  }
+
+  @Builder
+  private testFloatingButton() {
+    Button(this.isGroupTesting() ? '测速中…' : '测试当前组')
+      .type(ButtonType.Normal)
+      .constraintSize({ minHeight: 56 })
+      .padding({ left: 20, right: 20, top: 16, bottom: 16 })
+      .fontSize(BODY_FONT_SIZE)
+      .fontWeight(FontWeight.Medium)
+      .borderRadius(28)
+      .fontColor($r('app.color.accent_foreground'))
+      .backgroundColor($r('app.color.action_primary'))
+      .shadow(ShadowStyle.OUTER_DEFAULT_MD)
+      .enabled(!this.isGroupTesting() && !this.previewLoading && this.currentGroup() !== undefined)
+      .accessibilityText(`测试代理组 ${this.selectedGroup} 的节点延迟`)
+      .onClick((): void => { this.testCurrentGroup(); })
+      .margin({ right: this.metrics.pagePadding, bottom: FLOATING_NAVIGATION_INSET + 16 })
+  }
+
+  @Builder
+  private mainContent() {
     Column({ space: 16 }) {
       PageHeader({
         title: $r('app.string.nav_proxy'),
@@ -244,33 +289,8 @@ export struct ProxyPage {
         })
         Blank()
       } else {
-        Row({ space: 12 }) {
-          Select(this.groupOptions())
-            .selected(this.groups.findIndex((group: ProxyGroupSnapshot): boolean => group.name === this.selectedGroup))
-            .value(this.selectedGroup)
-            .font({ size: 16 })
-            .fontColor($r('app.color.content_primary'))
-            .backgroundColor($r('app.color.card_background'))
-            .borderRadius(BUTTON_RADIUS)
-            .height(CONTROL_HEIGHT)
-            .layoutWeight(1)
-            .accessibilityText('当前代理组')
-            .onSelect((index: number): void => {
-              const group = this.groups[index];
-              if (group !== undefined) { this.selectGroup(group.name); }
-            })
-          Button(this.isGroupTesting() ? '测速中…' : '测试当前组')
-            .type(ButtonType.Normal)
-            .height(CONTROL_HEIGHT)
-            .fontSize(14)
-            .borderRadius(BUTTON_RADIUS)
-            .fontColor($r('app.color.accent_foreground'))
-            .backgroundColor($r('app.color.action_primary'))
-            .enabled(!this.isGroupTesting() && !this.previewLoading && this.currentGroup() !== undefined)
-            .onClick((): void => { this.testCurrentGroup(); })
-        }
-        .width('100%')
-        Text(`${this.currentGroup()?.nodes.length ?? 0} 个节点`)
+        this.groupTabs()
+        Text(`${this.selectedGroup} · ${this.currentGroup()?.nodes.length ?? 0} 个节点`)
           .fontSize(CAPTION_FONT_SIZE)
           .fontColor($r('app.color.content_secondary'))
           .width('100%')
@@ -284,6 +304,7 @@ export struct ProxyPage {
         .rowsGap(this.metrics.cardGap)
         .width('100%')
         .layoutWeight(1)
+        .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET + FLOATING_ACTION_INSET)
         .scrollBar(BarState.Auto)
       }
     }
@@ -291,9 +312,18 @@ export struct ProxyPage {
     .width('100%')
     .height('100%')
     .padding({
-      top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
-      bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
+      top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding
     })
+  }
+
+  build() {
+    Stack({ alignContent: Alignment.BottomEnd }) {
+      this.mainContent()
+      if (this.groups.length > 0) {
+        this.testFloatingButton()
+      }
+    }
+    .width('100%').height('100%')
     .backgroundColor($r('app.color.app_background'))
     .onAreaChange((_old: Area, area: Area): void => { this.updateWidth(area.width); })
   }

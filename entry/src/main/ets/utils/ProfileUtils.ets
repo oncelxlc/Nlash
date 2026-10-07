@@ -5,6 +5,28 @@ import {
   MAX_PROFILE_UPDATE_INTERVAL_MINUTES
 } from '../constants/ProfileConstants';
 
+export function orderProfiles(profiles: Profile[], ids: string[]): Profile[] {
+  const positions = new Map<string, number>();
+  ids.forEach((id: string, index: number): void => {
+    if (!positions.has(id)) {
+      positions.set(id, index);
+    }
+  });
+  return profiles.slice().sort((left: Profile, right: Profile): number =>
+    (positions.get(left.id) ?? ids.length) - (positions.get(right.id) ?? ids.length));
+}
+
+export function moveProfile(profiles: Profile[], from: number, to: number): Profile[] {
+  const result = profiles.slice();
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || from >= result.length ||
+    to < 0 || to >= result.length || from === to) {
+    return result;
+  }
+  const moved = result.splice(from, 1)[0];
+  result.splice(to, 0, moved);
+  return result;
+}
+
 export function normalizeProfileUpdateInterval(value: number): number {
   if (!Number.isFinite(value)) {
     return DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES;

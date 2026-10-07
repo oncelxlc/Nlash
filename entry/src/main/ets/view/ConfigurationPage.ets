@@ -134,6 +134,14 @@ export struct ConfigurationPage {
     }
   }
 
+  private async moveProfile(id: string, to: number): Promise<void> {
+    try {
+      await profileStore.move(id, to);
+    } catch (error) {
+      feedbackService.error(this.errorMessage(error));
+    }
+  }
+
   private showAddOptions(): void {
     this.formError = '';
     this.sheetMode = 'SOURCE';
@@ -264,6 +272,7 @@ export struct ConfigurationPage {
   }
 
   private profileActions(profile: Profile): MenuElement[] {
+    const index = this.profiles.findIndex((item: Profile): boolean => item.id === profile.id);
     return [
       {
         value: '编辑',
@@ -278,6 +287,16 @@ export struct ConfigurationPage {
         action: (): void => {
           this.updateProfile(profile.id);
         }
+      },
+      {
+        value: '上移',
+        enabled: this.busyProfileId.length === 0 && index > 0,
+        action: (): void => { this.moveProfile(profile.id, index - 1); }
+      },
+      {
+        value: '下移',
+        enabled: this.busyProfileId.length === 0 && index < this.profiles.length - 1,
+        action: (): void => { this.moveProfile(profile.id, index + 1); }
       },
       {
         value: '删除',
@@ -392,7 +411,7 @@ export struct ConfigurationPage {
   }
 
   @Builder
-  private profileCard(profile: Profile, cardWidth: Length) {
+  private profileCard(profile: Profile) {
     Column({ space: 12 }) {
       Row({ space: 8 }) {
         Column({ space: 6 }) {
@@ -445,9 +464,8 @@ export struct ConfigurationPage {
         .textOverflow({ overflow: TextOverflow.Ellipsis })
     }
     .alignItems(HorizontalAlign.Start)
-    .width(cardWidth)
+    .width('100%')
     .padding(16)
-    .margin({ bottom: this.metrics.cardGap })
     .borderRadius(CARD_RADIUS)
     .backgroundColor($r('app.color.card_background'))
     .border({ width: 1, color: profile.id === this.activeProfileId ?
@@ -518,84 +536,79 @@ export struct ConfigurationPage {
       }
     }
     .width('100%')
-    .constraintSize({ minHeight: '100%' })
     .justifyContent(FlexAlign.Start)
     .alignItems(HorizontalAlign.Start)
   }
 
   @Builder
   private editorContent() {
-    Column({ space: 16 }) {
-      Row({ space: 12 }) {
-        Button({ type: ButtonType.Normal }) {
-          Image($r('app.media.action_back')).width(24).height(24).fillColor($r('app.color.content_primary'))
-        }
-        .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
-        .backgroundColor($r('app.color.surface_muted'))
-        .accessibilityText('返回配置列表')
-        .onClick((): void => { this.requestCloseEditor(); })
-        Text('编辑配置').fontSize(24).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary'))
-          .layoutWeight(1)
-      }
-      .width('100%')
-      Scroll() { this.editorFields() }
-        .width('100%').layoutWeight(1)
-      Button(this.busyProfileId.length > 0 ? '保存中…' :
-        (this.editingProfile()?.type === ProfileType.SUBSCRIPTION ? '保存并更新' : '保存名称'))
-        .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
-        .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.action_primary'))
-        .enabled(this.busyProfileId.length === 0)
-        .onClick((): void => { this.saveEditor(); })
-    }
-    .width('100%')
-    .constraintSize({ maxWidth: 720 })
-    .height('100%')
-    .padding({
-      top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
-      bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
-    })
-    .backgroundColor($r('app.color.app_background'))
-  }
-
-  @Builder
-  private mainContent() {
     Scroll() {
-      Column({ space: this.metrics.sectionGap }) {
-        PageHeader({
-          title: $r('app.string.nav_configuration'), subtitle: `${this.profiles.length} 份配置 · 保存在本机`,
-          actions: (): void => { this.headerActions(); }
-        })
-        this.statusBanner()
-        if (this.profiles.length === 0) {
-          EmptyStateCard({ title: '从一份配置开始', description: '点击右上角添加订阅或导入本地 YAML，校验通过后即可使用。' })
-        } else {
-          Column() {
-            ForEach(this.profiles.filter((profile: Profile): boolean => profile.id === this.activeProfileId),
-              (profile: Profile) => { this.profileCard(profile, '100%') }, (profile: Profile): string => profile.id)
+      Column({ space: 16 }) {
+        Row({ space: 12 }) {
+          Button({ type: ButtonType.Normal }) {
+            Image($r('app.media.action_back')).width(24).height(24).fillColor($r('app.color.content_primary'))
           }
-          .width('100%')
-          if (this.profiles.some((profile: Profile): boolean => profile.id !== this.activeProfileId)) {
-            Text(this.activeProfileId.length > 0 ? '其他配置' : '选择一份配置')
-              .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_secondary')).width('100%')
-            Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
-              ForEach(this.profiles.filter((profile: Profile): boolean => profile.id !== this.activeProfileId),
-                (profile: Profile) => { this.profileCard(profile, this.metrics.profileCardWidth) },
-                (profile: Profile): string => profile.id)
-            }
-            .width('100%')
-          }
+          .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
+          .backgroundColor($r('app.color.surface_muted'))
+          .accessibilityText('返回配置列表')
+          .onClick((): void => { this.requestCloseEditor(); })
+          Text('编辑配置').fontSize(24).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary'))
+            .layoutWeight(1)
         }
+        .width('100%')
+        this.editorFields()
+        Button(this.busyProfileId.length > 0 ? '保存中…' :
+          (this.editingProfile()?.type === ProfileType.SUBSCRIPTION ? '保存并更新' : '保存名称'))
+          .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
+          .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.action_primary'))
+          .enabled(this.busyProfileId.length === 0)
+          .onClick((): void => { this.saveEditor(); })
       }
-      .alignItems(HorizontalAlign.Start)
-      .justifyContent(FlexAlign.Start)
       .width('100%')
-      .constraintSize({ minHeight: '100%' })
+      .constraintSize({ maxWidth: 720, minHeight: '100%' })
+      .alignItems(HorizontalAlign.Start)
       .padding({
         top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
         bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
       })
     }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('app.color.app_background'))
+  }
+
+  @Builder
+  private mainContent() {
+    Column({ space: this.metrics.sectionGap }) {
+      PageHeader({
+        title: $r('app.string.nav_configuration'), subtitle: `${this.profiles.length} 份配置 · 保存在本机`,
+        actions: (): void => { this.headerActions(); }
+      })
+      this.statusBanner()
+      if (this.profiles.length === 0) {
+        EmptyStateCard({ title: '从一份配置开始', description: '点击右上角添加订阅或导入本地 YAML，校验通过后即可使用。' })
+        Blank()
+      } else {
+        Text('长按拖动排序 · 更多操作可上移／下移')
+          .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
+        List({ space: this.metrics.cardGap }) {
+          ForEach(this.profiles, (profile: Profile) => {
+            ListItem() { this.profileCard(profile) }
+          }, (profile: Profile): string => profile.id)
+            .onMove(this.busyProfileId.length === 0 ? (from: number, to: number): void => {
+              const profile = this.profiles[from];
+              if (profile !== undefined) { this.moveProfile(profile.id, to); }
+            } : undefined)
+        }
+        .lanes(this.metrics.profileColumns.split(' ').length, this.metrics.cardGap)
+        .width('100%').layoutWeight(1)
+        .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
+        .scrollBar(BarState.Auto)
+      }
+    }
+    .alignItems(HorizontalAlign.Start)
     .width('100%').height('100%')
+    .padding({ top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding })
   }
 
   @Builder

@@ -18,7 +18,8 @@ import {
   resolveContentWidth
 } from '../utils/ResponsiveUtils';
 import {
-  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
+  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, FLOATING_ACTION_INSET,
+  CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
 } from '../constants/UiConstants';
 import { PageHeader } from '../components/PageHeader';
 import { AppPage } from '../model/NavigationModels';
@@ -291,28 +292,43 @@ export struct DashboardPage {
 
   @Builder
   private headerActions() {
-    Button({ type: ButtonType.Normal }) {
-      Row({ space: 8 }) {
-        if (this.isCoreBusy()) {
-          LoadingProgress().width(16).height(16).color($r('app.color.content_secondary'))
-        } else {
-          Circle().width(8).height(8).fill(this.coreState === CoreServiceState.RUNNING ?
-            $r('app.color.status_success') : (this.coreState === CoreServiceState.ERROR ?
-              $r('app.color.status_error') : $r('app.color.content_secondary')))
-        }
-        Text(this.coreStatus()).fontSize(14).fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.content_primary')).maxLines(2).layoutWeight(1)
+    Row({ space: 8 }) {
+      if (this.isCoreBusy()) {
+        LoadingProgress().width(16).height(16).color($r('app.color.content_secondary'))
+      } else {
+        Circle().width(8).height(8).fill(this.coreState === CoreServiceState.RUNNING ?
+          $r('app.color.status_success') : (this.coreState === CoreServiceState.ERROR ?
+            $r('app.color.status_error') : $r('app.color.content_secondary')))
       }
-      .width('100%')
+      Text(this.coreStatus()).fontSize(14).fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.content_primary'))
     }
-    .width(152)
     .constraintSize({ minHeight: CONTROL_HEIGHT })
-    .padding(12)
-    .borderRadius(BUTTON_RADIUS)
-    .backgroundColor($r('app.color.surface_muted'))
+    .focusable(true)
     .enabled(!this.isCoreBusy() && !this.isProxyBusy() && !this.profileBusy)
+    .opacity(this.isCoreBusy() || this.isProxyBusy() || this.profileBusy ? 0.5 : 1)
+    .stateStyles({ pressed: { .opacity(0.6) } })
+    .accessibilityRole(AccessibilityRoleType.BUTTON)
     .accessibilityText(`${this.coreStatus()}，点击重启 Core`)
     .onClick((): void => { this.confirmCoreRestart(); })
+  }
+
+  @Builder
+  private modeSwitchButton(direction: number) {
+    Button({ type: ButtonType.Normal }) {
+      Image($r('app.media.action_chevron_down'))
+        .width(18).height(18).rotate({ angle: direction < 0 ? 90 : -90 })
+        .fillColor($r('app.color.nav_selected'))
+    }
+    .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT)
+    .padding(0).borderRadius(BUTTON_RADIUS)
+    .backgroundColor(Color.Transparent)
+    .enabled(this.coreState === CoreServiceState.RUNNING && !this.profileBusy &&
+      !this.isCoreBusy() && !this.isProxyBusy() && this.runtimeBusyKey.length === 0)
+    .accessibilityText(direction < 0 ? '上一个代理模式' : '下一个代理模式')
+    .onClick((): void => {
+      this.setMode(MODES[(MODES.indexOf(this.selectedMode) + direction + MODES.length) % MODES.length]);
+    })
   }
 
   @Builder
@@ -371,22 +387,15 @@ export struct DashboardPage {
         .backgroundColor(Color.Transparent)
         .accessibilityText(`当前配置：${this.getActiveProfile()?.name ?? '未选择'}，打开配置页`)
         .onClick((): void => { navigationIntentService.publish(AppPage.CONFIGURATION); })
-        Select([{ value: '规则模式' }, { value: '全局模式' }, { value: '直连模式' }])
-          .selected(MODES.indexOf(this.selectedMode))
-          .value(this.modeLabel(this.selectedMode))
-          .font({ size: 14, weight: FontWeight.Medium })
-          .fontColor($r('app.color.nav_selected'))
-          .backgroundColor($r('app.color.nav_selected_background'))
-          .constraintSize({ minWidth: 84 })
-          .height(CONTROL_HEIGHT)
-          .borderRadius(BUTTON_RADIUS)
-          .enabled(this.coreState === CoreServiceState.RUNNING && !this.profileBusy &&
-            !this.isCoreBusy() && !this.isProxyBusy() && this.runtimeBusyKey.length === 0)
-          .accessibilityText(`流量处理模式：${this.modeLabel(this.selectedMode)}`)
-          .onSelect((index: number): void => {
-            const mode = MODES[index];
-            if (mode !== undefined) { this.setMode(mode); }
-          })
+        Row() {
+          this.modeSwitchButton(-1)
+          Text(this.modeLabel(this.selectedMode))
+            .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.nav_selected'))
+            .accessibilityText(`流量处理模式：${this.modeLabel(this.selectedMode)}`)
+          this.modeSwitchButton(1)
+        }
+        .borderRadius(BUTTON_RADIUS)
+        .backgroundColor($r('app.color.nav_selected_background'))
       }
       .width('100%')
       if (this.sessionStartedAt > 0) {
@@ -503,7 +512,7 @@ export struct DashboardPage {
           .justifyContent(FlexAlign.Start)
           .padding({
             top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
-            bottom: this.metrics.pagePadding
+            bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET + FLOATING_ACTION_INSET
           })
         }
         .width('100%')
@@ -511,7 +520,6 @@ export struct DashboardPage {
       }
       .width('100%')
       .height('100%')
-      .padding({ bottom: FLOATING_NAVIGATION_INSET + 88 })
       this.proxyFloatingButton()
     }
     .width('100%')

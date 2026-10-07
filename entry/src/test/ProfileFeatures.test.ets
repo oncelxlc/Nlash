@@ -3,6 +3,8 @@ import {
   formatProfileRelativeTime,
   isProfileUpdateDue,
   normalizeProfileUpdateInterval,
+  moveProfile,
+  orderProfiles,
   profileUsageRatio
 } from '../main/ets/utils/ProfileUtils';
 import { Profile, ProfileType } from '../main/ets/model/ProfileModels';
@@ -132,7 +134,31 @@ export default function profileFeaturesTest() {
       expect(formatProfileRelativeTime(now - 15 * 60 * 1000, now)).assertEqual('15 分钟前');
     });
 
-    it('usesOneAndTwoProfileColumns', 0, () => {
+    it('keepsProfileOrderAcrossReloadsAndMoves', 0, () => {
+      const profiles: Profile[] = ['a', 'b', 'c'].map((id: string): Profile => ({
+        id: id, name: id, type: ProfileType.LOCAL, sourceUrl: '', localPath: `/${id}.yaml`,
+        createdAt: 1, updatedAt: 1, autoUpdateEnabled: false, updateIntervalMinutes: 15
+      }));
+      expect(moveProfile(profiles, 0, 2).map((profile: Profile): string => profile.id).join(','))
+        .assertEqual('b,c,a');
+      expect(moveProfile(profiles, 2, 0).map((profile: Profile): string => profile.id).join(','))
+        .assertEqual('c,a,b');
+      expect(moveProfile(profiles, -1, 0).length).assertEqual(3);
+      expect(moveProfile(profiles, 0, 3)[0].id).assertEqual('a');
+      expect(moveProfile(profiles, 0, 0)[0].id).assertEqual('a');
+      expect(moveProfile(profiles, Number.NaN, 0)[0].id).assertEqual('a');
+      expect(profiles[0].id).assertEqual('a');
+      expect(orderProfiles(profiles, ['c', 'missing', 'c', 'a'])
+        .map((profile: Profile): string => profile.id).join(',')).assertEqual('c,a,b');
+      expect(orderProfiles(profiles, []).map((profile: Profile): string => profile.id).join(','))
+        .assertEqual('a,b,c');
+    });
+
+    it('usesAdaptiveProfileColumns', 0, () => {
+      expect(resolveResponsiveMetrics(639).profileColumns).assertEqual('1fr');
+      expect(resolveResponsiveMetrics(640).profileColumns).assertEqual('1fr 1fr');
+      expect(resolveResponsiveMetrics(899).profileColumns).assertEqual('1fr 1fr');
+      expect(resolveResponsiveMetrics(900).profileColumns).assertEqual('1fr 1fr 1fr');
       expect(resolveResponsiveMetrics(639).profileCardWidth).assertEqual('100%');
       expect(resolveResponsiveMetrics(640).profileCardWidth).assertEqual('48%');
       expect(resolveResponsiveMetrics(899).profileCardWidth).assertEqual('48%');
