@@ -176,6 +176,7 @@ struct Index {
           .translate({ x: this.contentOffset })
         }
         .tabBar(this.getTabBarStyle(page))
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }, (page: AppPage): string => page.toString())
     }
     .vertical(false)

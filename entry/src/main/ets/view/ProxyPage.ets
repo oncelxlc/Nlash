@@ -308,6 +308,7 @@ export struct ProxyPage {
         .layoutWeight(1)
         .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
         .scrollBar(BarState.Auto)
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
     }
     .alignItems(HorizontalAlign.Start)

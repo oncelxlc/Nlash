@@ -198,6 +198,7 @@ export struct RequestsPage {
       .contentEndOffset(FLOATING_NAVIGATION_INSET + 16)
       .clip(true)
       .scrollBar(BarState.Auto)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')
     .layoutWeight(1)

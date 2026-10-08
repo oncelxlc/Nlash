@@ -509,6 +509,7 @@ export struct DashboardPage {
         }
         .width('100%')
         .layoutWeight(1)
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
       .width('100%')
       .height('100%')

@@ -577,6 +577,7 @@ export struct ConfigurationPage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.app_background'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
 
   @Builder
@@ -606,6 +607,7 @@ export struct ConfigurationPage {
         .width('100%').layoutWeight(1)
         .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
         .scrollBar(BarState.Auto)
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
     }
     .alignItems(HorizontalAlign.Start)
