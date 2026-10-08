@@ -319,13 +319,13 @@ export struct DashboardPage {
     SingleChoiceControl({
       labels: MODES.map((mode: RuntimeMode): string => this.modeLabel(mode)),
       selectedIndex: MODES.indexOf(this.selectedMode),
-      compact: true,
+      compact: false,
       isEnabled: this.coreState === CoreServiceState.RUNNING && !this.profileBusy &&
         !this.isCoreBusy() && !this.isProxyBusy() && this.runtimeBusyKey.length === 0,
       accessibilityLabel: '流量处理模式',
       onChange: (index: number): void => { this.setMode(MODES[index]); }
     })
-    .width(CONTROL_HEIGHT * MODES.length + 4)
+    .width((CONTROL_HEIGHT + 8) * MODES.length + 8)
   }
 
   @Builder

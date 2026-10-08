@@ -173,15 +173,11 @@ export struct RuntimeSpeedCard {
             this.drawTrafficChart();
           })
           .accessibilityText(`最近 60 秒速度趋势。当前上传 ${formatSpeed(this.runtime?.uploadSpeed ?? 0)}，下载 ${formatSpeed(this.runtime?.downloadSpeed ?? 0)}`)
-          .opacity(this.proxyState !== ProxyState.ENABLED || this.chartUnavailable || !this.hasTrafficData() ? 0.2 : 1)
-          .blur(this.proxyState !== ProxyState.ENABLED || this.chartUnavailable || !this.hasTrafficData() ? 2 : 0)
+          .opacity(this.proxyState !== ProxyState.ENABLED || this.chartUnavailable || !this.hasTrafficData() ? 0 : 1)
+          .blur(this.proxyState !== ProxyState.ENABLED || this.chartUnavailable || !this.hasTrafficData() ? 0 : 0)
       }
       .width('100%')
       .height(Math.max(88, this.cardHeight - 128))
-      Row() {
-        Text('60 秒前').fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).layoutWeight(1)
-        Text('现在').fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
-      }
       .width('100%')
       .accessibilityLevel('no')
     }

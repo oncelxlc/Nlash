@@ -18,7 +18,7 @@ export struct ActivityPage {
   @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
 
   build() {
-    Column({ space: 16 }) {
+    Column({ space: 8 }) {
       PageHeader({ title: $r('app.string.nav_activity'), subtitle: '实时连接与本次会话的请求记录' })
       SingleChoiceControl({
         labels: ['实时连接', '请求记录'],
