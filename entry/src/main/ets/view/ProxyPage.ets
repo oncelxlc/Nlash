@@ -18,7 +18,8 @@ import {
   CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
 } from '../constants/UiConstants';
 import { PageHeader } from '../components/PageHeader';
-import { EmptyStateCard } from '../components/EmptyStateCard';
+import { EmptyStateBackground } from '../components/EmptyStateBackground';
+import { SingleChoiceControl } from '../components/SingleChoiceControl';
 import { StatusBadge } from '../components/StatusBadge';
 
 @Component
@@ -219,32 +220,16 @@ export struct ProxyPage {
 
   @Builder
   private groupTabs() {
-    Scroll() {
-      Row({ space: 8 }) {
-        ForEach(this.groups, (group: ProxyGroupSnapshot) => {
-          Button(group.name)
-            .type(ButtonType.Normal)
-            .height(CONTROL_HEIGHT)
-            .constraintSize({ minWidth: CONTROL_HEIGHT })
-            .padding({ left: 12, right: 12 })
-            .borderRadius(0)
-            .fontSize(BODY_FONT_SIZE)
-            .fontWeight(group.name === this.selectedGroup ? FontWeight.Medium : FontWeight.Normal)
-            .fontColor(group.name === this.selectedGroup ?
-              $r('app.color.nav_selected') : $r('app.color.content_secondary'))
-            .backgroundColor(Color.Transparent)
-            .border({ width: { bottom: 2 }, color: group.name === this.selectedGroup ?
-              $r('app.color.nav_selected') : Color.Transparent })
-            .accessibilityText(`代理组：${group.name}`)
-            .accessibilitySelected(group.name === this.selectedGroup)
-            .onClick((): void => { this.selectGroup(group.name); })
-        }, (group: ProxyGroupSnapshot): string => group.name)
+    SingleChoiceControl({
+      labels: this.groups.map((group: ProxyGroupSnapshot): string => group.name),
+      selectedIndex: this.groups.findIndex((group: ProxyGroupSnapshot): boolean => group.name === this.selectedGroup),
+      scrollable: true,
+      accessibilityLabel: '代理组',
+      onChange: (index: number): void => {
+        const group = this.groups[index];
+        if (group !== undefined) { this.selectGroup(group.name); }
       }
-    }
-    .width('100%').height(CONTROL_HEIGHT)
-    .scrollable(ScrollDirection.Horizontal)
-    .scrollBar(BarState.Off)
-    .align(Alignment.Start)
+    })
   }
 
   @Builder
@@ -285,29 +270,40 @@ export struct ProxyPage {
       }
       .width('100%')
       if (this.groups.length === 0) {
-        EmptyStateCard({
-          title: this.previewLoading ? '正在解析活动配置…' : '暂无可用代理组',
-          description: this.previewLoading ? '解析完成后会显示节点。' : '在配置页添加并选择一份有效配置后，即可查看节点。'
-        })
-        Blank()
+        Stack() {
+          EmptyStateBackground({
+            icon: $r('app.media.nav_proxy'),
+            title: this.previewLoading ? '正在解析活动配置…' : '暂无可用代理组',
+            description: this.previewLoading ? '解析完成后会显示节点。' : '在配置页添加并选择一份有效配置后，即可查看节点。'
+          })
+        }
+        .width('100%').layoutWeight(1)
       } else {
         this.groupTabs()
         Text(`${this.selectedGroup} · ${this.currentGroup()?.nodes.length ?? 0} 个节点`)
           .fontSize(CAPTION_FONT_SIZE)
           .fontColor($r('app.color.content_secondary'))
           .width('100%')
-        Grid() {
-          ForEach(this.currentGroup()?.nodes ?? [], (node: ProxyNodeSnapshot) => {
-            GridItem() { this.nodeCard(node) }
-          }, (node: ProxyNodeSnapshot): string => proxyNodeRenderKey(node))
+        Stack() {
+          if ((this.currentGroup()?.nodes.length ?? 0) === 0) {
+            EmptyStateBackground({
+              icon: $r('app.media.nav_proxy'), title: '当前代理组暂无节点', description: '尝试其他代理组，或更新活动配置。'
+            })
+          }
+          Grid() {
+            ForEach(this.currentGroup()?.nodes ?? [], (node: ProxyNodeSnapshot) => {
+              GridItem() { this.nodeCard(node) }
+            }, (node: ProxyNodeSnapshot): string => proxyNodeRenderKey(node))
+          }
+          .columnsTemplate(this.metrics.proxyColumns)
+          .columnsGap(this.metrics.cardGap)
+          .rowsGap(this.metrics.cardGap)
+          .width('100%').height('100%')
+          .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
+          .scrollBar(BarState.Auto)
+          .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
         }
-        .columnsTemplate(this.metrics.proxyColumns)
-        .columnsGap(this.metrics.cardGap)
-        .rowsGap(this.metrics.cardGap)
-        .width('100%')
-        .layoutWeight(1)
-        .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
-        .scrollBar(BarState.Auto)
+        .width('100%').layoutWeight(1)
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
     }

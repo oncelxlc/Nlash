@@ -1,12 +1,12 @@
 import { PageHeader } from '../components/PageHeader';
+import { SingleChoiceControl } from '../components/SingleChoiceControl';
 import { ActivityTab, RequestFilter } from '../model/NavigationModels';
 import { ResponsiveMetrics } from '../model/ResponsiveModels';
 import { resolveContentWidth, resolveResponsiveMetrics } from '../utils/ResponsiveUtils';
-import {
-  BUTTON_RADIUS, CONTROL_HEIGHT, CARD_RADIUS, BODY_FONT_SIZE
-} from '../constants/UiConstants';
 import { ConnectionsPage } from './ConnectionsPage';
 import { RequestsPage } from './RequestsPage';
+
+const ACTIVITY_TABS: ActivityTab[] = [ActivityTab.CONNECTIONS, ActivityTab.REQUESTS];
 
 @Component
 export struct ActivityPage {
@@ -17,32 +17,15 @@ export struct ActivityPage {
   @State requestFilter: RequestFilter = RequestFilter.ALL;
   @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
 
-  @Builder
-  private tabButton(label: string, tab: ActivityTab) {
-    Button(label)
-      .type(ButtonType.Normal)
-      .height(CONTROL_HEIGHT)
-      .layoutWeight(1)
-      .borderRadius(BUTTON_RADIUS)
-      .fontSize(BODY_FONT_SIZE)
-      .fontWeight(this.selectedTab === tab ? FontWeight.Medium : FontWeight.Normal)
-      .fontColor(this.selectedTab === tab ? $r('app.color.nav_selected') : $r('app.color.content_secondary'))
-      .backgroundColor(this.selectedTab === tab ? $r('app.color.card_background') : Color.Transparent)
-      .accessibilitySelected(this.selectedTab === tab)
-      .onClick((): void => { this.onTabChange(tab); })
-  }
-
   build() {
     Column({ space: 16 }) {
       PageHeader({ title: $r('app.string.nav_activity'), subtitle: '实时连接与本次会话的请求记录' })
-      Row({ space: 4 }) {
-        this.tabButton('实时连接', ActivityTab.CONNECTIONS)
-        this.tabButton('请求记录', ActivityTab.REQUESTS)
-      }
-      .padding(4)
-      .borderRadius(CARD_RADIUS)
-      .backgroundColor($r('app.color.surface_muted'))
-      .width('100%')
+      SingleChoiceControl({
+        labels: ['实时连接', '请求记录'],
+        selectedIndex: ACTIVITY_TABS.indexOf(this.selectedTab),
+        accessibilityLabel: '活动内容',
+        onChange: (index: number): void => { this.onTabChange(ACTIVITY_TABS[index]); }
+      })
       if (this.selectedTab === ActivityTab.CONNECTIONS) {
         ConnectionsPage({ query: this.connectionQuery })
       } else {

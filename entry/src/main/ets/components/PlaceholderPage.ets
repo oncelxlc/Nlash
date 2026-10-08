@@ -1,16 +1,17 @@
+import { EmptyStateBackground } from './EmptyStateBackground';
+import { PageHeader } from './PageHeader';
+
 @Component
 export struct PlaceholderPage {
   @Prop pageTitle: Resource;
 
   build() {
     Column({ space: 12 }) {
-      Text(this.pageTitle)
-        .fontSize(28)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.content_primary'))
-      Text($r('app.string.feature_coming_soon'))
-        .fontSize(16)
-        .fontColor($r('app.color.content_secondary'))
+      PageHeader({ title: this.pageTitle })
+      Stack() {
+        EmptyStateBackground({ title: $r('app.string.feature_coming_soon') })
+      }
+      .width('100%').layoutWeight(1)
     }
     .justifyContent(FlexAlign.Start)
     .alignItems(HorizontalAlign.Start)

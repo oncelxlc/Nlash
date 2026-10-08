@@ -1,4 +1,5 @@
-import { EmptyStateCard } from '../components/EmptyStateCard';
+import { EmptyStateBackground } from '../components/EmptyStateBackground';
+import { SingleChoiceControl } from '../components/SingleChoiceControl';
 import { formatLocalTime } from '../utils/DateUtils';
 import { formatBytes } from '../utils/RuntimeUtils';
 import { RequestRecord, RuntimeStoreSnapshot } from '../model/RuntimeModels';
@@ -142,21 +143,12 @@ export struct RequestsPage {
         .borderRadius(BUTTON_RADIUS)
         .accessibilityText('搜索请求记录')
         .onChange((value: string): void => { this.query = value; })
-      Row({ space: 8 }) {
-        ForEach(FILTERS, (item: RequestFilter) => {
-          Button(this.filterLabel(item))
-            .type(ButtonType.Normal)
-            .height(CONTROL_HEIGHT)
-            .layoutWeight(1)
-            .fontSize(14)
-            .borderRadius(BUTTON_RADIUS)
-            .fontColor(this.filter === item ? $r('app.color.nav_selected') : $r('app.color.content_secondary'))
-            .backgroundColor(this.filter === item ? $r('app.color.nav_selected_background') : Color.Transparent)
-            .accessibilitySelected(this.filter === item)
-            .onClick((): void => { this.filter = item; })
-        }, (item: RequestFilter): string => item)
-      }
-      .width('100%')
+      SingleChoiceControl({
+        labels: FILTERS.map((filter: RequestFilter): string => this.filterLabel(filter)),
+        selectedIndex: FILTERS.indexOf(this.filter),
+        accessibilityLabel: '请求记录筛选',
+        onChange: (index: number): void => { this.filter = FILTERS[index]; }
+      })
       Row() {
         Text(`${this.visibleRequests().length} 条记录`)
           .fontSize(CAPTION_FONT_SIZE)
@@ -177,27 +169,28 @@ export struct RequestsPage {
           })
       }
       .width('100%')
-      List() {
+      Stack() {
         if (this.visibleRequests().length === 0) {
-          ListItem() {
-            EmptyStateCard({
-              title: this.requests.length === 0 ? '暂无请求记录' : '没有匹配的请求',
-              description: this.requests.length === 0 ?
-                '产生网络连接后，这里会保留最多 200 条本次会话记录。' : '尝试其他关键词，或切换为全部状态。'
-            })
-          }
-        } else {
+          EmptyStateBackground({
+            icon: $r('app.media.nav_requests'),
+            title: this.requests.length === 0 ? '暂无请求记录' : '没有匹配的请求',
+            description: this.requests.length === 0 ?
+              '产生网络连接后，这里会保留最多 200 条本次会话记录。' : '尝试其他关键词，或切换为全部状态。'
+          })
+        }
+        List() {
           ForEach(this.visibleRequests(), (record: RequestRecord) => {
             ListItem() { this.requestRow(record) }
           }, (record: RequestRecord): string => record.id)
         }
+        .width('100%').height('100%')
+        .borderRadius(CARD_RADIUS)
+        .contentEndOffset(FLOATING_NAVIGATION_INSET + 16)
+        .clip(true)
+        .scrollBar(BarState.Auto)
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
-      .width('100%')
-      .layoutWeight(1)
-      .borderRadius(CARD_RADIUS)
-      .contentEndOffset(FLOATING_NAVIGATION_INSET + 16)
-      .clip(true)
-      .scrollBar(BarState.Auto)
+      .width('100%').layoutWeight(1)
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')

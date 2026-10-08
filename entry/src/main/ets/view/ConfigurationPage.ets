@@ -22,7 +22,7 @@ import {
 
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
-import { EmptyStateCard } from '../components/EmptyStateCard';
+import { EmptyStateBackground } from '../components/EmptyStateBackground';
 
 @Component
 export struct ConfigurationPage {
@@ -589,8 +589,13 @@ export struct ConfigurationPage {
       })
       this.statusBanner()
       if (this.profiles.length === 0) {
-        EmptyStateCard({ title: '从一份配置开始', description: '点击右上角添加订阅或导入本地 YAML，校验通过后即可使用。' })
-        Blank()
+        Stack() {
+          EmptyStateBackground({
+            icon: $r('app.media.nav_configuration'), title: '从一份配置开始',
+            description: '点击右上角添加订阅或导入本地 YAML，校验通过后即可使用。'
+          })
+        }
+        .width('100%').layoutWeight(1)
       } else {
         Text('长按拖动排序 · 更多操作可上移／下移')
           .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')

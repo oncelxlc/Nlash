@@ -12,6 +12,7 @@ import {
 } from '../constants/UiConstants';
 
 import { PageHeader } from '../components/PageHeader';
+import { SingleChoiceControl } from '../components/SingleChoiceControl';
 
 const THEMES: AppThemeMode[] = [AppThemeMode.SYSTEM, AppThemeMode.LIGHT, AppThemeMode.DARK];
 
@@ -176,45 +177,23 @@ export struct SettingsPage {
   private themeCard() {
     Column({ space: 16 }) {
       this.sectionTitle('外观', '选择适合当前环境的配色')
-      Row({ space: 8 }) {
-        ForEach(THEMES, (theme: AppThemeMode) => {
-          Button(this.themeLabel(theme))
-            .type(ButtonType.Normal).constraintSize({ minHeight: CONTROL_HEIGHT }).layoutWeight(1)
-            .padding({ left: 4, right: 4, top: 12, bottom: 12 })
-            .fontSize(BODY_FONT_SIZE)
-            .labelStyle({ maxLines: 2 })
-            .fontColor(this.settings.themeMode === theme ? $r('app.color.nav_selected') : $r('app.color.content_primary'))
-            .backgroundColor(this.settings.themeMode === theme ?
-              $r('app.color.nav_selected_background') : $r('app.color.surface_muted'))
-            .border({ width: 2, color: this.settings.themeMode === theme ?
-              $r('app.color.nav_selected') : Color.Transparent })
-            .borderRadius(BUTTON_RADIUS)
-            .accessibilitySelected(this.settings.themeMode === theme)
-            .enabled(!this.saving)
-            .onClick((): void => { this.changeTheme(theme); })
-        }, (theme: AppThemeMode): string => theme)
-      }
-      .width('100%')
-      Text('导航切换效果').fontSize(14).fontColor($r('app.color.content_secondary')).width('100%')
-      Row({ space: 8 }) {
-        ForEach(NAVIGATION_TRANSITION_OPTIONS, (transition: NavigationTransition) => {
-          Button(this.transitionLabel(transition))
-            .type(ButtonType.Normal).height(CONTROL_HEIGHT).layoutWeight(1)
-            .padding({ left: 4, right: 4 }).fontSize(BODY_FONT_SIZE)
-            .fontColor(this.settings.navigationTransition === transition ?
-              $r('app.color.nav_selected') : $r('app.color.content_secondary'))
-            .backgroundColor(this.settings.navigationTransition === transition ?
-              $r('app.color.nav_selected_background') : $r('app.color.surface_muted'))
-            .border({ width: 2, color: this.settings.navigationTransition === transition ?
-              $r('app.color.nav_selected') : Color.Transparent })
-            .borderRadius(BUTTON_RADIUS)
-            .accessibilityText(`导航切换效果：${this.transitionLabel(transition)}`)
-            .accessibilitySelected(this.settings.navigationTransition === transition)
-            .enabled(!this.saving)
-            .onClick((): void => { this.changeNavigationTransition(transition); })
-        }, (transition: NavigationTransition): string => transition)
-      }
-      .width('100%')
+      SingleChoiceControl({
+        labels: THEMES.map((theme: AppThemeMode): string => this.themeLabel(theme)),
+        selectedIndex: THEMES.indexOf(this.settings.themeMode),
+        isEnabled: !this.saving,
+        accessibilityLabel: '应用配色',
+        onChange: (index: number): void => { this.changeTheme(THEMES[index]); }
+      })
+      Text('导航切换效果').fontSize(14).fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.content_primary')).width('100%')
+      SingleChoiceControl({
+        labels: NAVIGATION_TRANSITION_OPTIONS.map((transition: NavigationTransition): string =>
+          this.transitionLabel(transition)),
+        selectedIndex: NAVIGATION_TRANSITION_OPTIONS.indexOf(this.settings.navigationTransition),
+        isEnabled: !this.saving,
+        accessibilityLabel: '导航切换效果',
+        onChange: (index: number): void => { this.changeNavigationTransition(NAVIGATION_TRANSITION_OPTIONS[index]); }
+      })
     }
     .width(this.settingsCardWidth()).padding(16)
     .borderRadius(CARD_RADIUS).backgroundColor($r('app.color.card_background'))
@@ -224,19 +203,21 @@ export struct SettingsPage {
   private networkCard() {
     Column({ space: 12 }) {
       this.sectionTitle('网络', '配置 VPN 与节点延迟测试')
-      Text('VPN MTU').fontSize(14).fontColor($r('app.color.content_secondary')).width('100%')
+      Text('VPN MTU').fontSize(14).fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.content_primary')).width('100%')
       TextInput({ placeholder: '1280–9000', text: this.mtuInput })
         .type(InputType.Number).height(CONTROL_HEIGHT).width('100%').fontSize(BODY_FONT_SIZE)
         .fontColor($r('app.color.content_primary')).placeholderColor($r('app.color.content_secondary'))
-        .backgroundColor($r('app.color.surface_muted'))
+        .backgroundColor($r('app.color.app_background'))
         .border({ width: 1, color: $r('app.color.control_border') }).borderRadius(BUTTON_RADIUS)
         .enabled(!this.saving).accessibilityText('VPN MTU，1280 至 9000')
         .onChange((value: string): void => { this.mtuInput = value; })
-      Text('延迟测试地址 · HTTP(S)').fontSize(14).fontColor($r('app.color.content_secondary')).width('100%')
+      Text('延迟测试地址 · HTTP(S)').fontSize(14).fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.content_primary')).width('100%')
       TextInput({ placeholder: 'https://', text: this.delayUrlInput })
         .type(InputType.URL).height(CONTROL_HEIGHT).width('100%').fontSize(BODY_FONT_SIZE)
         .fontColor($r('app.color.content_primary')).placeholderColor($r('app.color.content_secondary'))
-        .backgroundColor($r('app.color.surface_muted'))
+        .backgroundColor($r('app.color.app_background'))
         .border({ width: 1, color: $r('app.color.control_border') }).borderRadius(BUTTON_RADIUS)
         .enabled(!this.saving).accessibilityText('延迟测试 HTTP 或 HTTPS 地址')
         .onChange((value: string): void => { this.delayUrlInput = value; })
@@ -258,25 +239,13 @@ export struct SettingsPage {
   private dataCard() {
     Column({ space: 16 }) {
       this.sectionTitle('运行数据', '速度、连接与节点信息的刷新间隔')
-      Flex({ wrap: FlexWrap.Wrap }) {
-        ForEach(REFRESH_INTERVAL_OPTIONS, (seconds: number) => {
-          Button(`${seconds} 秒`)
-            .type(ButtonType.Normal).constraintSize({ minHeight: CONTROL_HEIGHT, minWidth: 64 })
-            .padding({ left: 12, right: 12, top: 10, bottom: 10 }).margin({ right: 8, bottom: 8 })
-            .fontSize(14)
-            .fontColor(this.settings.refreshIntervalSeconds === seconds ?
-              $r('app.color.nav_selected') : $r('app.color.content_secondary'))
-            .backgroundColor(this.settings.refreshIntervalSeconds === seconds ?
-              $r('app.color.nav_selected_background') : $r('app.color.surface_muted'))
-            .border({ width: 2, color: this.settings.refreshIntervalSeconds === seconds ?
-              $r('app.color.nav_selected') : Color.Transparent })
-            .borderRadius(BUTTON_RADIUS)
-            .accessibilitySelected(this.settings.refreshIntervalSeconds === seconds)
-            .enabled(!this.saving)
-            .onClick((): void => { this.changeRefreshInterval(seconds); })
-        }, (seconds: number): string => seconds.toString())
-      }
-      .width('100%')
+      SingleChoiceControl({
+        labels: REFRESH_INTERVAL_OPTIONS.map((seconds: number): string => `${seconds} 秒`),
+        selectedIndex: REFRESH_INTERVAL_OPTIONS.indexOf(this.settings.refreshIntervalSeconds),
+        isEnabled: !this.saving,
+        accessibilityLabel: '运行数据刷新间隔',
+        onChange: (index: number): void => { this.changeRefreshInterval(REFRESH_INTERVAL_OPTIONS[index]); }
+      })
     }
     .width(this.settingsCardWidth()).padding(16)
     .borderRadius(CARD_RADIUS).backgroundColor($r('app.color.card_background'))

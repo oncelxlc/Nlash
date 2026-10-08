@@ -1,5 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { common } from '@kit.AbilityKit';
+import { EmptyStateBackground } from '../components/EmptyStateBackground';
 import { DashboardSnapshot, TrafficSample } from '../model/RuntimeModels';
 import { formatSpeed } from '../utils/RuntimeUtils';
 import { CoreServiceState, ProxyState } from '../model/VpnModels';
@@ -153,6 +154,13 @@ export struct RuntimeSpeedCard {
       }
       .width('100%')
       Stack({ alignContent: Alignment.Center }) {
+        if (this.proxyState !== ProxyState.ENABLED || this.chartUnavailable || !this.hasTrafficData()) {
+          EmptyStateBackground({
+            compact: true,
+            title: this.proxyState !== ProxyState.ENABLED ? '代理未连接，流量统计已暂停' :
+              (this.chartUnavailable ? '图表暂不可用，实时数值仍会更新' : '正在等待网络流量')
+          })
+        }
         Canvas(this.chartContext)
           .width('100%')
           .height('100%')
@@ -165,14 +173,8 @@ export struct RuntimeSpeedCard {
             this.drawTrafficChart();
           })
           .accessibilityText(`最近 60 秒速度趋势。当前上传 ${formatSpeed(this.runtime?.uploadSpeed ?? 0)}，下载 ${formatSpeed(this.runtime?.downloadSpeed ?? 0)}`)
-        if (this.proxyState !== ProxyState.ENABLED || this.chartUnavailable || !this.hasTrafficData()) {
-          Text(this.proxyState !== ProxyState.ENABLED ? '代理未连接，流量统计已暂停' :
-            (this.chartUnavailable ? '图表暂不可用，实时数值仍会更新' : '正在等待网络流量'))
-            .fontSize(CAPTION_FONT_SIZE)
-            .fontColor($r('app.color.content_secondary'))
-            .padding(8)
-            .backgroundColor($r('app.color.card_background'))
-        }
+          .opacity(this.proxyState !== ProxyState.ENABLED || this.chartUnavailable || !this.hasTrafficData() ? 0.2 : 1)
+          .blur(this.proxyState !== ProxyState.ENABLED || this.chartUnavailable || !this.hasTrafficData() ? 2 : 0)
       }
       .width('100%')
       .height(Math.max(88, this.cardHeight - 128))

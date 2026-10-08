@@ -2,6 +2,7 @@ import { RuntimeStatusCard } from './RuntimeStatusCard';
 import { RuntimeTrafficCard } from './RuntimeTrafficCard';
 import { RuntimeSpeedCard } from './RuntimeSpeedCard';
 import { systemDateTime } from '@kit.BasicServicesKit';
+import { SingleChoiceControl } from '../components/SingleChoiceControl';
 import { Profile } from '../model/ProfileModels';
 import { DashboardSnapshot, PublicNetworkSnapshot, RuntimeMode, TrafficSample } from '../model/RuntimeModels';
 import { DEFAULT_RUNTIME_MODE } from '../constants/RuntimeConstants';
@@ -315,25 +316,16 @@ export struct DashboardPage {
 
   @Builder
   private modeSwitch() {
-    Row({ space: 4 }) {
-      ForEach(MODES, (mode: RuntimeMode) => {
-        Button(this.modeLabel(mode))
-          .type(ButtonType.Normal)
-          .layoutWeight(1).height(CONTROL_HEIGHT)
-          .padding(0).borderRadius(BUTTON_RADIUS - 4)
-          .fontSize(BODY_FONT_SIZE).fontWeight(FontWeight.Medium)
-          .fontColor(this.selectedMode === mode ? $r('app.color.nav_selected') : $r('app.color.content_secondary'))
-          .backgroundColor(this.selectedMode === mode ? $r('app.color.card_background') : Color.Transparent)
-          .border({ width: 1, color: this.selectedMode === mode ? $r('app.color.nav_selected') : Color.Transparent })
-          .enabled(this.coreState === CoreServiceState.RUNNING && !this.profileBusy &&
-            !this.isCoreBusy() && !this.isProxyBusy() && this.runtimeBusyKey.length === 0)
-          .accessibilityText(`流量处理模式：${this.modeLabel(mode)}`)
-          .accessibilitySelected(this.selectedMode === mode)
-          .onClick((): void => { this.setMode(mode); })
-      }, (mode: RuntimeMode): string => mode)
-    }
-    .width('100%').padding(4).borderRadius(BUTTON_RADIUS)
-    .backgroundColor($r('app.color.surface_muted'))
+    SingleChoiceControl({
+      labels: MODES.map((mode: RuntimeMode): string => this.modeLabel(mode)),
+      selectedIndex: MODES.indexOf(this.selectedMode),
+      compact: true,
+      isEnabled: this.coreState === CoreServiceState.RUNNING && !this.profileBusy &&
+        !this.isCoreBusy() && !this.isProxyBusy() && this.runtimeBusyKey.length === 0,
+      accessibilityLabel: '流量处理模式',
+      onChange: (index: number): void => { this.setMode(MODES[index]); }
+    })
+    .width(CONTROL_HEIGHT * MODES.length + 4)
   }
 
   @Builder
@@ -361,7 +353,7 @@ export struct DashboardPage {
   @Builder
   private controlPanel() {
     Column({ space: 12 }) {
-      Row({ space: 8 }) {
+      Row({ space: 12 }) {
         Button({ type: ButtonType.Normal }) {
           Column({ space: 6 }) {
             Text(this.proxyStatus())
@@ -387,9 +379,10 @@ export struct DashboardPage {
         .backgroundColor(Color.Transparent)
         .accessibilityText(`当前配置：${this.getActiveProfile()?.name ?? '未选择'}，打开配置页`)
         .onClick((): void => { navigationIntentService.publish(AppPage.CONFIGURATION); })
+        this.modeSwitch()
       }
       .width('100%')
-      this.modeSwitch()
+      .alignItems(VerticalAlign.Center)
       if (this.sessionStartedAt > 0) {
         Row() {
           Text('本次使用').fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))

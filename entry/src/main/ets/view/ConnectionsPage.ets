@@ -1,4 +1,4 @@
-import { EmptyStateCard } from '../components/EmptyStateCard';
+import { EmptyStateBackground } from '../components/EmptyStateBackground';
 import { formatLocalTime } from '../utils/DateUtils';
 import { ConnectionSnapshot, RuntimeStoreSnapshot } from '../model/RuntimeModels';
 import { connectionTitle, formatBytes } from '../utils/RuntimeUtils';
@@ -178,30 +178,34 @@ export struct ConnectionsPage {
           .onClick((): void => { this.closeAllConnections(); })
       }
       .width('100%')
-      List() {
+      Stack() {
         if (!this.available) {
-          ListItem() {
-            EmptyStateCard({ title: '运行数据暂不可用', description: 'Core 就绪后，这里会显示当前管理的 TCP、UDP 与 DNS 连接。' })
-          }
+          EmptyStateBackground({
+            icon: $r('app.media.nav_connections'), title: '运行数据暂不可用',
+            description: 'Core 就绪后，这里会显示当前管理的 TCP、UDP 与 DNS 连接。'
+          })
         } else if (this.visibleConnections().length === 0) {
-          ListItem() {
-            EmptyStateCard({
-              title: this.query.trim().length > 0 ? '没有匹配的连接' : '当前没有活动连接',
-              description: this.query.trim().length > 0 ? '尝试其他关键词。' : '有新的网络连接时会自动出现在这里。'
-            })
-          }
-        } else {
-          ForEach(this.visibleConnections(), (connection: ConnectionSnapshot) => {
-            ListItem() { this.connectionRow(connection) }
-          }, (connection: ConnectionSnapshot): string => connection.id)
+          EmptyStateBackground({
+            icon: $r('app.media.nav_connections'),
+            title: this.query.trim().length > 0 ? '没有匹配的连接' : '当前没有活动连接',
+            description: this.query.trim().length > 0 ? '尝试其他关键词。' : '有新的网络连接时会自动出现在这里。'
+          })
         }
+        List() {
+          if (this.available) {
+            ForEach(this.visibleConnections(), (connection: ConnectionSnapshot) => {
+              ListItem() { this.connectionRow(connection) }
+            }, (connection: ConnectionSnapshot): string => connection.id)
+          }
+        }
+        .width('100%').height('100%')
+        .borderRadius(CARD_RADIUS)
+        .contentEndOffset(FLOATING_NAVIGATION_INSET + 16)
+        .clip(true)
+        .scrollBar(BarState.Auto)
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
-      .width('100%')
-      .layoutWeight(1)
-      .borderRadius(CARD_RADIUS)
-      .contentEndOffset(FLOATING_NAVIGATION_INSET + 16)
-      .clip(true)
-      .scrollBar(BarState.Auto)
+      .width('100%').layoutWeight(1)
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')
