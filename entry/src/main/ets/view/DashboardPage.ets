@@ -355,7 +355,7 @@ export struct DashboardPage {
         this.runtimeProfileId === this.activeProfileId)))
     .accessibilityText(this.isProxyBusy() ? '正在切换 VPN 代理' : (this.isProxyActive() ? '关闭 VPN 代理' : '开启 VPN 代理'))
     .onClick((): void => { this.toggleProxy(!this.isProxyActive()); })
-    .margin({ right: this.metrics.pagePadding, bottom: FLOATING_NAVIGATION_INSET + 16 })
+    .margin({ right: this.metrics.pagePadding, bottom: FLOATING_NAVIGATION_INSET - 16 })
   }
 
   @Builder
