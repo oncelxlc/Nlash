@@ -165,9 +165,9 @@ export struct RuntimeSpeedCard {
             this.drawTrafficChart();
           })
           .accessibilityText(`最近 60 秒速度趋势。当前上传 ${formatSpeed(this.runtime?.uploadSpeed ?? 0)}，下载 ${formatSpeed(this.runtime?.downloadSpeed ?? 0)}`)
-        if (this.chartUnavailable || !this.hasTrafficData()) {
-          Text(this.chartUnavailable ? '图表暂不可用，实时数值仍会更新' : this.proxyState === ProxyState.ENABLED ? '正在等待网络流量' :
-            (this.coreState === CoreServiceState.RUNNING ? '代理未连接，暂无流量' : 'Core 就绪后显示速度'))
+        if (this.proxyState !== ProxyState.ENABLED || this.chartUnavailable || !this.hasTrafficData()) {
+          Text(this.proxyState !== ProxyState.ENABLED ? '代理未连接，流量统计已暂停' :
+            (this.chartUnavailable ? '图表暂不可用，实时数值仍会更新' : '正在等待网络流量'))
             .fontSize(CAPTION_FONT_SIZE)
             .fontColor($r('app.color.content_secondary'))
             .padding(8)

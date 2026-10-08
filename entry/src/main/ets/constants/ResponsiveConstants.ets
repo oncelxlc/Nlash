@@ -11,7 +11,7 @@ export const COMPACT_METRICS: ResponsiveMetrics = {
   dashboardCardWidth: '100%',
   dashboardCardHeight: 112,
   dashboardInfoCardHeight: 100,
-  proxyColumns: '1fr'
+  proxyColumns: '1fr 1fr'
 };
 
 export const MEDIUM_METRICS: ResponsiveMetrics = {
@@ -25,7 +25,7 @@ export const MEDIUM_METRICS: ResponsiveMetrics = {
   dashboardCardWidth: '48%',
   dashboardCardHeight: 112,
   dashboardInfoCardHeight: 100,
-  proxyColumns: '1fr 1fr'
+  proxyColumns: '1fr 1fr 1fr'
 };
 
 export const EXPANDED_METRICS: ResponsiveMetrics = {
@@ -39,5 +39,5 @@ export const EXPANDED_METRICS: ResponsiveMetrics = {
   dashboardCardWidth: '48%',
   dashboardCardHeight: 112,
   dashboardInfoCardHeight: 104,
-  proxyColumns: '1fr 1fr 1fr'
+  proxyColumns: '1fr 1fr 1fr 1fr'
 };

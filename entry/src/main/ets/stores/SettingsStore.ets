@@ -1,5 +1,5 @@
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
-import { AppSettings, AppThemeMode, SettingsStoreListener, SettingsStoreSnapshot } from '../model/SettingsModels';
+import { AppSettings, AppThemeMode, NavigationTransition, SettingsStoreListener, SettingsStoreSnapshot } from '../model/SettingsModels';
 import { DEFAULT_APP_SETTINGS } from '../constants/SettingsConstants';
 import { isRefreshIntervalSeconds } from '../utils/SettingsUtils';
 import { preferenceRepository } from '../repository/PreferenceRepository';
@@ -47,11 +47,22 @@ class SettingsStore {
   async setThemeMode(mode: AppThemeMode): Promise<void> {
     await this.save({
       themeMode: mode,
+      navigationTransition: this.settings.navigationTransition,
       mtu: this.settings.mtu,
       delayTestUrl: this.settings.delayTestUrl,
       refreshIntervalSeconds: this.settings.refreshIntervalSeconds
     });
     this.applyTheme(mode);
+  }
+
+  async setNavigationTransition(transition: NavigationTransition): Promise<void> {
+    await this.save({
+      themeMode: this.settings.themeMode,
+      navigationTransition: transition,
+      mtu: this.settings.mtu,
+      delayTestUrl: this.settings.delayTestUrl,
+      refreshIntervalSeconds: this.settings.refreshIntervalSeconds
+    });
   }
 
   async setMtu(mtu: number): Promise<void> {
@@ -61,6 +72,7 @@ class SettingsStore {
     await this.save({
       themeMode: this.settings.themeMode,
       mtu: Math.round(mtu),
+      navigationTransition: this.settings.navigationTransition,
       delayTestUrl: this.settings.delayTestUrl,
       refreshIntervalSeconds: this.settings.refreshIntervalSeconds
     });
@@ -75,6 +87,7 @@ class SettingsStore {
       themeMode: this.settings.themeMode,
       mtu: this.settings.mtu,
       delayTestUrl: value,
+      navigationTransition: this.settings.navigationTransition,
       refreshIntervalSeconds: this.settings.refreshIntervalSeconds
     });
   }
@@ -91,6 +104,7 @@ class SettingsStore {
       themeMode: this.settings.themeMode,
       mtu: Math.round(mtu),
       delayTestUrl: value,
+      navigationTransition: this.settings.navigationTransition,
       refreshIntervalSeconds: this.settings.refreshIntervalSeconds
     });
   }
@@ -103,7 +117,8 @@ class SettingsStore {
       themeMode: this.settings.themeMode,
       mtu: this.settings.mtu,
       delayTestUrl: this.settings.delayTestUrl,
-      refreshIntervalSeconds: seconds
+      refreshIntervalSeconds: seconds,
+      navigationTransition: this.settings.navigationTransition
     });
   }
 
@@ -156,6 +171,7 @@ class SettingsStore {
   private copySettings(settings: AppSettings): AppSettings {
     return {
       themeMode: settings.themeMode,
+      navigationTransition: settings.navigationTransition,
       mtu: settings.mtu,
       delayTestUrl: settings.delayTestUrl,
       refreshIntervalSeconds: settings.refreshIntervalSeconds

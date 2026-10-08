@@ -4,8 +4,15 @@ export enum AppThemeMode {
   DARK = 'DARK'
 }
 
+export enum NavigationTransition {
+  NONE = 'NONE',
+  FADE = 'FADE',
+  SLIDE = 'SLIDE'
+}
+
 export interface AppSettings {
   themeMode: AppThemeMode;
+  navigationTransition: NavigationTransition;
   mtu: number;
   delayTestUrl: string;
   refreshIntervalSeconds: number;

@@ -3,13 +3,14 @@ import { preferences } from '@kit.ArkData';
 import { ProxySelection, RuntimeMode } from '../model/RuntimeModels';
 import { AppSettings, AppThemeMode } from '../model/SettingsModels';
 import { DEFAULT_APP_SETTINGS } from '../constants/SettingsConstants';
-import { isRefreshIntervalSeconds } from '../utils/SettingsUtils';
+import { isRefreshIntervalSeconds, resolveNavigationTransition } from '../utils/SettingsUtils';
 
 const PREFERENCES_NAME = 'nlash_settings';
 const ACTIVE_PROFILE_ID = 'activeProfileId';
 const ACTIVE_PROFILE_PATH = 'activeProfilePath';
 const PROFILE_ORDER = 'profileOrder';
 const THEME_MODE = 'themeMode';
+const NAVIGATION_TRANSITION = 'navigationTransition';
 const VPN_MTU = 'vpnMtu';
 const DELAY_TEST_URL = 'delayTestUrl';
 const REFRESH_INTERVAL_SECONDS = 'refreshIntervalSeconds';
@@ -167,12 +168,14 @@ class PreferenceRepository {
     }
     const store = this.requireStore();
     const themeValue = await store.get(THEME_MODE, DEFAULT_APP_SETTINGS.themeMode);
+    const transitionValue = await store.get(NAVIGATION_TRANSITION, DEFAULT_APP_SETTINGS.navigationTransition);
     const mtuValue = await store.get(VPN_MTU, DEFAULT_APP_SETTINGS.mtu);
     const testUrlValue = await store.get(DELAY_TEST_URL, DEFAULT_APP_SETTINGS.delayTestUrl);
     const refreshIntervalValue = await store.get(REFRESH_INTERVAL_SECONDS,
       DEFAULT_APP_SETTINGS.refreshIntervalSeconds);
     return {
       themeMode: this.parseThemeMode(typeof themeValue === 'string' ? themeValue : ''),
+      navigationTransition: resolveNavigationTransition(typeof transitionValue === 'string' ? transitionValue : ''),
       mtu: typeof mtuValue === 'number' && mtuValue >= 1280 && mtuValue <= 9000 ?
         Math.round(mtuValue) : DEFAULT_APP_SETTINGS.mtu,
       delayTestUrl: typeof testUrlValue === 'string' && this.isHttpUrl(testUrlValue) ?
@@ -186,6 +189,7 @@ class PreferenceRepository {
   async saveAppSettings(settings: AppSettings): Promise<void> {
     const store = this.requireStore();
     await store.put(THEME_MODE, settings.themeMode);
+    await store.put(NAVIGATION_TRANSITION, settings.navigationTransition);
     await store.put(VPN_MTU, settings.mtu);
     await store.put(DELAY_TEST_URL, settings.delayTestUrl);
     await store.put(REFRESH_INTERVAL_SECONDS, settings.refreshIntervalSeconds);

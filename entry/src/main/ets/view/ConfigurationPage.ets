@@ -362,14 +362,6 @@ export struct ConfigurationPage {
     return Math.max(0, (profile.uploadBytes ?? 0) + (profile.downloadBytes ?? 0));
   }
 
-  private profileSubline(profile: Profile): string {
-    const updated = formatProfileRelativeTime(profile.lastUpdateAt);
-    if (profile.type === ProfileType.LOCAL) {
-      return `本地 YAML · ${updated}`;
-    }
-    return `${getSubscriptionHost(profile.sourceUrl)} · ${updated}`;
-  }
-
   @Builder
   private headerActions() {
     Row({ space: 8 }) {
@@ -412,22 +404,18 @@ export struct ConfigurationPage {
 
   @Builder
   private profileCard(profile: Profile) {
-    Column({ space: 12 }) {
+    Column({ space: 4 }) {
       Row({ space: 8 }) {
-        Column({ space: 6 }) {
-          if (profile.id === this.activeProfileId) {
-            StatusBadge({ text: '当前使用', active: true })
-          }
-          Text(profile.name)
-            .fontSize(18)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.content_primary'))
-            .width('100%')
-            .maxLines(2)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Text(profile.name)
+          .fontSize(BODY_FONT_SIZE)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.content_primary'))
+          .layoutWeight(1)
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        if (profile.id === this.activeProfileId) {
+          StatusBadge({ text: '当前使用', active: true })
         }
-        .layoutWeight(1)
-        .alignItems(HorizontalAlign.Start)
         Button({ type: ButtonType.Normal }) {
           Image($r('app.media.action_more'))
             .width(24).height(24).fillColor($r('app.color.content_secondary'))
@@ -442,30 +430,44 @@ export struct ConfigurationPage {
         .onTouch((event: TouchEvent): void => { event.stopPropagation(); })
       }
       .width('100%')
+      if ((profile.totalBytes ?? 0) > 0 || (profile.expireAt ?? 0) > 0) {
+        Row({ space: 8 }) {
+          if ((profile.totalBytes ?? 0) > 0) {
+            Text(`已用 ${this.formatBytes(this.usedBytes(profile))} / ${this.formatBytes(profile.totalBytes ?? 0)}`)
+              .fontSize(CAPTION_FONT_SIZE)
+              .fontColor($r('app.color.content_secondary'))
+              .layoutWeight(1)
+          } else {
+            Blank()
+          }
+          if (profile.expireAt !== undefined && profile.expireAt > 0) {
+            Text(`到期 ${new Date(profile.expireAt).toLocaleDateString()}`)
+              .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
+          }
+        }
+        .width('100%')
+      }
       if ((profile.totalBytes ?? 0) > 0) {
         Progress({ value: profileUsageRatio(profile) * 100, total: 100, type: ProgressType.Linear })
           .width('100%')
           .color($r('app.color.nav_selected'))
           .backgroundColor($r('app.color.skeleton_background'))
-        Text(`已用 ${this.formatBytes(this.usedBytes(profile))} / ${this.formatBytes(profile.totalBytes ?? 0)}`)
-          .fontSize(14)
+      }
+      Row({ space: 8 }) {
+        Text(profile.type === ProfileType.LOCAL ? '本地 YAML' : getSubscriptionHost(profile.sourceUrl))
+          .fontSize(CAPTION_FONT_SIZE)
           .fontColor($r('app.color.content_secondary'))
-          .width('100%')
+          .layoutWeight(1)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Text(formatProfileRelativeTime(profile.lastUpdateAt))
+          .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
       }
-      if (profile.expireAt !== undefined && profile.expireAt > 0) {
-        Text(`到期 ${new Date(profile.expireAt).toLocaleDateString()}`)
-          .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
-      }
-      Text(this.profileSubline(profile))
-        .fontSize(CAPTION_FONT_SIZE)
-        .fontColor($r('app.color.content_secondary'))
-        .width('100%')
-        .maxLines(2)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
+      .width('100%')
     }
     .alignItems(HorizontalAlign.Start)
     .width('100%')
-    .padding(16)
+    .padding({ left: 12, right: 8, top: 4, bottom: 8 })
     .borderRadius(CARD_RADIUS)
     .backgroundColor($r('app.color.card_background'))
     .border({ width: 1, color: profile.id === this.activeProfileId ?

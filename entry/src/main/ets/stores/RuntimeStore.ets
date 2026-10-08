@@ -4,6 +4,7 @@ import { ProxyDelayProgress, ProxyDelayProgressListener } from '../model/CoreCon
 import { Profile, ProfileStoreSnapshot } from '../model/ProfileModels';
 import {
   appendTrafficSample,
+  mergeProxyTrafficSnapshot,
   mergeGroupDelay,
   ProxyDelayOperationRegistry,
   preserveTestedProxyDelays,
@@ -79,6 +80,9 @@ class RuntimeStore {
   private refreshing: boolean = false;
   private previewLoading: boolean = false;
   private dashboard: DashboardSnapshot | undefined;
+  private trafficBaseline: DashboardSnapshot | undefined;
+  private proxyState: ProxyState = ProxyState.DISABLED;
+  private trafficGeneration: number = 0;
   private proxies: ProxyGroupSnapshot[] = [];
   private proxySource: ProxySnapshotSource = ProxySnapshotSource.NONE;
   private proxyMode: RuntimeMode = DEFAULT_RUNTIME_MODE;
@@ -124,6 +128,15 @@ class RuntimeStore {
       this.handleSettingsSnapshot(snapshot.settings);
     });
     this.lifecycleUnsubscribe = vpnService.subscribeLifecycle((snapshot: RuntimeLifecycleSnapshot): void => {
+      if (snapshot.proxyState !== this.proxyState) {
+        this.proxyState = snapshot.proxyState;
+        this.trafficGeneration += 1;
+        this.trafficBaseline = undefined;
+        if (this.dashboard !== undefined) {
+          this.dashboard = mergeProxyTrafficSnapshot(this.dashboard, this.dashboard, undefined);
+        }
+        this.publish();
+      }
       const available = snapshot.coreState === CoreServiceState.RUNNING;
       if (available) {
         const wasAvailable = this.coreAvailable;
@@ -131,6 +144,7 @@ class RuntimeStore {
         if (!wasAvailable) {
           this.runtimeSnapshotGeneration += 1;
           this.trafficHistory = [];
+          this.trafficBaseline = undefined;
           this.invalidateDelayOperations();
           this.applyPreselectedSelections();
         }
@@ -358,6 +372,10 @@ class RuntimeStore {
     this.requireRuntime();
     await this.runAction('traffic', async (): Promise<void> => {
       this.requireOK<Object>(await runtimeControlService.execute<Object>('resetTraffic'));
+      this.trafficGeneration += 1;
+      this.trafficBaseline = undefined;
+      this.dashboard = undefined;
+      this.trafficHistory = [];
       await this.refreshDashboard();
     });
   }
@@ -551,17 +569,22 @@ class RuntimeStore {
   }
 
   private async refreshDashboard(expectedGeneration: number = this.runtimeSnapshotGeneration): Promise<boolean> {
+    const trafficGeneration = this.trafficGeneration;
     const response = await runtimeControlService.execute<DashboardSnapshot>('dashboardSnapshot');
     const dashboard = this.requireSuccess<DashboardSnapshot>(response);
-    if (expectedGeneration !== this.runtimeSnapshotGeneration) {
+    if (expectedGeneration !== this.runtimeSnapshotGeneration || trafficGeneration !== this.trafficGeneration) {
       return false;
     }
-    this.dashboard = dashboard;
-    this.trafficHistory = appendTrafficSample(this.trafficHistory, {
-      timestamp: Date.now(),
-      uploadSpeed: this.dashboard.uploadSpeed,
-      downloadSpeed: this.dashboard.downloadSpeed
-    });
+    const collecting = this.proxyState === ProxyState.ENABLED;
+    this.dashboard = mergeProxyTrafficSnapshot(dashboard, this.dashboard, collecting ? this.trafficBaseline : undefined);
+    this.trafficBaseline = collecting ? dashboard : undefined;
+    if (collecting) {
+      this.trafficHistory = appendTrafficSample(this.trafficHistory, {
+        timestamp: Date.now(),
+        uploadSpeed: this.dashboard.uploadSpeed,
+        downloadSpeed: this.dashboard.downloadSpeed
+      });
+    }
     return true;
   }
 

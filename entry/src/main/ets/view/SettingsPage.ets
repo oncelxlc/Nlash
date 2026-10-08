@@ -1,5 +1,5 @@
-import { AppSettings, AppThemeMode, SettingsStoreSnapshot } from '../model/SettingsModels';
-import { REFRESH_INTERVAL_OPTIONS } from '../constants/SettingsConstants';
+import { AppSettings, AppThemeMode, NavigationTransition, SettingsStoreSnapshot } from '../model/SettingsModels';
+import { NAVIGATION_TRANSITION_OPTIONS, REFRESH_INTERVAL_OPTIONS } from '../constants/SettingsConstants';
 import { RuntimeStoreSnapshot } from '../model/RuntimeModels';
 import { feedbackService } from '../services/FeedbackService';
 import { coreClient } from '../services/CoreClient';
@@ -125,6 +125,23 @@ export struct SettingsPage {
     }
   }
 
+  private transitionLabel(transition: NavigationTransition): string {
+    switch (transition) {
+      case NavigationTransition.NONE: return '关闭';
+      case NavigationTransition.FADE: return '淡入';
+      case NavigationTransition.SLIDE: return '平移';
+    }
+  }
+
+  private async changeNavigationTransition(transition: NavigationTransition): Promise<void> {
+    try {
+      await settingsStore.setNavigationTransition(transition);
+      feedbackService.success('导航切换效果已保存');
+    } catch (error) {
+      feedbackService.error(this.errorMessage(error));
+    }
+  }
+
   private errorMessage(error: Object): string {
     const exception = error as Error;
     return typeof exception.message === 'string' && exception.message.length > 0 ?
@@ -176,6 +193,26 @@ export struct SettingsPage {
             .enabled(!this.saving)
             .onClick((): void => { this.changeTheme(theme); })
         }, (theme: AppThemeMode): string => theme)
+      }
+      .width('100%')
+      Text('导航切换效果').fontSize(14).fontColor($r('app.color.content_secondary')).width('100%')
+      Row({ space: 8 }) {
+        ForEach(NAVIGATION_TRANSITION_OPTIONS, (transition: NavigationTransition) => {
+          Button(this.transitionLabel(transition))
+            .type(ButtonType.Normal).height(CONTROL_HEIGHT).layoutWeight(1)
+            .padding({ left: 4, right: 4 }).fontSize(BODY_FONT_SIZE)
+            .fontColor(this.settings.navigationTransition === transition ?
+              $r('app.color.nav_selected') : $r('app.color.content_secondary'))
+            .backgroundColor(this.settings.navigationTransition === transition ?
+              $r('app.color.nav_selected_background') : $r('app.color.surface_muted'))
+            .border({ width: 2, color: this.settings.navigationTransition === transition ?
+              $r('app.color.nav_selected') : Color.Transparent })
+            .borderRadius(BUTTON_RADIUS)
+            .accessibilityText(`导航切换效果：${this.transitionLabel(transition)}`)
+            .accessibilitySelected(this.settings.navigationTransition === transition)
+            .enabled(!this.saving)
+            .onClick((): void => { this.changeNavigationTransition(transition); })
+        }, (transition: NavigationTransition): string => transition)
       }
       .width('100%')
     }

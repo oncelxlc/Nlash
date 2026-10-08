@@ -14,7 +14,7 @@ import { settingsStore } from '../stores/SettingsStore';
 import { ResponsiveMetrics } from '../model/ResponsiveModels';
 import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
 import {
-  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, FLOATING_ACTION_INSET,
+  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET,
   CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
 } from '../constants/UiConstants';
 import { PageHeader } from '../components/PageHeader';
@@ -160,10 +160,10 @@ export struct ProxyPage {
 
   @Builder
   private nodeCard(node: ProxyNodeSnapshot) {
-    Row({ space: 8 }) {
+    Row({ space: 4 }) {
       Button({ type: ButtonType.Normal }) {
-        Column({ space: 8 }) {
-          Row({ space: 8 }) {
+        Column({ space: 4 }) {
+          Row({ space: 4 }) {
             Text(node.name)
               .fontSize(BODY_FONT_SIZE)
               .fontWeight(FontWeight.Medium)
@@ -173,19 +173,21 @@ export struct ProxyPage {
               .layoutWeight(1)
             if (this.isNodeSelected(node)) {
               Image($r('app.media.action_check'))
-                .width(20).height(20).fillColor($r('app.color.nav_selected'))
+                .width(16).height(16).fillColor($r('app.color.nav_selected'))
             }
           }
           .width('100%')
-          Text(`${node.type} · ${node.udp ? 'UDP / TCP' : 'TCP'}${this.isNodeSelected(node) ? ' · 已选择' : ''}`)
+          Text(`${node.type} · ${node.udp ? 'UDP / TCP' : 'TCP'}`)
             .fontSize(CAPTION_FONT_SIZE)
             .fontColor($r('app.color.content_secondary'))
             .width('100%')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
         }
         .alignItems(HorizontalAlign.Start)
       }
       .layoutWeight(1)
-      .constraintSize({ minHeight: 64 })
+      .constraintSize({ minHeight: 56 })
       .padding(0)
       .borderRadius(0)
       .backgroundColor(Color.Transparent)
@@ -193,22 +195,21 @@ export struct ProxyPage {
       .accessibilityText(`${node.name}${this.isNodeSelected(node) ? '，已选择' : ''}`)
       .accessibilitySelected(this.isNodeSelected(node))
       .onClick((): void => { this.selectNode(node); })
-      Button(proxyDelayLabel(node, this.isNodeTesting(node)))
-        .type(ButtonType.Normal)
-        .constraintSize({ minWidth: 72 })
-        .height(CONTROL_HEIGHT)
-        .padding({ left: 8, right: 8 })
+      Text(proxyDelayLabel(node, this.isNodeTesting(node)))
+        .constraintSize({ minWidth: CONTROL_HEIGHT, minHeight: CONTROL_HEIGHT })
+        .textAlign(TextAlign.End)
         .fontSize(CAPTION_FONT_SIZE)
         .fontWeight(FontWeight.Medium)
         .fontColor(this.delayColor(node, this.isNodeTesting(node)))
-        .borderRadius(BUTTON_RADIUS)
-        .backgroundColor($r('app.color.surface_muted'))
+        .focusable(true)
+        .accessibilityRole(AccessibilityRoleType.BUTTON)
+        .stateStyles({ pressed: { .opacity(0.6) } })
         .enabled(!this.isNodeTesting(node) && !this.previewLoading)
         .accessibilityText(`测试 ${node.name} 延迟，${proxyDelayLabel(node, this.isNodeTesting(node))}`)
         .onClick((): void => { this.testNode(node); })
     }
     .width('100%')
-    .padding(16)
+    .padding(8)
     .borderRadius(CARD_RADIUS)
     .border({ width: 1, color: this.isNodeSelected(node) ?
       $r('app.color.nav_selected') : $r('app.color.nav_divider') })
@@ -243,24 +244,24 @@ export struct ProxyPage {
     .width('100%').height(CONTROL_HEIGHT)
     .scrollable(ScrollDirection.Horizontal)
     .scrollBar(BarState.Off)
+    .align(Alignment.Start)
   }
 
   @Builder
-  private testFloatingButton() {
-    Button(this.isGroupTesting() ? '测速中…' : '测试当前组')
-      .type(ButtonType.Normal)
-      .constraintSize({ minHeight: 56 })
-      .padding({ left: 20, right: 20, top: 16, bottom: 16 })
-      .fontSize(BODY_FONT_SIZE)
-      .fontWeight(FontWeight.Medium)
-      .borderRadius(28)
-      .fontColor($r('app.color.accent_foreground'))
-      .backgroundColor($r('app.color.action_primary'))
-      .shadow(ShadowStyle.OUTER_DEFAULT_MD)
-      .enabled(!this.isGroupTesting() && !this.previewLoading && this.currentGroup() !== undefined)
-      .accessibilityText(`测试代理组 ${this.selectedGroup} 的节点延迟`)
-      .onClick((): void => { this.testCurrentGroup(); })
-      .margin({ right: this.metrics.pagePadding, bottom: FLOATING_NAVIGATION_INSET + 16 })
+  private testGroupButton() {
+    Button({ type: ButtonType.Normal }) {
+      if (this.isGroupTesting()) {
+        LoadingProgress().width(20).height(20).color($r('app.color.nav_selected'))
+      } else {
+        Image($r('app.media.action_refresh')).width(20).height(20).fillColor($r('app.color.nav_selected'))
+      }
+    }
+    .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT)
+    .padding(0).borderRadius(BUTTON_RADIUS)
+    .backgroundColor($r('app.color.nav_selected_background'))
+    .enabled(!this.isGroupTesting() && !this.previewLoading && this.currentGroup() !== undefined)
+    .accessibilityText(this.isGroupTesting() ? '当前代理组正在测速' : `测试代理组 ${this.selectedGroup} 的节点延迟`)
+    .onClick((): void => { this.testCurrentGroup(); })
   }
 
   @Builder
@@ -268,7 +269,8 @@ export struct ProxyPage {
     Column({ space: 16 }) {
       PageHeader({
         title: $r('app.string.nav_proxy'),
-        subtitle: this.source === ProxySnapshotSource.RUNTIME ? '选择流量出口，查看节点延迟' : '连接前也可预选节点与测试延迟'
+        subtitle: this.source === ProxySnapshotSource.RUNTIME ? '选择流量出口，查看节点延迟' : '连接前也可预选节点与测试延迟',
+        actions: (): void => { this.testGroupButton(); }
       })
       Row({ space: 8 }) {
         StatusBadge({
@@ -304,7 +306,7 @@ export struct ProxyPage {
         .rowsGap(this.metrics.cardGap)
         .width('100%')
         .layoutWeight(1)
-        .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET + FLOATING_ACTION_INSET)
+        .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
         .scrollBar(BarState.Auto)
       }
     }
@@ -317,11 +319,8 @@ export struct ProxyPage {
   }
 
   build() {
-    Stack({ alignContent: Alignment.BottomEnd }) {
+    Column() {
       this.mainContent()
-      if (this.groups.length > 0) {
-        this.testFloatingButton()
-      }
     }
     .width('100%').height('100%')
     .backgroundColor($r('app.color.app_background'))

@@ -7,6 +7,7 @@ import {
   formatSpeed,
   failPendingGroupDelay,
   mergeGroupDelay,
+  mergeProxyTrafficSnapshot,
   preserveTestedProxyDelays,
   ProxyDelayOperationRegistry,
   proxyDelayLabel,
@@ -17,7 +18,7 @@ import {
   RuntimeRequestMerger,
   visibleProxyGroups
 } from '../main/ets/utils/RuntimeUtils';
-import { ConnectionSnapshot, ProxyGroupSnapshot, RuntimeMode, TrafficSample } from '../main/ets/model/RuntimeModels';
+import { ConnectionSnapshot, DashboardSnapshot, ProxyGroupSnapshot, RuntimeMode, TrafficSample } from '../main/ets/model/RuntimeModels';
 import { DEFAULT_RUNTIME_MODE } from '../main/ets/constants/RuntimeConstants';
 
 export default function runtimeModelsTest() {
@@ -57,6 +58,54 @@ export default function runtimeModelsTest() {
       expect(history.length).assertEqual(13);
       expect(history[0].timestamp).assertEqual(5000);
       expect(history[history.length - 1].timestamp).assertEqual(60001);
+    });
+
+    it('countsOnlyConnectedProxyIntervalsAndFreezesStoppedTraffic', 0, () => {
+      const baseline: DashboardSnapshot = {
+        mode: RuntimeMode.RULE, uploadSpeed: 10, downloadSpeed: 20,
+        uploadTotal: 100, downloadTotal: 200, memoryBytes: 1024, connectionCount: 1
+      };
+      const idle = mergeProxyTrafficSnapshot(baseline, undefined, undefined);
+      expect(idle.uploadSpeed).assertEqual(0);
+      expect(idle.downloadSpeed).assertEqual(0);
+      expect(idle.uploadTotal).assertEqual(0);
+      expect(idle.downloadTotal).assertEqual(0);
+
+      const active: DashboardSnapshot = {
+        mode: RuntimeMode.GLOBAL, uploadSpeed: 30, downloadSpeed: 60,
+        uploadTotal: 130, downloadTotal: 260, memoryBytes: 2048, connectionCount: 2
+      };
+      const connected = mergeProxyTrafficSnapshot(active, idle, baseline);
+      expect(connected.uploadSpeed).assertEqual(30);
+      expect(connected.downloadSpeed).assertEqual(60);
+      expect(connected.uploadTotal).assertEqual(30);
+      expect(connected.downloadTotal).assertEqual(60);
+      expect(connected.mode).assertEqual(RuntimeMode.GLOBAL);
+      expect(connected.memoryBytes).assertEqual(2048);
+      expect(connected.connectionCount).assertEqual(2);
+
+      const inactive: DashboardSnapshot = {
+        mode: RuntimeMode.RULE, uploadSpeed: 100, downloadSpeed: 200,
+        uploadTotal: 1000, downloadTotal: 2000, memoryBytes: 1024, connectionCount: 1
+      };
+      const paused = mergeProxyTrafficSnapshot(inactive, connected, undefined);
+      expect(paused.uploadTotal).assertEqual(30);
+      expect(paused.downloadTotal).assertEqual(60);
+      expect(paused.uploadSpeed).assertEqual(0);
+      expect(paused.downloadSpeed).assertEqual(0);
+      const resumed = mergeProxyTrafficSnapshot(inactive, paused, undefined);
+      expect(resumed.uploadTotal).assertEqual(30);
+      expect(resumed.downloadTotal).assertEqual(60);
+      const next: DashboardSnapshot = {
+        mode: RuntimeMode.RULE, uploadSpeed: 10, downloadSpeed: 20,
+        uploadTotal: 1010, downloadTotal: 2020, memoryBytes: 1024, connectionCount: 1
+      };
+      const continued = mergeProxyTrafficSnapshot(next, resumed, inactive);
+      expect(continued.uploadTotal).assertEqual(40);
+      expect(continued.downloadTotal).assertEqual(80);
+      const reset = mergeProxyTrafficSnapshot(baseline, connected, active);
+      expect(reset.uploadTotal).assertEqual(30);
+      expect(reset.downloadTotal).assertEqual(60);
     });
 
     it('mergesOverlappingRefreshRequests', 0, async () => {

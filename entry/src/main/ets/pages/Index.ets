@@ -12,15 +12,24 @@ import { AppNavigationState } from '../navigation/AppNavigationState';
 import { feedbackService } from '../services/FeedbackService';
 import { configurationEditorService } from '../services/ConfigurationEditorService';
 import { navigationIntentService } from '../services/NavigationIntentService';
+import { NavigationTransition, SettingsStoreSnapshot } from '../model/SettingsModels';
+import { settingsStore } from '../stores/SettingsStore';
 
 @Entry
 @Component
 struct Index {
   @State navigationState: AppNavigationState = new AppNavigationState();
+  @State navigationTransition: NavigationTransition = settingsStore.getSnapshot().settings.navigationTransition;
+  @State contentOpacity: number = 1;
+  @State contentOffset: number = 0;
   private unsubscribeFeedback: (() => void) | undefined = undefined;
   private unsubscribeNavigationIntent: (() => void) | undefined = undefined;
+  private unsubscribeSettings: (() => void) | undefined = undefined;
 
   aboutToAppear(): void {
+    this.unsubscribeSettings = settingsStore.subscribe((snapshot: SettingsStoreSnapshot): void => {
+      this.navigationTransition = snapshot.settings.navigationTransition;
+    });
     this.unsubscribeFeedback = feedbackService.subscribe((event: FeedbackEvent): void => {
       this.getUIContext().getPromptAction().showToast({
         message: event.message,
@@ -37,6 +46,8 @@ struct Index {
     this.unsubscribeFeedback = undefined;
     this.unsubscribeNavigationIntent?.();
     this.unsubscribeNavigationIntent = undefined;
+    this.unsubscribeSettings?.();
+    this.unsubscribeSettings = undefined;
   }
 
   onBackPress(): boolean {
@@ -47,7 +58,18 @@ struct Index {
   }
 
   private selectPage(page: AppPage): void {
+    const previousPage = this.navigationState.selectedPage;
     this.navigationState.selectPage(page);
+    if (previousPage === this.navigationState.selectedPage || this.navigationTransition === NavigationTransition.NONE) {
+      return;
+    }
+    this.contentOpacity = 0;
+    this.contentOffset = this.navigationTransition === NavigationTransition.SLIDE ?
+      (NAVIGATION_PAGES.indexOf(this.navigationState.selectedPage) > NAVIGATION_PAGES.indexOf(previousPage) ? 24 : -24) : 0;
+    this.getUIContext().animateTo({ duration: 200, curve: Curve.EaseOut }, (): void => {
+      this.contentOpacity = 1;
+      this.contentOffset = 0;
+    });
   }
 
   private selectTab(index: number): void {
@@ -146,13 +168,19 @@ struct Index {
     }) {
       ForEach(NAVIGATION_PAGES, (page: AppPage) => {
         TabContent() {
-          this.pageContent(page)
+          Column() {
+            this.pageContent(page)
+          }
+          .width('100%').height('100%')
+          .opacity(this.contentOpacity)
+          .translate({ x: this.contentOffset })
         }
         .tabBar(this.getTabBarStyle(page))
       }, (page: AppPage): string => page.toString())
     }
     .vertical(false)
     .scrollable(false)
+    .animationDuration(0)
     .barOverlap(true)
     .cachedMaxCount(0, TabsCacheMode.CACHE_LATEST_SWITCHED)
     .barFloatingStyle({

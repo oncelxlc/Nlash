@@ -64,12 +64,13 @@ export default function navigationModelsTest() {
     });
 
     it('adaptsNodeColumnsAndPageGuttersAtTheExistingBreakpoints', 0, () => {
-      expect(resolveResponsiveMetrics(0).proxyColumns).assertEqual('1fr');
-      expect(resolveResponsiveMetrics(639).proxyColumns).assertEqual('1fr');
-      expect(resolveResponsiveMetrics(640).proxyColumns).assertEqual('1fr 1fr');
-      expect(resolveResponsiveMetrics(899).proxyColumns).assertEqual('1fr 1fr');
-      expect(resolveResponsiveMetrics(900).proxyColumns).assertEqual('1fr 1fr 1fr');
-      expect(resolveResponsiveMetrics(360, true).proxyColumns).assertEqual('1fr 1fr 1fr');
+      expect(resolveResponsiveMetrics(0).proxyColumns).assertEqual('1fr 1fr');
+      expect(resolveResponsiveMetrics(360).proxyColumns).assertEqual('1fr 1fr');
+      expect(resolveResponsiveMetrics(639).proxyColumns).assertEqual('1fr 1fr');
+      expect(resolveResponsiveMetrics(640).proxyColumns).assertEqual('1fr 1fr 1fr');
+      expect(resolveResponsiveMetrics(899).proxyColumns).assertEqual('1fr 1fr 1fr');
+      expect(resolveResponsiveMetrics(900).proxyColumns).assertEqual('1fr 1fr 1fr 1fr');
+      expect(resolveResponsiveMetrics(360, true).proxyColumns).assertEqual('1fr 1fr 1fr 1fr');
       expect(resolveResponsiveMetrics(360).pagePadding).assertEqual(16);
       expect(resolveResponsiveMetrics(700).pagePadding).assertEqual(24);
       expect(resolveResponsiveMetrics(1000).pagePadding).assertEqual(32);

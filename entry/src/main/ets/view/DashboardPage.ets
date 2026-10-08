@@ -314,46 +314,46 @@ export struct DashboardPage {
   }
 
   @Builder
-  private modeSwitchButton(direction: number) {
-    Button({ type: ButtonType.Normal }) {
-      Image($r('app.media.action_chevron_down'))
-        .width(18).height(18).rotate({ angle: direction < 0 ? 90 : -90 })
-        .fillColor($r('app.color.nav_selected'))
+  private modeSwitch() {
+    Row({ space: 4 }) {
+      ForEach(MODES, (mode: RuntimeMode) => {
+        Button(this.modeLabel(mode))
+          .type(ButtonType.Normal)
+          .layoutWeight(1).height(CONTROL_HEIGHT)
+          .padding(0).borderRadius(BUTTON_RADIUS - 4)
+          .fontSize(BODY_FONT_SIZE).fontWeight(FontWeight.Medium)
+          .fontColor(this.selectedMode === mode ? $r('app.color.nav_selected') : $r('app.color.content_secondary'))
+          .backgroundColor(this.selectedMode === mode ? $r('app.color.card_background') : Color.Transparent)
+          .border({ width: 1, color: this.selectedMode === mode ? $r('app.color.nav_selected') : Color.Transparent })
+          .enabled(this.coreState === CoreServiceState.RUNNING && !this.profileBusy &&
+            !this.isCoreBusy() && !this.isProxyBusy() && this.runtimeBusyKey.length === 0)
+          .accessibilityText(`流量处理模式：${this.modeLabel(mode)}`)
+          .accessibilitySelected(this.selectedMode === mode)
+          .onClick((): void => { this.setMode(mode); })
+      }, (mode: RuntimeMode): string => mode)
     }
-    .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT)
-    .padding(0).borderRadius(BUTTON_RADIUS)
-    .backgroundColor(Color.Transparent)
-    .enabled(this.coreState === CoreServiceState.RUNNING && !this.profileBusy &&
-      !this.isCoreBusy() && !this.isProxyBusy() && this.runtimeBusyKey.length === 0)
-    .accessibilityText(direction < 0 ? '上一个代理模式' : '下一个代理模式')
-    .onClick((): void => {
-      this.setMode(MODES[(MODES.indexOf(this.selectedMode) + direction + MODES.length) % MODES.length]);
-    })
+    .width('100%').padding(4).borderRadius(BUTTON_RADIUS)
+    .backgroundColor($r('app.color.surface_muted'))
   }
 
   @Builder
   private proxyFloatingButton() {
     Button({ type: ButtonType.Normal }) {
-      Row({ space: 10 }) {
-        if (this.isProxyBusy()) {
-          LoadingProgress().width(22).height(22).color($r('app.color.vpn_fab_foreground'))
-        } else {
-          Image(this.isProxyActive() ? $r('app.media.ic_public_pause') : $r('app.media.ic_public_play'))
-            .width(22).height(22).fillColor($r('app.color.vpn_fab_foreground'))
-        }
-        Text(this.isProxyBusy() ? '处理中…' : (this.isProxyActive() ? '关闭代理' : '开启代理'))
-          .fontSize(BODY_FONT_SIZE).fontWeight(FontWeight.Medium).fontColor($r('app.color.vpn_fab_foreground'))
+      if (this.isProxyBusy()) {
+        LoadingProgress().width(24).height(24).color($r('app.color.vpn_fab_foreground'))
+      } else {
+        Image(this.isProxyActive() ? $r('app.media.ic_public_pause') : $r('app.media.ic_public_play'))
+          .width(24).height(24).fillColor($r('app.color.vpn_fab_foreground'))
       }
     }
-    .constraintSize({ minHeight: 56 })
-    .padding({ left: 20, right: 20, top: 16, bottom: 16 })
+    .width(56).height(56).padding(0)
     .borderRadius(28)
     .backgroundColor($r('app.color.vpn_fab_background'))
     .shadow(ShadowStyle.OUTER_DEFAULT_MD)
     .enabled(!this.isProxyBusy() && !this.isCoreBusy() && !this.profileBusy && (this.isProxyActive() ||
       (this.coreState === CoreServiceState.RUNNING && this.runtimeProfileId.length > 0 &&
         this.runtimeProfileId === this.activeProfileId)))
-    .accessibilityText(this.isProxyActive() ? '关闭 VPN 代理' : '开启 VPN 代理')
+    .accessibilityText(this.isProxyBusy() ? '正在切换 VPN 代理' : (this.isProxyActive() ? '关闭 VPN 代理' : '开启 VPN 代理'))
     .onClick((): void => { this.toggleProxy(!this.isProxyActive()); })
     .margin({ right: this.metrics.pagePadding, bottom: FLOATING_NAVIGATION_INSET + 16 })
   }
@@ -387,17 +387,9 @@ export struct DashboardPage {
         .backgroundColor(Color.Transparent)
         .accessibilityText(`当前配置：${this.getActiveProfile()?.name ?? '未选择'}，打开配置页`)
         .onClick((): void => { navigationIntentService.publish(AppPage.CONFIGURATION); })
-        Row() {
-          this.modeSwitchButton(-1)
-          Text(this.modeLabel(this.selectedMode))
-            .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.nav_selected'))
-            .accessibilityText(`流量处理模式：${this.modeLabel(this.selectedMode)}`)
-          this.modeSwitchButton(1)
-        }
-        .borderRadius(BUTTON_RADIUS)
-        .backgroundColor($r('app.color.nav_selected_background'))
       }
       .width('100%')
+      this.modeSwitch()
       if (this.sessionStartedAt > 0) {
         Row() {
           Text('本次使用').fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
