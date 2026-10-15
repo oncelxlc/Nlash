@@ -1,3 +1,3 @@
 package main
 
-const coreVersion = "nlash-core/0.2.0 mihomo/v1.19.30"
+const coreVersion = "nlash-core/0.2.0 Clash.Meta/8380d0e7462f"

@@ -17,9 +17,10 @@ $requiredVersionValues = @{
   go = 'go1.27.0'
   go_tls_patch = '97ce7c6ef39edf2a0a0eba7d6fd1075abf26dc2f'
   go_tls_patch_sha256 = 'F23053EDA062FDDE8EA6BEB767A404C3B353A46E787D2FE12B83DE1396B1D255'
-  mihomo_tag = 'v1.19.30'
-  mihomo_commit = 'ac017cdd246ce8bd547653d927e7bf77d7ee73d5'
-  mihomo_sum = 'h1:2lTz7fcyZAQQzwbPuETChtwSHIHsT4zYhBSC3i/fRVI='
+  mihomo_module = 'github.com/chen08209/Clash.Meta'
+  mihomo_version = 'v1.11.9-0.20261012003553-8380d0e7462f'
+  mihomo_commit = '8380d0e7462f061a964323e9bf3129a236fcc5d5'
+  mihomo_sum = 'h1:JsFapruRNTb7Z1yc5BQu+IMLZuHu8FZI7r8ei8pJq/U='
   harmony_api = '24'
 }
 
@@ -80,10 +81,18 @@ try {
   $env:CGO_ENABLED = '0'
   Push-Location $PSScriptRoot
   try {
-    $moduleInfo = (& $go mod download -json "github.com/metacubex/mihomo@$($requiredVersionValues['mihomo_tag'])" | ConvertFrom-Json)
-    if ($LASTEXITCODE -ne 0 -or $moduleInfo.Version -ne $requiredVersionValues['mihomo_tag'] -or
-      $moduleInfo.Sum -ne $requiredVersionValues['mihomo_sum']) {
-      throw 'Pinned Mihomo module version or checksum does not match VERSION.'
+    $moduleInfo = (& $go mod download -json "$($requiredVersionValues['mihomo_module'])@$($requiredVersionValues['mihomo_version'])" | ConvertFrom-Json)
+    if ($LASTEXITCODE -ne 0 -or $moduleInfo.Path -ne $requiredVersionValues['mihomo_module'] -or
+      $moduleInfo.Version -ne $requiredVersionValues['mihomo_version'] -or
+      $moduleInfo.Sum -ne $requiredVersionValues['mihomo_sum'] -or
+      $moduleInfo.Origin.Hash -ne $requiredVersionValues['mihomo_commit']) {
+      throw 'Pinned Clash.Meta module source, version, checksum or commit does not match VERSION.'
+    }
+    $moduleSelection = (& $go list -m -json github.com/metacubex/mihomo | ConvertFrom-Json)
+    if ($LASTEXITCODE -ne 0 -or $moduleSelection.Replace.Path -ne $requiredVersionValues['mihomo_module'] -or
+      $moduleSelection.Replace.Version -ne $requiredVersionValues['mihomo_version'] -or
+      $moduleSelection.Replace.Sum -ne $requiredVersionValues['mihomo_sum']) {
+      throw 'Pinned Mihomo dependency does not select the Clash.Meta module from VERSION.'
     }
     & $go test .
     if ($LASTEXITCODE -ne 0) {

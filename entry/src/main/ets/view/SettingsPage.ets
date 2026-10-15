@@ -282,7 +282,7 @@ export struct SettingsPage {
         Column({ space: 12 }) {
           this.sectionTitle('关于 Nlash', `1.0.0 · ${this.coreVersion}`)
           Divider().color($r('app.color.nav_divider'))
-          Text('Mihomo v1.19.30')
+          Text('Clash.Meta 8380d0e7462f')
             .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.content_primary')).width('100%')
           Text('配置与订阅保存在应用沙箱中。')
             .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
