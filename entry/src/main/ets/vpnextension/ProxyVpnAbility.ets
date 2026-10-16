@@ -22,7 +22,6 @@ import { coreControlServer } from '../services/CoreControlServer';
 import { CoreRecoveryDecision, CoreRecoveryPolicy } from '../services/CoreRecoveryPolicy';
 import { ProtectChannelServer, SocketProtector } from '../services/ProtectChannelServer';
 import { publishVpnState } from '../services/VpnStatePublisher';
-import { vpnNotificationService } from '../services/VpnNotificationService';
 
 const DOMAIN = 0x4E4C;
 const TAG = 'NlashProxyVpn';
@@ -97,10 +96,6 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
 
   onCreate(want: Want): void {
     this.destroying = false;
-    vpnNotificationService.start(this.context.getApplicationContext(), (): Promise<void> =>
-      this.enqueue((): Promise<void> => this.disableProxy(false))).catch((): void => {
-      hilog.warn(DOMAIN, TAG, 'notification service initialization failed');
-    });
     const controlReady = coreControlServer.start((command: string): Promise<string | undefined> =>
       this.handleControlCommand(command));
     this.recoveryPolicy.reset();
@@ -122,9 +117,6 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
 
   onDestroy(): void {
     this.destroying = true;
-    vpnNotificationService.stop().catch((): void => {
-      hilog.warn(DOMAIN, TAG, 'notification service shutdown failed');
-    });
     coreControlServer.stop();
     hilog.info(DOMAIN, TAG, 'onDestroy');
     this.enqueue((): Promise<void> => this.shutdown()).catch((error: Error): void => {
@@ -779,7 +771,6 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
 
   private publish(message: string): void {
     this.lastLifecycleMessage = message;
-    vpnNotificationService.updateLifecycle(this.coreState, this.proxyState);
     const session = this.sessionTimer.getSnapshot();
     publishVpnState(this.context.getApplicationContext(), this.coreState, this.proxyState,
       message, this.runtimeProfileId, this.runtimeProfileSignature, session.sessionStartedAt, session.sessionEndedAt);

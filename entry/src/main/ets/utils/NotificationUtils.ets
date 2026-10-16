@@ -1,3 +1,5 @@
+import { notificationManager } from '@kit.NotificationKit';
+import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
 import { AppPage } from '../model/NavigationModels';
 import { VPN_NOTIFICATION_DASHBOARD_TARGET } from '../constants/NotificationConstants';
 import { VpnNotificationPresentation } from '../model/NotificationModels';
@@ -7,7 +9,7 @@ import { CoreServiceState, ProxyState } from '../model/VpnModels';
 
 export function buildVpnNotificationPresentation(coreState: CoreServiceState, proxyState: ProxyState,
   dashboard?: DashboardSnapshot, speedAvailable: boolean = true): VpnNotificationPresentation {
-  const active = coreState === CoreServiceState.RUNNING && proxyState === ProxyState.ENABLED;
+  const active = shouldShowVpnNotification(proxyState);
   let upload = '0 B/s';
   let download = '0 B/s';
   if (active) {
@@ -29,6 +31,41 @@ export function buildVpnNotificationPresentation(coreState: CoreServiceState, pr
 
 export function shouldRequestNotificationPermission(enabled: boolean, requested: boolean): boolean {
   return !enabled && !requested;
+}
+
+export function shouldShowVpnNotification(proxyState: ProxyState): boolean {
+  return proxyState === ProxyState.ENABLED;
+}
+
+export function buildVpnNotificationUpdate(task: backgroundTaskManager.ContinuousTaskNotification,
+  presentation: VpnNotificationPresentation): notificationManager.NotificationRequest {
+  return {
+    id: task.notificationId,
+    label: '',
+    notificationSlotType: task.slotType,
+    sound: '',
+    isAlertOnce: true,
+    updateOnly: true,
+    tapDismissed: false,
+    showDeliveryTime: false,
+    content: {
+      notificationContentType: notificationManager.ContentType.NOTIFICATION_CONTENT_SYSTEM_LIVE_VIEW,
+      systemLiveView: {
+        typeCode: 8,
+        title: presentation.title,
+        text: presentation.text,
+      }
+    },
+    // shortcut: API 24 requires this progress template for custom text; replace when ProgressInfo is available.
+    template: {
+      name: 'downloadTemplate',
+      data: {
+        title: presentation.title,
+        fileName: presentation.text,
+        progressValue: 0
+      }
+    }
+  };
 }
 
 export function resolveNotificationNavigationTarget(value: Object | undefined): AppPage | undefined {

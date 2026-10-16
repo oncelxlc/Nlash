@@ -16,11 +16,18 @@
       },
       {
         "name": "ohos.permission.GET_NETWORK_INFO"
+      },
+      {
+        "name": "ohos.permission.KEEP_BACKGROUND_RUNNING"
       }
     ],
     "abilities": [
       {
         "name": "EntryAbility",
+        "launchType": "singleton",
+        "backgroundModes": [
+          "dataTransfer"
+        ],
         "orientation": "auto_rotation_restricted",
         "srcEntry": "./ets/entryability/EntryAbility.ets",
         "description": "$string:EntryAbility_desc",

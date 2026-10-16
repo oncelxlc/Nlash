@@ -13,6 +13,7 @@ import {
 import { vpnService } from '../services/VpnService';
 import { navigationIntentService } from '../services/NavigationIntentService';
 import { notificationPermissionService } from '../services/NotificationPermissionService';
+import { vpnNotificationService } from '../services/VpnNotificationService';
 import { profileStore } from '../stores/ProfileStore';
 import { runtimeStore } from '../stores/RuntimeStore';
 import { settingsStore } from '../stores/SettingsStore';
@@ -20,6 +21,7 @@ import { settingsStore } from '../stores/SettingsStore';
 const DOMAIN = 0x0000;
 
 export default class EntryAbility extends UIAbility {
+  private foreground: boolean = false;
   private proxyState: ProxyState = ProxyState.DISABLED;
   private unsubscribeVpnLifecycle: (() => void) | undefined = undefined;
 
@@ -35,6 +37,7 @@ export default class EntryAbility extends UIAbility {
     this.unsubscribeVpnLifecycle = vpnService.subscribeLifecycle((snapshot: RuntimeLifecycleSnapshot): void => {
       const previousProxyState = this.proxyState;
       this.proxyState = snapshot.proxyState;
+      vpnNotificationService.updateLifecycle(snapshot.coreState, snapshot.proxyState);
       if (shouldRefreshPublicNetworkAfterProxyStateChange(previousProxyState, snapshot.proxyState)) {
         publicNetworkService.refresh();
       }
@@ -70,8 +73,12 @@ export default class EntryAbility extends UIAbility {
   }
 
   onDestroy(): void {
+    this.foreground = false;
     this.unsubscribeVpnLifecycle?.();
     this.unsubscribeVpnLifecycle = undefined;
+    vpnNotificationService.stop().catch((): void => {
+      hilog.warn(DOMAIN, 'NlashNotify', 'Notification shutdown failed');
+    });
     publicNetworkService.shutdown();
     profileStore.shutdown();
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onDestroy');
@@ -87,9 +94,6 @@ export default class EntryAbility extends UIAbility {
         return;
       }
       hilog.info(DOMAIN, 'testTag', 'Succeeded in loading the content.');
-      notificationPermissionService.ensurePermission(this.context).catch((): void => {
-        hilog.warn(DOMAIN, 'NlashNotify', 'Notification permission initialization failed');
-      });
     });
   }
 
@@ -99,13 +103,22 @@ export default class EntryAbility extends UIAbility {
   }
 
   onForeground(): void {
+    this.foreground = true;
     profileStore.onForeground();
     runtimeStore.setForeground(true);
+    notificationPermissionService.ensurePermission(this.context).then((enabled: boolean): Promise<void> => {
+      return enabled && this.foreground ?
+        vpnNotificationService.start(this.context) :
+        Promise.resolve();
+    }).catch((): void => {
+      hilog.warn(DOMAIN, 'NlashNotify', 'Notification initialization failed');
+    });
     // Ability has brought to foreground
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');
   }
 
   onBackground(): void {
+    this.foreground = false;
     runtimeStore.setForeground(false);
     // Ability has back to background
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onBackground');
