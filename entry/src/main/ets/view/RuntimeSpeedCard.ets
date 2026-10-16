@@ -9,6 +9,11 @@ import {
   CARD_RADIUS, CAPTION_FONT_SIZE
 } from '../constants/UiConstants';
 
+interface SpeedValueParams {
+  label: string;
+  speed: number | undefined;
+}
+
 @Component
 export struct RuntimeSpeedCard {
   @Prop runtime: DashboardSnapshot | undefined = undefined;
@@ -130,13 +135,13 @@ export struct RuntimeSpeedCard {
   }
 
   @Builder
-  private speedValue(label: string, speed: number | undefined) {
-    Text(`${label} ${speed === undefined ? '—' : formatSpeed(speed)}`)
+  private speedValue($$: SpeedValueParams) {
+    Text(`${$$.label} ${$$.speed === undefined ? '—' : formatSpeed($$.speed)}`)
       .fontSize(CAPTION_FONT_SIZE)
       .fontColor($r('app.color.content_secondary'))
       .maxLines(1)
       .flexShrink(0)
-      .accessibilityText(`${label === '↑' ? '上传' : '下载'} ${speed === undefined ? '数据暂不可用' : formatSpeed(speed)}`)
+      .accessibilityText(`${$$.label === '↑' ? '上传' : '下载'} ${$$.speed === undefined ? '数据暂不可用' : formatSpeed($$.speed)}`)
   }
 
   build() {
@@ -154,8 +159,8 @@ export struct RuntimeSpeedCard {
           wrap: FlexWrap.Wrap, justifyContent: FlexAlign.End, alignItems: ItemAlign.Center,
           space: { main: LengthMetrics.vp(8), cross: LengthMetrics.vp(8) }
         }) {
-          this.speedValue('↑', this.runtime?.uploadSpeed)
-          this.speedValue('↓', this.runtime?.downloadSpeed)
+          this.speedValue({ label: '↑', speed: this.runtime?.uploadSpeed })
+          this.speedValue({ label: '↓', speed: this.runtime?.downloadSpeed })
         }
         .layoutWeight(1)
       }

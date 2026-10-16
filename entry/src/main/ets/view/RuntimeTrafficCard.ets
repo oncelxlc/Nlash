@@ -4,6 +4,12 @@ import {
 import { DashboardSnapshot } from '../model/RuntimeModels';
 import { formatBytes } from '../utils/RuntimeUtils';
 
+interface TrafficTotalParams {
+  label: string;
+  value: number | undefined;
+  color: ResourceColor;
+}
+
 @Component
 export struct RuntimeTrafficCard {
   @Prop runtime: DashboardSnapshot | undefined = undefined;
@@ -11,10 +17,10 @@ export struct RuntimeTrafficCard {
   @Prop cardHeight: number = 120;
 
   @Builder
-  private total(label: string, value: number | undefined, color: ResourceColor) {
+  private total($$: TrafficTotalParams) {
     Column({ space: 6 }) {
-      Text(label).fontSize(CAPTION_FONT_SIZE).fontColor(color)
-      Text(value === undefined ? '—' : formatBytes(value))
+      Text($$.label).fontSize(CAPTION_FONT_SIZE).fontColor($$.color)
+      Text($$.value === undefined ? '—' : formatBytes($$.value))
         .fontSize(24)
         .fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.content_primary'))
@@ -25,8 +31,8 @@ export struct RuntimeTrafficCard {
 
   build() {
     Row({ space: 16 }) {
-      this.total('累计上传', this.runtime?.uploadTotal, $r('app.color.chart_upload'))
-      this.total('累计下载', this.runtime?.downloadTotal, $r('app.color.chart_download'))
+      this.total({ label: '累计上传', value: this.runtime?.uploadTotal, color: $r('app.color.chart_upload') })
+      this.total({ label: '累计下载', value: this.runtime?.downloadTotal, color: $r('app.color.chart_download') })
     }
     .width(this.cardWidth)
     .padding(16)
