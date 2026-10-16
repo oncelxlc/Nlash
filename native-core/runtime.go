@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/metacubex/mihomo/component/dialer"
@@ -69,6 +70,17 @@ type coreRuntime struct {
 }
 
 var runtimeInstance = &coreRuntime{state: coreStopped}
+var activeSocketProtect atomic.Pointer[protectClient]
+
+func init() {
+	// Keep the hook stable while delay requests and proxy lifecycle operations overlap.
+	dialer.DefaultSocketHook = func(_ string, _ string, connection syscall.RawConn) error {
+		if protect := activeSocketProtect.Load(); protect != nil {
+			return protectSocket(protect, connection)
+		}
+		return nil
+	}
+}
 
 func (runtime *coreRuntime) getState() coreRuntimeState {
 	runtime.mu.RLock()
@@ -147,7 +159,7 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	if err != nil {
 		return runtime.setFailure(coreConfigInvalid, err)
 	}
-	cfg, proxyGroupOrder, err := parseRuntimeConfigData(data)
+	cfg, proxyGroupOrder, err := parseRuntimeConfigData(data, false)
 	if err != nil {
 		return runtime.setFailure(coreConfigInvalid, err)
 	}
@@ -157,7 +169,7 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	}
 	runtime.protect = nil
 	runtime.proxyEnabled = false
-	dialer.DefaultSocketHook = nil
+	activeSocketProtect.Store(nil)
 	executor.ApplyConfig(cfg, true)
 	runtime.configPath = options.configPath
 	runtime.configData = data
@@ -192,7 +204,7 @@ func (runtime *coreRuntime) applyConfig(configPath string, rollback bool) coreCo
 	}
 	C.SetHomeDir(runtime.workDir)
 	C.SetConfig(configPath)
-	cfg, order, err := parseRuntimeConfigData(data)
+	cfg, order, err := parseRuntimeConfigData(data, runtime.proxyEnabled)
 	if err != nil {
 		C.SetConfig(runtime.configPath)
 		return commandFailure("CONFIG_INVALID", sanitizeCoreError(err))
@@ -200,7 +212,7 @@ func (runtime *coreRuntime) applyConfig(configPath string, rollback bool) coreCo
 	configureReloadTun(cfg, runtime.proxyEnabled)
 	previous := runtime.proxySnapshot()
 	if err = applyRuntimeConfig(cfg); err != nil {
-		oldConfig, restoreErr := runtime.parseActiveConfig()
+		oldConfig, restoreErr := runtime.parseActiveConfig(runtime.proxyEnabled)
 		if restoreErr == nil {
 			// Use the original TUN settings even if the failed apply changed the listener state.
 			oldConfig.General.Tun = cfg.General.Tun
@@ -263,23 +275,21 @@ func (runtime *coreRuntime) enableProxy(options coreProxyOptions) (code coreErro
 	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			dialer.DefaultSocketHook = nil
+			activeSocketProtect.Store(nil)
 			protect.close()
 			runtime.proxyEnabled = false
 			code = runtime.setFailure(coreStartFailed, fmt.Errorf("enable proxy panic: %v", recovered))
 		}
 	}()
-	cfg, err := runtime.parseActiveConfig()
+	cfg, err := runtime.parseActiveConfig(true)
 	if err != nil {
 		protect.close()
 		return runtime.reject(coreConfigInvalid, err)
 	}
 	configureHarmonyTun(cfg, options.tunFD, options.mtu)
-	dialer.DefaultSocketHook = func(_ string, _ string, connection syscall.RawConn) error {
-		return protectSocket(protect, connection)
-	}
+	activeSocketProtect.Store(protect)
 	if err = applyConfigAndVerifyTun(cfg); err != nil {
-		dialer.DefaultSocketHook = nil
+		activeSocketProtect.Store(nil)
 		protect.close()
 		if rollbackErr := runtime.applyCoreOnlyConfig(); rollbackErr != nil {
 			return runtime.setFailure(coreStartFailed,
@@ -311,7 +321,7 @@ func (runtime *coreRuntime) disableProxy() (code coreErrorCode) {
 	if err := runtime.applyCoreOnlyConfig(); err != nil {
 		return runtime.reject(coreStopFailed, err)
 	}
-	dialer.DefaultSocketHook = nil
+	activeSocketProtect.Store(nil)
 	runtime.protect = nil
 	runtime.proxyEnabled = false
 	if previousProtect != nil {
@@ -327,23 +337,23 @@ func (runtime *coreRuntime) isProxyEnabled() bool {
 	return runtime.proxyEnabled
 }
 
-func (runtime *coreRuntime) parseActiveConfig() (*config.Config, error) {
+func (runtime *coreRuntime) parseActiveConfig(autoHealthChecks bool) (*config.Config, error) {
 	if runtime.configPath == "" || runtime.workDir == "" {
 		return nil, errors.New("active core configuration is unavailable")
 	}
 	C.SetHomeDir(runtime.workDir)
 	C.SetConfig(runtime.configPath)
-	cfg, _, err := parseRuntimeConfigData(runtime.configData)
+	cfg, _, err := parseRuntimeConfigData(runtime.configData, autoHealthChecks)
 	return cfg, err
 }
 
 func (runtime *coreRuntime) applyCoreOnlyConfig() error {
-	cfg, err := runtime.parseActiveConfig()
+	cfg, err := runtime.parseActiveConfig(false)
 	if err != nil {
 		return err
 	}
 	configureHarmonyCore(cfg)
-	dialer.DefaultSocketHook = nil
+	activeSocketProtect.Store(nil)
 	executor.ApplyConfig(cfg, true)
 	if listener.GetTunConf().Enable {
 		return errors.New("TUN listener did not stop")
@@ -391,19 +401,25 @@ func parseRuntimeConfigWithPath(configPath string) (*config.Config, []string, er
 	if err != nil {
 		return nil, nil, err
 	}
-	return parseRuntimeConfigData(data)
+	return parseRuntimeConfigData(data, true)
 }
 
-func parseRuntimeConfigData(data []byte) (*config.Config, []string, error) {
+func parseRuntimeConfigData(data []byte, autoHealthChecks bool) (*config.Config, []string, error) {
 	raw, err := config.UnmarshalRawConfig(data)
 	if err != nil {
 		return nil, nil, err
 	}
 	proxyGroupOrder := rawProxyGroupOrder(raw)
 	applyHarmonyGeoMirrors(raw)
+	if !autoHealthChecks {
+		disableAutomaticHealthChecks(raw)
+	}
 	cfg, err := config.ParseRawConfig(raw)
 	if err != nil {
 		return nil, nil, err
+	}
+	if !autoHealthChecks {
+		pauseCompatibleHealthChecks(cfg)
 	}
 	return cfg, proxyGroupOrder, nil
 }
@@ -512,7 +528,7 @@ func (runtime *coreRuntime) stop() (code coreErrorCode) {
 			code = runtime.setFailure(coreStopFailed, fmt.Errorf("mihomo stop panic: %v", recovered))
 		}
 	}()
-	dialer.DefaultSocketHook = nil
+	activeSocketProtect.Store(nil)
 	executor.Shutdown()
 	protect := runtime.protect
 	runtime.protect = nil

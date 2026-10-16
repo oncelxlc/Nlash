@@ -1,5 +1,5 @@
 import { AppSettings, AppThemeMode, NavigationTransition, SettingsStoreSnapshot } from '../model/SettingsModels';
-import { NAVIGATION_TRANSITION_OPTIONS, REFRESH_INTERVAL_OPTIONS } from '../constants/SettingsConstants';
+import { NAVIGATION_TRANSITION_OPTIONS } from '../constants/SettingsConstants';
 import { RuntimeStoreSnapshot } from '../model/RuntimeModels';
 import { feedbackService } from '../services/FeedbackService';
 import { coreClient } from '../services/CoreClient';
@@ -81,7 +81,7 @@ export struct SettingsPage {
   private updateSections(): void {
     this.sections.splice(0, this.sections.length(), [
       { itemsCount: 1, crossCount: 1, margin: { bottom: 16 } },
-      { itemsCount: 4, crossCount: this.metrics.sizeClass === ResponsiveSizeClass.COMPACT ? 1 : 2,
+      { itemsCount: 3, crossCount: this.metrics.sizeClass === ResponsiveSizeClass.COMPACT ? 1 : 2,
         columnsGap: 12, rowsGap: 12 },
       { itemsCount: 1, crossCount: 1, margin: { top: 16 } }
     ]);
@@ -112,15 +112,6 @@ export struct SettingsPage {
     try {
       await settingsStore.setThemeMode(theme);
       feedbackService.success('主题设置已保存');
-    } catch (error) {
-      feedbackService.error(this.errorMessage(error));
-    }
-  }
-
-  private async changeRefreshInterval(seconds: number): Promise<void> {
-    try {
-      await settingsStore.setRefreshIntervalSeconds(seconds);
-      feedbackService.success(`数据刷新间隔已设为 ${seconds} 秒`);
     } catch (error) {
       feedbackService.error(this.errorMessage(error));
     }
@@ -236,22 +227,6 @@ export struct SettingsPage {
   }
 
   @Builder
-  private dataCard() {
-    Column({ space: 16 }) {
-      this.sectionTitle('运行数据', '速度、连接与节点信息的刷新间隔')
-      SingleChoiceControl({
-        labels: REFRESH_INTERVAL_OPTIONS.map((seconds: number): string => `${seconds} 秒`),
-        selectedIndex: REFRESH_INTERVAL_OPTIONS.indexOf(this.settings.refreshIntervalSeconds),
-        isEnabled: !this.saving,
-        accessibilityLabel: '运行数据刷新间隔',
-        onChange: (index: number): void => { this.changeRefreshInterval(REFRESH_INTERVAL_OPTIONS[index]); }
-      })
-    }
-    .width(this.settingsCardWidth()).padding(16)
-    .borderRadius(CARD_RADIUS).backgroundColor($r('app.color.card_background'))
-  }
-
-  @Builder
   private cleanupCard() {
     Column({ space: 12 }) {
       this.sectionTitle('数据管理', '管理当前累计统计和会话记录')
@@ -276,7 +251,6 @@ export struct SettingsPage {
       }
       FlowItem() { this.themeCard() }
       FlowItem() { this.networkCard() }
-      FlowItem() { this.dataCard() }
       FlowItem() { this.cleanupCard() }
       FlowItem() {
         Column({ space: 12 }) {

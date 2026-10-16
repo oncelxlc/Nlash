@@ -6,7 +6,7 @@ import {
   ProxySnapshotSource,
   RuntimeStoreSnapshot
 } from '../model/RuntimeModels';
-import { proxyDelayLabel, proxyNodeRenderKey, visibleProxyGroups } from '../utils/RuntimeUtils';
+import { proxyNodeRenderKey, visibleProxyGroups } from '../utils/RuntimeUtils';
 import { AppSettings, SettingsStoreSnapshot } from '../model/SettingsModels';
 import { feedbackService } from '../services/FeedbackService';
 import { runtimeStore } from '../stores/RuntimeStore';
@@ -15,12 +15,13 @@ import { ResponsiveMetrics } from '../model/ResponsiveModels';
 import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
 import {
   BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET,
-  CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
+  CAPTION_FONT_SIZE
 } from '../constants/UiConstants';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyStateBackground } from '../components/EmptyStateBackground';
 import { SingleChoiceControl } from '../components/SingleChoiceControl';
 import { StatusBadge } from '../components/StatusBadge';
+import { ProxyNodeCard } from '../components/ProxyNodeCard';
 
 @Component
 export struct ProxyPage {
@@ -35,6 +36,7 @@ export struct ProxyPage {
   @State delayOperations: ProxyDelayOperationSnapshot[] = [];
   @State settings: AppSettings = settingsStore.getSnapshot().settings;
   @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
+  private proxyGroups: ProxyGroupSnapshot[] = [];
   private unsubscribeRuntime: (() => void) | undefined = undefined;
   private unsubscribeSettings: (() => void) | undefined = undefined;
 
@@ -42,11 +44,25 @@ export struct ProxyPage {
     this.unsubscribeRuntime = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
       this.coreAvailable = snapshot.coreAvailable;
       this.previewLoading = snapshot.previewLoading;
-      this.groups = visibleProxyGroups(snapshot.proxies, snapshot.proxyMode);
-      this.selections = snapshot.proxySelections;
+      const groups = visibleProxyGroups(snapshot.proxies, snapshot.proxyMode);
+      if (groups.length !== this.proxyGroups.length || groups.some((group: ProxyGroupSnapshot, index: number): boolean =>
+        group !== this.proxyGroups[index])) {
+        this.proxyGroups = groups;
+        this.groups = groups;
+      }
+      if (snapshot.proxySelections.length !== this.selections.length ||
+        snapshot.proxySelections.some((selection: ProxySelection, index: number): boolean =>
+          selection.group !== this.selections[index]?.group || selection.proxy !== this.selections[index]?.proxy)) {
+        this.selections = snapshot.proxySelections;
+      }
       this.source = snapshot.proxySource;
       this.selectedGroup = snapshot.selectedProxyGroup;
-      this.delayOperations = snapshot.delayOperations;
+      if (snapshot.delayOperations.length !== this.delayOperations.length ||
+        snapshot.delayOperations.some((operation: ProxyDelayOperationSnapshot, index: number): boolean =>
+          operation.operationId !== this.delayOperations[index]?.operationId ||
+          operation.pendingProxies.join('\n') !== this.delayOperations[index]?.pendingProxies.join('\n'))) {
+        this.delayOperations = snapshot.delayOperations;
+      }
     });
     this.unsubscribeSettings = settingsStore.subscribe((snapshot: SettingsStoreSnapshot): void => {
       this.settings = snapshot.settings;
@@ -88,23 +104,10 @@ export struct ProxyPage {
       operation.group === groupName && operation.pendingProxies.includes(node.name));
   }
 
-  private isDirectNodeTesting(node: ProxyNodeSnapshot): boolean {
-    const groupName = this.currentGroup()?.name ?? '';
-    return this.delayOperations.some((operation: ProxyDelayOperationSnapshot): boolean =>
-      operation.group === groupName && operation.proxy === node.name);
-  }
-
   private isGroupTesting(): boolean {
     const groupName = this.currentGroup()?.name ?? '';
     return this.delayOperations.some((operation: ProxyDelayOperationSnapshot): boolean =>
       operation.group === groupName && operation.proxy.length === 0);
-  }
-
-  private delayColor(node: ProxyNodeSnapshot, testing: boolean): ResourceColor {
-    if (testing || !node.tested) {
-      return $r('app.color.content_secondary');
-    }
-    return node.alive ? $r('app.color.status_success') : $r('app.color.status_error');
   }
 
   private async selectNode(node: ProxyNodeSnapshot): Promise<void> {
@@ -160,68 +163,12 @@ export struct ProxyPage {
   }
 
   @Builder
-  private nodeCard(node: ProxyNodeSnapshot) {
-    Row({ space: 4 }) {
-      Button({ type: ButtonType.Normal }) {
-        Column({ space: 4 }) {
-          Row({ space: 4 }) {
-            Text(node.name)
-              .fontSize(BODY_FONT_SIZE)
-              .fontWeight(FontWeight.Medium)
-              .fontColor($r('app.color.content_primary'))
-              .maxLines(2)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-              .layoutWeight(1)
-            if (this.isNodeSelected(node)) {
-              Image($r('app.media.action_check'))
-                .width(16).height(16).fillColor($r('app.color.nav_selected'))
-            }
-          }
-          .width('100%')
-          Text(`${node.type} · ${node.udp ? 'UDP / TCP' : 'TCP'}`)
-            .fontSize(CAPTION_FONT_SIZE)
-            .fontColor($r('app.color.content_secondary'))
-            .width('100%')
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-        }
-        .alignItems(HorizontalAlign.Start)
-      }
-      .layoutWeight(1)
-      .constraintSize({ minHeight: 56 })
-      .padding(0)
-      .borderRadius(0)
-      .backgroundColor(Color.Transparent)
-      .enabled(this.currentGroup()?.selectable === true && !this.selecting)
-      .accessibilityText(`${node.name}${this.isNodeSelected(node) ? '，已选择' : ''}`)
-      .accessibilitySelected(this.isNodeSelected(node))
-      .onClick((): void => { this.selectNode(node); })
-      Text(proxyDelayLabel(node, this.isNodeTesting(node)))
-        .constraintSize({ minWidth: CONTROL_HEIGHT, minHeight: CONTROL_HEIGHT })
-        .textAlign(TextAlign.End)
-        .fontSize(CAPTION_FONT_SIZE)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(this.delayColor(node, this.isNodeTesting(node)))
-        .focusable(true)
-        .accessibilityRole(AccessibilityRoleType.BUTTON)
-        .stateStyles({ pressed: { .opacity(0.6) } })
-        .enabled(!this.isNodeTesting(node) && !this.previewLoading)
-        .accessibilityText(`测试 ${node.name} 延迟，${proxyDelayLabel(node, this.isNodeTesting(node))}`)
-        .onClick((): void => { this.testNode(node); })
-    }
-    .width('100%')
-    .padding(8)
-    .borderRadius(CARD_RADIUS)
-    .backgroundColor(this.isNodeSelected(node) ?
-      $r('app.color.nav_selected_background') : $r('app.color.card_background'))
-  }
-
-  @Builder
   private groupTabs() {
     SingleChoiceControl({
       labels: this.groups.map((group: ProxyGroupSnapshot): string => group.name),
       selectedIndex: this.groups.findIndex((group: ProxyGroupSnapshot): boolean => group.name === this.selectedGroup),
       scrollable: true,
+      textOnly: true,
       accessibilityLabel: '代理组',
       onChange: (index: number): void => {
         const group = this.groups[index];
@@ -289,9 +236,20 @@ export struct ProxyPage {
             })
           }
           Grid() {
-            ForEach(this.currentGroup()?.nodes ?? [], (node: ProxyNodeSnapshot) => {
-              GridItem() { this.nodeCard(node) }
-            }, (node: ProxyNodeSnapshot): string => proxyNodeRenderKey(node))
+            ForEach(this.currentGroup()?.nodes ?? [], (node: ProxyNodeSnapshot, index: number) => {
+              GridItem() {
+                ProxyNodeCard({
+                  // Resolve from state so a stable key does not retain the original node.
+                  node: this.currentGroup()?.nodes[index] ?? node,
+                  selected: this.isNodeSelected(node),
+                  canSelect: this.currentGroup()?.selectable === true && !this.selecting,
+                  testing: this.isNodeTesting(node),
+                  canTest: !this.previewLoading,
+                  onSelect: (): void => { this.selectNode(node); },
+                  onTest: (): void => { this.testNode(node); }
+                })
+              }
+            }, (node: ProxyNodeSnapshot): string => `${this.selectedGroup.length}:${this.selectedGroup}:${proxyNodeRenderKey(node)}`)
           }
           .columnsTemplate(this.metrics.proxyColumns)
           .columnsGap(this.metrics.cardGap)

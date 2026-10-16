@@ -16,6 +16,12 @@ export interface TrafficSample {
   downloadSpeed: number;
 }
 
+export interface TrafficChartPoint {
+  x: number;
+  y: number;
+  slope: number;
+}
+
 export interface DashboardSnapshot {
   mode: RuntimeMode;
   uploadSpeed: number;

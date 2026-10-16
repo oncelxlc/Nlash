@@ -125,6 +125,10 @@
       "value": "#3F3F46"
     },
     {
+      "name": "chart_line",
+      "value": "#C2D2D6"
+    },
+    {
       "name": "action_primary",
       "value": "#8AB4FF"
     }

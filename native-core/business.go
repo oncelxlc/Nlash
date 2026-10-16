@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
+	"github.com/metacubex/mihomo/adapter/provider"
 	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/config"
 	C "github.com/metacubex/mihomo/constant"
@@ -173,6 +174,21 @@ func (runtime *coreRuntime) executeCommand(raw string) string {
 	if command.Type == "rollbackConfig" {
 		return marshalCommandResponse(runtime.applyConfig("", true))
 	}
+	if command.Type == "previewGroupDelay" {
+		var payload previewGroupDelayPayload
+		if !decodeCommandPayload(command.Payload, &payload) || strings.TrimSpace(payload.ConfigPath) == "" ||
+			strings.TrimSpace(payload.Group) == "" {
+			return marshalCommandResponse(commandFailure("INVALID_ARGUMENT", "preview delay request is invalid"))
+		}
+		result, err := runtime.previewGroupDelay(payload)
+		if err != nil {
+			return marshalCommandResponse(commandFailure("DELAY_FAILED", err.Error()))
+		}
+		return marshalCommandResponse(commandSuccess(result))
+	}
+	if command.Type == "testDelay" || command.Type == "testGroupDelay" {
+		return marshalCommandResponse(runtime.executeDelayCommand(command))
+	}
 	runtime.mu.RLock()
 	defer runtime.mu.RUnlock()
 	if command.Type == "previewProxySnapshot" {
@@ -185,18 +201,6 @@ func (runtime *coreRuntime) executeCommand(raw string) string {
 			return marshalCommandResponse(commandFailure("PREVIEW_FAILED", err.Error()))
 		}
 		return marshalCommandResponse(commandSuccess(snapshot))
-	}
-	if command.Type == "previewGroupDelay" {
-		var payload previewGroupDelayPayload
-		if !decodeCommandPayload(command.Payload, &payload) || strings.TrimSpace(payload.ConfigPath) == "" ||
-			strings.TrimSpace(payload.Group) == "" {
-			return marshalCommandResponse(commandFailure("INVALID_ARGUMENT", "preview delay request is invalid"))
-		}
-		result, err := previewGroupDelay(payload)
-		if err != nil {
-			return marshalCommandResponse(commandFailure("DELAY_FAILED", err.Error()))
-		}
-		return marshalCommandResponse(commandSuccess(result))
 	}
 	if runtime.state != coreRunning {
 		return marshalCommandResponse(commandFailure("CORE_NOT_RUNNING", "core is not running"))
@@ -218,24 +222,6 @@ func (runtime *coreRuntime) executeCommand(raw string) string {
 			response = commandFailure("SELECT_FAILED", err.Error())
 		} else {
 			response = commandSuccess(nil)
-		}
-	case "testDelay":
-		var payload delayTestPayload
-		if !decodeCommandPayload(command.Payload, &payload) {
-			response = commandFailure("INVALID_ARGUMENT", "delay test is invalid")
-		} else if delay, err := testProxyDelay(payload); err != nil {
-			response = commandFailure("DELAY_FAILED", err.Error())
-		} else {
-			response = commandSuccess(map[string]any{"proxy": payload.Proxy, "delay": delay})
-		}
-	case "testGroupDelay":
-		var payload groupDelayPayload
-		if !decodeCommandPayload(command.Payload, &payload) || strings.TrimSpace(payload.Group) == "" {
-			response = commandFailure("INVALID_ARGUMENT", "group delay test is invalid")
-		} else if result, err := testRuntimeGroupDelay(payload); err != nil {
-			response = commandFailure("DELAY_FAILED", err.Error())
-		} else {
-			response = commandSuccess(result)
 		}
 	case "closeConnection":
 		var payload closeConnectionPayload
@@ -268,6 +254,37 @@ func (runtime *coreRuntime) executeCommand(raw string) string {
 		response = commandFailure("UNSUPPORTED", "command is unsupported")
 	}
 	return marshalCommandResponse(response)
+}
+
+func (runtime *coreRuntime) executeDelayCommand(command coreCommand) coreCommandResponse {
+	// Capture the immutable proxy map; network waits must not hold up lifecycle writers.
+	runtime.mu.RLock()
+	running := runtime.state == coreRunning
+	proxies := tunnel.Proxies()
+	runtime.mu.RUnlock()
+	if !running {
+		return commandFailure("CORE_NOT_RUNNING", "core is not running")
+	}
+	if command.Type == "testDelay" {
+		var payload delayTestPayload
+		if !decodeCommandPayload(command.Payload, &payload) {
+			return commandFailure("INVALID_ARGUMENT", "delay test is invalid")
+		}
+		delay, err := testProxyDelay(proxies, payload)
+		if err != nil {
+			return commandFailure("DELAY_FAILED", err.Error())
+		}
+		return commandSuccess(map[string]any{"proxy": payload.Proxy, "delay": delay})
+	}
+	var payload groupDelayPayload
+	if !decodeCommandPayload(command.Payload, &payload) || strings.TrimSpace(payload.Group) == "" {
+		return commandFailure("INVALID_ARGUMENT", "group delay test is invalid")
+	}
+	result, err := testRuntimeGroupDelay(proxies, payload)
+	if err != nil {
+		return commandFailure("DELAY_FAILED", err.Error())
+	}
+	return commandSuccess(result)
 }
 
 func restoreProxySnapshot(snapshot proxySnapshot) error {
@@ -373,6 +390,33 @@ type closeableProvider interface {
 	Close() error
 }
 
+type manualHealthCheckProvider struct {
+	*provider.CompatibleProvider
+}
+
+func (provider *manualHealthCheckProvider) Initial() error { return nil }
+
+func disableAutomaticHealthChecks(raw *config.RawConfig) {
+	for _, group := range raw.ProxyGroup {
+		group["interval"] = 0
+	}
+	for _, provider := range raw.ProxyProvider {
+		if healthCheck, ok := provider["health-check"].(map[string]any); ok {
+			healthCheck["enable"] = false
+		} else {
+			provider["health-check"] = map[string]any{"enable": false}
+		}
+	}
+}
+
+func pauseCompatibleHealthChecks(cfg *config.Config) {
+	for name, proxyProvider := range cfg.Providers {
+		if compatible, ok := proxyProvider.(*provider.CompatibleProvider); ok {
+			cfg.Providers[name] = &manualHealthCheckProvider{compatible}
+		}
+	}
+}
+
 func parsePreviewConfig(configPath string) (*config.Config, []string, func(), error) {
 	previewParseMutex.Lock()
 	defer previewParseMutex.Unlock()
@@ -389,6 +433,8 @@ func parsePreviewConfig(configPath string) (*config.Config, []string, func(), er
 		return nil, nil, func() {}, errors.New("configuration is invalid")
 	}
 	applyHarmonyGeoMirrors(raw)
+	// Preview loads providers without starting their automatic health checks.
+	disableAutomaticHealthChecks(raw)
 	order := rawProxyGroupOrder(raw)
 	homeDir, err := prepareConfigHome(cleanPath)
 	if err != nil {
@@ -409,7 +455,10 @@ func parsePreviewConfig(configPath string) (*config.Config, []string, func(), er
 		}
 	}
 	for _, provider := range cfg.Providers {
-		if err = provider.Initial(); err != nil {
+		if provider.VehicleType() != P.Compatible {
+			err = provider.Initial()
+		}
+		if err != nil {
 			cleanup()
 			return nil, nil, func() {}, errors.New("proxy provider initialization failed")
 		}
@@ -427,12 +476,14 @@ func previewProxySnapshot(configPath string) (proxySnapshot, error) {
 	return buildProxySnapshot(cfg.Proxies, order, "config", cfg.General.Mode.String()), nil
 }
 
-func previewGroupDelay(payload previewGroupDelayPayload) (groupDelayResult, error) {
+func (runtime *coreRuntime) previewGroupDelay(payload previewGroupDelayPayload) (groupDelayResult, error) {
 	testURL, timeout, err := normalizeDelayRequest(payload.URL, payload.Timeout)
 	if err != nil {
 		return groupDelayResult{}, err
 	}
+	runtime.mu.RLock()
 	cfg, _, cleanup, err := parsePreviewConfig(payload.ConfigPath)
+	runtime.mu.RUnlock()
 	if err != nil {
 		return groupDelayResult{}, err
 	}
@@ -624,8 +675,8 @@ func closeAllConnections() {
 	})
 }
 
-func testProxyDelay(payload delayTestPayload) (int32, error) {
-	proxy := tunnel.Proxies()[payload.Proxy]
+func testProxyDelay(proxies map[string]C.Proxy, payload delayTestPayload) (int32, error) {
+	proxy := proxies[payload.Proxy]
 	if proxy == nil {
 		return -1, errors.New("proxy was not found")
 	}
@@ -681,8 +732,8 @@ func classifyDelayError(err error) string {
 	return "UNKNOWN"
 }
 
-func testRuntimeGroupDelay(payload groupDelayPayload) (groupDelayResult, error) {
-	proxy := tunnel.Proxies()[payload.Group]
+func testRuntimeGroupDelay(proxies map[string]C.Proxy, payload groupDelayPayload) (groupDelayResult, error) {
+	proxy := proxies[payload.Group]
 	if proxy == nil {
 		return groupDelayResult{}, errors.New("proxy group was not found")
 	}

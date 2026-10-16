@@ -12,10 +12,9 @@ import {
 } from '../constants/NotificationConstants';
 import { VpnNotificationPresentation } from '../model/NotificationModels';
 import { DashboardSnapshot, RuntimeCommandResponse } from '../model/RuntimeModels';
-import { resolveRefreshIntervalMilliseconds } from '../utils/SettingsUtils';
+import { RUNTIME_REFRESH_INTERVAL_MS } from '../constants/RuntimeConstants';
 import { CoreServiceState, ProxyState } from '../model/VpnModels';
 import { VPN_BUNDLE_NAME } from '../constants/VpnConstants';
-import { preferenceRepository } from '../repository/PreferenceRepository';
 import { coreClient } from './CoreClient';
 
 const DOMAIN = 0x4E4C;
@@ -126,7 +125,6 @@ class VpnNotificationService {
 
   private async startInternal(context: common.Context): Promise<void> {
     try {
-      await preferenceRepository.initialize(context);
       this.tapWantAgent = await this.createTapWantAgent();
       this.pauseWantAgent = await this.createPauseWantAgent();
       const subscriber = await commonEventManager.createSubscriber({
@@ -253,20 +251,10 @@ class VpnNotificationService {
       return;
     }
     this.enqueuePublish();
-    let interval = resolveRefreshIntervalMilliseconds(0);
-    try {
-      const settings = await preferenceRepository.getAppSettings();
-      interval = resolveRefreshIntervalMilliseconds(settings.refreshIntervalSeconds);
-    } catch (error) {
-      hilog.warn(DOMAIN, TAG, 'notification refresh interval fallback');
-    }
-    if (!this.isPollingCurrent(generation)) {
-      return;
-    }
     this.pollTimer = setTimeout((): void => {
       this.pollTimer = undefined;
       this.refreshAndSchedule(generation);
-    }, interval);
+    }, RUNTIME_REFRESH_INTERVAL_MS);
   }
 
   private isPollingCurrent(generation: number): boolean {

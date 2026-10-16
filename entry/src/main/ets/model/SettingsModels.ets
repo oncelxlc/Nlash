@@ -15,7 +15,6 @@ export interface AppSettings {
   navigationTransition: NavigationTransition;
   mtu: number;
   delayTestUrl: string;
-  refreshIntervalSeconds: number;
 }
 
 export interface SettingsStoreSnapshot {

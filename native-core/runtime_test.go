@@ -78,7 +78,7 @@ func TestConfigurationHotApplyPreservesRuntimeAndAcceptedData(t *testing.T) {
 	if runtime.getState() != coreRunning || string(runtime.configData) != string(updated) {
 		t.Fatal("invalid overwrite replaced the accepted configuration")
 	}
-	if _, err := runtime.parseActiveConfig(); err != nil {
+	if _, err := runtime.parseActiveConfig(runtime.proxyEnabled); err != nil {
 		t.Fatalf("accepted config depends on overwritten file: %v", err)
 	}
 	if response := decodeTestCommandResponse(t, runtime.executeCommand(`{"type":"rollbackConfig"}`)); !response.OK {

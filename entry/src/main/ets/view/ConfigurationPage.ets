@@ -21,11 +21,12 @@ import {
 } from '../constants/UiConstants';
 
 import { PageHeader } from '../components/PageHeader';
-import { StatusBadge } from '../components/StatusBadge';
+import { selectionAnimation } from '../utils/AnimationUtils';
 import { EmptyStateBackground } from '../components/EmptyStateBackground';
 
 @Component
 export struct ConfigurationPage {
+  private selectionAnimationOptions: AnimateParam = selectionAnimation();
   @Prop forceExpanded: boolean = false;
   @State profiles: Profile[] = [];
   @State activeProfileId: string = '';
@@ -413,9 +414,6 @@ export struct ConfigurationPage {
           .layoutWeight(1)
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-        if (profile.id === this.activeProfileId) {
-          StatusBadge({ text: '当前使用', active: true })
-        }
         Button({ type: ButtonType.Normal }) {
           Image($r('app.media.action_more'))
             .width(24).height(24).fillColor($r('app.color.content_secondary'))
@@ -469,7 +467,9 @@ export struct ConfigurationPage {
     .width('100%')
     .padding({ left: 12, right: 8, top: 4, bottom: 8 })
     .borderRadius(CARD_RADIUS)
-    .backgroundColor($r('app.color.card_background'))
+    .backgroundColor(profile.id === this.activeProfileId ?
+      $r('app.color.nav_selected_background') : $r('app.color.card_background'))
+    .animation(this.selectionAnimationOptions)
     .accessibilityText(`${profile.name}，${profile.id === this.activeProfileId ? '当前使用' : '点击设为活动配置'}`)
     .accessibilitySelected(profile.id === this.activeProfileId)
     .onClick((): void => { this.selectProfile(profile.id); })

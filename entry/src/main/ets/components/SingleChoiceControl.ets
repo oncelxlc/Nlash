@@ -1,4 +1,5 @@
 import { CAPTION_FONT_SIZE, CONTROL_HEIGHT } from '../constants/UiConstants';
+import { selectionAnimation } from '../utils/AnimationUtils';
 
 @Component
 export struct SingleChoiceControl {
@@ -7,8 +8,10 @@ export struct SingleChoiceControl {
   @Prop isEnabled: boolean = true;
   @Prop compact: boolean = false;
   @Prop scrollable: boolean = false;
+  @Prop textOnly: boolean = false;
   @Prop accessibilityLabel: string = '';
   onChange: (index: number) => void = (): void => {};
+  private animationOptions: AnimateParam = selectionAnimation();
 
   @Builder
   private choices() {
@@ -21,14 +24,15 @@ export struct SingleChoiceControl {
             .constraintSize({ minWidth: CONTROL_HEIGHT })
             .padding({ left: this.compact ? 4 : 12, right: this.compact ? 4 : 12 })
             .fontSize(this.compact ? CAPTION_FONT_SIZE : 14)
-            .fontWeight(this.selectedIndex === index ? FontWeight.Medium : FontWeight.Normal)
+            .fontWeight(FontWeight.Medium)
             .textAlign(TextAlign.Center)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .fontColor(this.selectedIndex === index ?
-              $r('app.color.accent_foreground') : $r('app.color.content_primary'))
-            .backgroundColor(this.selectedIndex === index ?
-              $r('app.color.action_primary') : $r('app.color.card_background'))
+            .fontColor(this.textOnly ? (this.selectedIndex === index ?
+              $r('app.color.nav_selected') : $r('app.color.content_secondary')) : $r('app.color.content_primary'))
+            .backgroundColor(this.textOnly ? Color.Transparent : (this.selectedIndex === index ?
+              $r('app.color.nav_selected_background') : $r('app.color.card_background')))
+            .animation(this.animationOptions)
             .borderRadius({
               topLeft: index === 0 ? 6 : 0, bottomLeft: index === 0 ? 6 : 0,
               topRight: index === this.labels.length - 1 ? 6 : 0,

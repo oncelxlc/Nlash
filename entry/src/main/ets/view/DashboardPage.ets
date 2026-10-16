@@ -480,7 +480,7 @@ export struct DashboardPage {
                   RuntimeSpeedCard({
                     runtime: this.runtime, history: this.history,
                     proxyState: this.proxyState, coreState: this.coreState,
-                    cardHeight: 320
+                    cardHeight: 216
                   })
                 }
                 .layoutWeight(3)

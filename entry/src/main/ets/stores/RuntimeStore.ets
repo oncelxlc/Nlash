@@ -29,9 +29,7 @@ import {
   RuntimeStoreSnapshot,
   TrafficSample
 } from '../model/RuntimeModels';
-import { DEFAULT_RUNTIME_MODE } from '../constants/RuntimeConstants';
-import { AppSettings, SettingsStoreSnapshot } from '../model/SettingsModels';
-import { resolveRefreshIntervalMilliseconds } from '../utils/SettingsUtils';
+import { DEFAULT_RUNTIME_MODE, RUNTIME_REFRESH_INTERVAL_MS } from '../constants/RuntimeConstants';
 import { CoreServiceState, ProxyState, RuntimeLifecycleSnapshot } from '../model/VpnModels';
 import { feedbackService } from '../services/FeedbackService';
 import { preferenceRepository } from '../repository/PreferenceRepository';
@@ -43,7 +41,6 @@ import { profilePreviewService } from '../services/ProfilePreviewService';
 import { runtimeControlService } from '../services/RuntimeControlService';
 import { vpnService } from '../services/VpnService';
 import { profileStore } from './ProfileStore';
-import { settingsStore } from './SettingsStore';
 
 const MAX_REQUEST_HISTORY = 200;
 const DELAY_TEST_TIMEOUT_MS = 10000;
@@ -97,11 +94,9 @@ class RuntimeStore {
   private pollTimer: number | undefined;
   private lifecycleUnsubscribe: (() => void) | undefined;
   private profileUnsubscribe: (() => void) | undefined;
-  private settingsUnsubscribe: (() => void) | undefined;
   private dashboardRefreshMerger: RuntimeRequestMerger = new RuntimeRequestMerger();
   private proxyRefreshMerger: RuntimeRequestMerger = new RuntimeRequestMerger();
   private connectionRefreshMerger: RuntimeRequestMerger = new RuntimeRequestMerger();
-  private refreshIntervalMs: number = 3000;
   private profileId: string = '';
   private configPath: string = '';
   private profileSignature: string = '';
@@ -124,9 +119,6 @@ class RuntimeStore {
     this.profileUnsubscribe = profileStore.subscribe((snapshot: ProfileStoreSnapshot): void => {
       this.handleProfileSnapshot(snapshot);
     });
-    this.settingsUnsubscribe = settingsStore.subscribe((snapshot: SettingsStoreSnapshot): void => {
-      this.handleSettingsSnapshot(snapshot.settings);
-    });
     this.lifecycleUnsubscribe = vpnService.subscribeLifecycle((snapshot: RuntimeLifecycleSnapshot): void => {
       if (snapshot.proxyState !== this.proxyState) {
         this.proxyState = snapshot.proxyState;
@@ -145,7 +137,6 @@ class RuntimeStore {
           this.runtimeSnapshotGeneration += 1;
           this.trafficHistory = [];
           this.trafficBaseline = undefined;
-          this.invalidateDelayOperations();
           this.applyPreselectedSelections();
         }
         if (this.foreground) {
@@ -158,7 +149,6 @@ class RuntimeStore {
         }
         this.coreAvailable = false;
         this.runtimeSnapshotGeneration += 1;
-        this.invalidateDelayOperations();
         this.stopPolling();
         this.finishActiveRequests();
         this.dashboard = undefined;
@@ -407,20 +397,6 @@ class RuntimeStore {
       this.proxySource = ProxySnapshotSource.NONE;
     }
     this.loadSelectionsAndPreview(this.previewGeneration);
-  }
-
-  private handleSettingsSnapshot(settings: AppSettings): void {
-    const nextIntervalMs = resolveRefreshIntervalMilliseconds(settings.refreshIntervalSeconds);
-    if (nextIntervalMs === this.refreshIntervalMs) {
-      return;
-    }
-    this.refreshIntervalMs = nextIntervalMs;
-    this.lifecycleGeneration += 1;
-    this.stopPolling();
-    if (this.foreground && this.coreAvailable) {
-      this.refresh();
-      this.startPolling();
-    }
   }
 
   private async loadSelectionsAndPreview(generation: number): Promise<void> {
@@ -757,6 +733,9 @@ class RuntimeStore {
   }
 
   private finishDelayOperation(context: DelayOperationContext): void {
+    if (this.delayContexts.get(context.operationId) !== context) {
+      return;
+    }
     const current = this.isDelayContextCurrent(context);
     const pending = this.delayRegistry.complete(context.operationId);
     this.delayContexts.delete(context.operationId);
@@ -772,12 +751,13 @@ class RuntimeStore {
   }
 
   private isDelayContextCurrent(context: DelayOperationContext): boolean {
+    // Starting or stopping the same profile does not invalidate a manual delay query.
     if (this.delayContexts.get(context.operationId) !== context ||
       this.previewGeneration !== context.generation || this.profileSignature !== context.profileSignature ||
       this.profileId !== context.profileId || this.configPath !== context.configPath) {
       return false;
     }
-    return context.runtime ? this.coreAvailable : !this.coreAvailable;
+    return true;
   }
 
   private invalidateDelayOperations(): void {
@@ -866,7 +846,7 @@ class RuntimeStore {
         }
         this.refresh();
         this.startPolling();
-      }, this.refreshIntervalMs);
+      }, RUNTIME_REFRESH_INTERVAL_MS);
     }
   }
 

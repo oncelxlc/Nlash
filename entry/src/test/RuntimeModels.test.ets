@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
   appendTrafficSample,
+  buildTrafficChartPoints,
   connectionTitle,
   formatBytes,
   formatBytesParts,
@@ -58,6 +59,61 @@ export default function runtimeModelsTest() {
       expect(history.length).assertEqual(13);
       expect(history[0].timestamp).assertEqual(5000);
       expect(history[history.length - 1].timestamp).assertEqual(60001);
+    });
+
+    it('plotsCombinedSpeedWithinTheSixtySecondWindow', 0, () => {
+      const history: TrafficSample[] = [
+        { timestamp: 0, uploadSpeed: 40, downloadSpeed: 60 },
+        { timestamp: 30000, uploadSpeed: 80, downloadSpeed: 120 },
+        { timestamp: 60000, uploadSpeed: 60, downloadSpeed: 40 }
+      ];
+      const points = buildTrafficChartPoints(history, 300, 120);
+      expect(points.length).assertEqual(3);
+      expect(points[0].x).assertEqual(0);
+      expect(points[1].x).assertEqual(150);
+      expect(points[2].x).assertEqual(300);
+      expect(points[0].y).assertEqual(66);
+      expect(points[1].y).assertEqual(12);
+      expect(points[2].y).assertEqual(66);
+      expect(history[1].uploadSpeed).assertEqual(80);
+    });
+
+    it('handlesEmptyIdleAndSingleSampleCharts', 0, () => {
+      const idle: TrafficSample[] = [{ timestamp: 1000, uploadSpeed: 0, downloadSpeed: 0 }];
+      expect(buildTrafficChartPoints([], 300, 120).length).assertEqual(0);
+      expect(buildTrafficChartPoints(idle, 0, 120).length).assertEqual(0);
+      expect(buildTrafficChartPoints(idle, 300, Number.NaN).length).assertEqual(0);
+      const idlePoints = buildTrafficChartPoints(idle, 300, 120);
+      expect(idlePoints[0].x).assertEqual(300);
+      expect(idlePoints[0].y).assertEqual(120);
+      expect(idlePoints[0].slope).assertEqual(0);
+      const activePoints = buildTrafficChartPoints([
+        { timestamp: 1000, uploadSpeed: 160, downloadSpeed: 140 }
+      ], 300, 120);
+      expect(activePoints[0].x).assertEqual(300);
+      expect(activePoints[0].y).assertEqual(12);
+      expect(activePoints[0].slope).assertEqual(0);
+    });
+
+    it('keepsSmoothCurveHandlesWithinRealSampleRanges', 0, () => {
+      const history: TrafficSample[] = [0, 40, 100, 60, 0].map((value: number, index: number): TrafficSample => ({
+        timestamp: index * 15000, uploadSpeed: value, downloadSpeed: 0
+      }));
+      const points = buildTrafficChartPoints(history, 300, 112);
+      expect(points[1].slope < 0).assertTrue();
+      expect(points[2].slope).assertEqual(0);
+      expect(points[3].slope > 0).assertTrue();
+      for (let index = 1; index < points.length; index++) {
+        const previous = points[index - 1];
+        const current = points[index];
+        const handleWidth = (current.x - previous.x) / 3;
+        const firstY = previous.y + previous.slope * handleWidth;
+        const lastY = current.y - current.slope * handleWidth;
+        const minimum = Math.min(previous.y, current.y);
+        const maximum = Math.max(previous.y, current.y);
+        expect(firstY >= minimum && firstY <= maximum).assertTrue();
+        expect(lastY >= minimum && lastY <= maximum).assertTrue();
+      }
     });
 
     it('countsOnlyConnectedProxyIntervalsAndFreezesStoppedTraffic', 0, () => {
@@ -189,7 +245,7 @@ export default function runtimeModelsTest() {
       expect(proxyDelayLabel(reset[0].nodes[0], false)).assertEqual('⚡');
       const partial = mergeGroupDelay(reset, 'Auto', [{ proxy: 'B', delay: 88, alive: true }]);
       expect(proxyDelayLabel(partial[0].nodes[1], false)).assertEqual('88ms');
-      expect(proxyNodeRenderKey(partial[0].nodes[1]) === proxyNodeRenderKey(reset[0].nodes[1])).assertFalse();
+      expect(proxyNodeRenderKey(partial[0].nodes[1])).assertEqual(proxyNodeRenderKey(reset[0].nodes[1]));
       const failed = failPendingGroupDelay(partial, 'Auto');
       expect(proxyDelayLabel(failed[0].nodes[0], false)).assertEqual('Error');
       expect(proxyDelayLabel(failed[0].nodes[1], false)).assertEqual('88ms');
@@ -203,6 +259,31 @@ export default function runtimeModelsTest() {
       const preserved = preserveTestedProxyDelays(refreshed, failed);
       expect(proxyDelayLabel(preserved[0].nodes[0], false)).assertEqual('Error');
       expect(proxyDelayLabel(preserved[0].nodes[1], false)).assertEqual('88ms');
+      expect(preserved === failed).assertTrue();
+      expect(mergeGroupDelay(failed, 'Auto', [{ proxy: 'B', delay: 88, alive: true }]) === failed).assertTrue();
+    });
+
+    it('reusesUnchangedNodesWhenRefreshingProxyGroups', 0, () => {
+      const current: ProxyGroupSnapshot[] = [{
+        name: 'Route', type: 'Selector', selected: 'A', selectable: true, hidden: false,
+        nodes: [
+          { name: 'A', type: 'Vless', alive: false, tested: false, delay: 0, udp: true },
+          { name: 'B', type: 'Vless', alive: false, tested: false, delay: 0, udp: false }
+        ]
+      }];
+      const fresh: ProxyGroupSnapshot[] = [{
+        name: 'Route', type: 'Selector', selected: 'B', selectable: true, hidden: false,
+        nodes: [
+          { name: 'A', type: 'Vless', alive: false, tested: false, delay: 0, udp: true },
+          { name: 'B', type: 'Vless', alive: true, tested: true, delay: 64, udp: false }
+        ]
+      }];
+      const refreshed = preserveTestedProxyDelays(fresh, current);
+      expect(refreshed[0].selected).assertEqual('B');
+      expect(refreshed[0].nodes[0] === current[0].nodes[0]).assertTrue();
+      expect(refreshed[0].nodes[1].delay).assertEqual(64);
+      expect(refreshed[0].nodes[1] === current[0].nodes[1]).assertFalse();
+      expect(preserveTestedProxyDelays(fresh, refreshed) === refreshed).assertTrue();
     });
 
     it('ordersVisibleGroupsByMode', 0, () => {

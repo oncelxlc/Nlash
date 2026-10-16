@@ -1,6 +1,7 @@
 import {
   RuntimeMode,
   TrafficSample,
+  TrafficChartPoint,
   ProxyNodeSnapshot,
   ProxyGroupSnapshot,
   ProxyDelayResult,
@@ -186,14 +187,51 @@ export function appendTrafficSample(history: TrafficSample[], sample: TrafficSam
     item.timestamp >= earliestTimestamp && item.timestamp <= sample.timestamp).concat([sample]);
 }
 
+export function buildTrafficChartPoints(history: TrafficSample[], width: number, height: number): TrafficChartPoint[] {
+  if (history.length === 0 || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return [];
+  }
+  const earliestTimestamp = history[history.length - 1].timestamp - 60000;
+  const maximum = history.reduce((peak: number, sample: TrafficSample): number =>
+    Math.max(peak, sample.uploadSpeed + sample.downloadSpeed), 1);
+  const points = history.map((sample: TrafficSample): TrafficChartPoint => ({
+    x: Math.min(width, Math.max(0, sample.timestamp - earliestTimestamp) * width / 60000),
+    y: height - (sample.uploadSpeed + sample.downloadSpeed) / maximum * Math.max(0, height - 12),
+    slope: 0
+  }));
+  points.forEach((point: TrafficChartPoint, index: number): void => {
+    const previous = points[Math.max(0, index - 1)];
+    const next = points[Math.min(points.length - 1, index + 1)];
+    const left = point.x > previous.x ? (point.y - previous.y) / (point.x - previous.x) : 0;
+    const right = next.x > point.x ? (next.y - point.y) / (next.x - point.x) : 0;
+    // Bound tangents by adjacent slopes to preserve the real peaks and valleys.
+    point.slope = index === 0 ? right : (index === points.length - 1 ? left :
+      (left * right <= 0 ? 0 : Math.sign(left) * Math.min(Math.abs(left), Math.abs(right))));
+  });
+  return points;
+}
+
 export function mergeGroupDelay(groups: ProxyGroupSnapshot[], groupName: string,
   results: ProxyDelayResult[]): ProxyGroupSnapshot[] {
   const resultByName = new Map<string, ProxyDelayResult>();
   results.forEach((result: ProxyDelayResult): void => {
     resultByName.set(result.proxy, result);
   });
-  return groups.map((group: ProxyGroupSnapshot): ProxyGroupSnapshot => {
+  const merged = groups.map((group: ProxyGroupSnapshot): ProxyGroupSnapshot => {
     if (group.name !== groupName) {
+      return group;
+    }
+    const nodes = group.nodes.map((node: ProxyNodeSnapshot): ProxyNodeSnapshot => {
+      const result = resultByName.get(node.name);
+      if (result === undefined || (node.tested && node.alive === result.alive && node.delay === result.delay)) {
+        return node;
+      }
+      return {
+        name: node.name, type: node.type, alive: result.alive,
+        tested: true, delay: result.delay, udp: node.udp
+      };
+    });
+    if (nodes.every((node: ProxyNodeSnapshot, index: number): boolean => node === group.nodes[index])) {
       return group;
     }
     return {
@@ -202,22 +240,10 @@ export function mergeGroupDelay(groups: ProxyGroupSnapshot[], groupName: string,
       selected: group.selected,
       selectable: group.selectable,
       hidden: group.hidden,
-      nodes: group.nodes.map((node: ProxyNodeSnapshot): ProxyNodeSnapshot => {
-        const result = resultByName.get(node.name);
-        if (result === undefined) {
-          return node;
-        }
-        return {
-          name: node.name,
-          type: node.type,
-          alive: result.alive,
-          tested: true,
-          delay: result.delay,
-          udp: node.udp
-        };
-      })
+      nodes: nodes
     };
   });
+  return merged.every((group: ProxyGroupSnapshot, index: number): boolean => group === groups[index]) ? groups : merged;
 }
 
 export function preserveTestedProxyDelays(freshGroups: ProxyGroupSnapshot[],
@@ -234,7 +260,31 @@ export function preserveTestedProxyDelays(freshGroups: ProxyGroupSnapshot[],
       merged = mergeGroupDelay(merged, group.name, tested);
     }
   });
-  return merged;
+  const reconciled = merged.map((group: ProxyGroupSnapshot): ProxyGroupSnapshot => {
+    const current = currentGroups.find((item: ProxyGroupSnapshot): boolean => item.name === group.name);
+    if (current === undefined) {
+      return group;
+    }
+    const currentNodes = new Map<string, ProxyNodeSnapshot>();
+    current.nodes.forEach((node: ProxyNodeSnapshot): void => { currentNodes.set(node.name, node); });
+    const nodes = group.nodes.map((node: ProxyNodeSnapshot): ProxyNodeSnapshot => {
+      const previous = currentNodes.get(node.name);
+      return previous !== undefined && previous.type === node.type && previous.alive === node.alive &&
+        previous.tested === node.tested && previous.delay === node.delay && previous.udp === node.udp ? previous : node;
+    });
+    if (group.type === current.type && group.selected === current.selected && group.selectable === current.selectable &&
+      group.hidden === current.hidden && nodes.length === current.nodes.length &&
+      nodes.every((node: ProxyNodeSnapshot, index: number): boolean => node === current.nodes[index])) {
+      return current;
+    }
+    return {
+      name: group.name, type: group.type, selected: group.selected,
+      selectable: group.selectable, hidden: group.hidden, nodes: nodes
+    };
+  });
+  return reconciled.length === currentGroups.length &&
+    reconciled.every((group: ProxyGroupSnapshot, index: number): boolean => group === currentGroups[index]) ?
+    currentGroups : reconciled;
 }
 
 export function resetGroupDelay(groups: ProxyGroupSnapshot[], groupName: string,
@@ -306,7 +356,7 @@ export function proxyDelayLabel(node: ProxyNodeSnapshot, testing: boolean): stri
 }
 
 export function proxyNodeRenderKey(node: ProxyNodeSnapshot): string {
-  return `${node.name.length}:${node.name}:${node.tested ? 1 : 0}:${node.alive ? 1 : 0}:${node.delay}`;
+  return `${node.name.length}:${node.name}`;
 }
 
 export function pruneProxySelections(groups: ProxyGroupSnapshot[],

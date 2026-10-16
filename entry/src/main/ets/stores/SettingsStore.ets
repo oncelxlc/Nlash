@@ -1,7 +1,6 @@
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { AppSettings, AppThemeMode, NavigationTransition, SettingsStoreListener, SettingsStoreSnapshot } from '../model/SettingsModels';
 import { DEFAULT_APP_SETTINGS } from '../constants/SettingsConstants';
-import { isRefreshIntervalSeconds } from '../utils/SettingsUtils';
 import { preferenceRepository } from '../repository/PreferenceRepository';
 
 class SettingsStore {
@@ -49,8 +48,7 @@ class SettingsStore {
       themeMode: mode,
       navigationTransition: this.settings.navigationTransition,
       mtu: this.settings.mtu,
-      delayTestUrl: this.settings.delayTestUrl,
-      refreshIntervalSeconds: this.settings.refreshIntervalSeconds
+      delayTestUrl: this.settings.delayTestUrl
     });
     this.applyTheme(mode);
   }
@@ -60,8 +58,7 @@ class SettingsStore {
       themeMode: this.settings.themeMode,
       navigationTransition: transition,
       mtu: this.settings.mtu,
-      delayTestUrl: this.settings.delayTestUrl,
-      refreshIntervalSeconds: this.settings.refreshIntervalSeconds
+      delayTestUrl: this.settings.delayTestUrl
     });
   }
 
@@ -73,8 +70,7 @@ class SettingsStore {
       themeMode: this.settings.themeMode,
       mtu: Math.round(mtu),
       navigationTransition: this.settings.navigationTransition,
-      delayTestUrl: this.settings.delayTestUrl,
-      refreshIntervalSeconds: this.settings.refreshIntervalSeconds
+      delayTestUrl: this.settings.delayTestUrl
     });
   }
 
@@ -87,8 +83,7 @@ class SettingsStore {
       themeMode: this.settings.themeMode,
       mtu: this.settings.mtu,
       delayTestUrl: value,
-      navigationTransition: this.settings.navigationTransition,
-      refreshIntervalSeconds: this.settings.refreshIntervalSeconds
+      navigationTransition: this.settings.navigationTransition
     });
   }
 
@@ -104,20 +99,6 @@ class SettingsStore {
       themeMode: this.settings.themeMode,
       mtu: Math.round(mtu),
       delayTestUrl: value,
-      navigationTransition: this.settings.navigationTransition,
-      refreshIntervalSeconds: this.settings.refreshIntervalSeconds
-    });
-  }
-
-  async setRefreshIntervalSeconds(seconds: number): Promise<void> {
-    if (!isRefreshIntervalSeconds(seconds)) {
-      throw new Error('刷新间隔必须是 3、5、10 或 30 秒');
-    }
-    await this.save({
-      themeMode: this.settings.themeMode,
-      mtu: this.settings.mtu,
-      delayTestUrl: this.settings.delayTestUrl,
-      refreshIntervalSeconds: seconds,
       navigationTransition: this.settings.navigationTransition
     });
   }
@@ -173,8 +154,7 @@ class SettingsStore {
       themeMode: settings.themeMode,
       navigationTransition: settings.navigationTransition,
       mtu: settings.mtu,
-      delayTestUrl: settings.delayTestUrl,
-      refreshIntervalSeconds: settings.refreshIntervalSeconds
+      delayTestUrl: settings.delayTestUrl
     };
   }
 
