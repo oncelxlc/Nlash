@@ -212,8 +212,6 @@ export struct ProxyPage {
     .width('100%')
     .padding(8)
     .borderRadius(CARD_RADIUS)
-    .border({ width: 1, color: this.isNodeSelected(node) ?
-      $r('app.color.nav_selected') : $r('app.color.nav_divider') })
     .backgroundColor(this.isNodeSelected(node) ?
       $r('app.color.nav_selected_background') : $r('app.color.card_background'))
   }
@@ -300,7 +298,7 @@ export struct ProxyPage {
           .rowsGap(this.metrics.cardGap)
           .width('100%').height('100%')
           .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
-          .scrollBar(BarState.Auto)
+          .scrollBar(BarState.Off)
           .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
         }
         .width('100%').layoutWeight(1)

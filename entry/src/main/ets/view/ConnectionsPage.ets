@@ -155,7 +155,6 @@ export struct ConnectionsPage {
         .fontColor($r('app.color.content_primary'))
         .placeholderColor($r('app.color.content_secondary'))
         .backgroundColor($r('app.color.card_background'))
-        .border({ width: 1, color: $r('app.color.control_border') })
         .borderRadius(BUTTON_RADIUS)
         .accessibilityText('搜索实时连接')
         .onChange((value: string): void => { this.query = value; })
@@ -202,7 +201,7 @@ export struct ConnectionsPage {
         .borderRadius(CARD_RADIUS)
         .contentEndOffset(FLOATING_NAVIGATION_INSET + 16)
         .clip(true)
-        .scrollBar(BarState.Auto)
+        .scrollBar(BarState.Off)
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
       .width('100%').layoutWeight(1)

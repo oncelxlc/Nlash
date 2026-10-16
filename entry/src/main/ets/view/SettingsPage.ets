@@ -209,7 +209,7 @@ export struct SettingsPage {
         .type(InputType.Number).height(CONTROL_HEIGHT).width('100%').fontSize(BODY_FONT_SIZE)
         .fontColor($r('app.color.content_primary')).placeholderColor($r('app.color.content_secondary'))
         .backgroundColor($r('app.color.app_background'))
-        .border({ width: 1, color: $r('app.color.control_border') }).borderRadius(BUTTON_RADIUS)
+        .borderRadius(BUTTON_RADIUS)
         .enabled(!this.saving).accessibilityText('VPN MTU，1280 至 9000')
         .onChange((value: string): void => { this.mtuInput = value; })
       Text('延迟测试地址 · HTTP(S)').fontSize(14).fontWeight(FontWeight.Medium)
@@ -218,7 +218,7 @@ export struct SettingsPage {
         .type(InputType.URL).height(CONTROL_HEIGHT).width('100%').fontSize(BODY_FONT_SIZE)
         .fontColor($r('app.color.content_primary')).placeholderColor($r('app.color.content_secondary'))
         .backgroundColor($r('app.color.app_background'))
-        .border({ width: 1, color: $r('app.color.control_border') }).borderRadius(BUTTON_RADIUS)
+        .borderRadius(BUTTON_RADIUS)
         .enabled(!this.saving).accessibilityText('延迟测试 HTTP 或 HTTPS 地址')
         .onChange((value: string): void => { this.delayUrlInput = value; })
       if (this.networkError.length > 0) {
@@ -292,6 +292,7 @@ export struct SettingsPage {
       }
     }
     .cachedCount(6)
+    .scrollBar(BarState.Off)
     .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
     .padding({
       top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding

@@ -502,6 +502,7 @@ export struct DashboardPage {
         }
         .width('100%')
         .layoutWeight(1)
+        .scrollBar(BarState.Off)
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
       .width('100%')

@@ -29,10 +29,6 @@ export struct SingleChoiceControl {
               $r('app.color.accent_foreground') : $r('app.color.content_primary'))
             .backgroundColor(this.selectedIndex === index ?
               $r('app.color.action_primary') : $r('app.color.card_background'))
-            .border({
-              width: { top: 1, bottom: 1, left: index === 0 ? 1 : 0, right: 1 },
-              color: this.selectedIndex === index ? $r('app.color.action_primary') : $r('app.color.control_border')
-            })
             .borderRadius({
               topLeft: index === 0 ? 6 : 0, bottomLeft: index === 0 ? 6 : 0,
               topRight: index === this.labels.length - 1 ? 6 : 0,

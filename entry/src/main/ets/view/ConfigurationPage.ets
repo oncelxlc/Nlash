@@ -470,8 +470,6 @@ export struct ConfigurationPage {
     .padding({ left: 12, right: 8, top: 4, bottom: 8 })
     .borderRadius(CARD_RADIUS)
     .backgroundColor($r('app.color.card_background'))
-    .border({ width: 1, color: profile.id === this.activeProfileId ?
-      $r('app.color.nav_selected') : $r('app.color.nav_divider') })
     .accessibilityText(`${profile.name}，${profile.id === this.activeProfileId ? '当前使用' : '点击设为活动配置'}`)
     .accessibilitySelected(profile.id === this.activeProfileId)
     .onClick((): void => { this.selectProfile(profile.id); })
@@ -490,7 +488,6 @@ export struct ConfigurationPage {
         .width('100%').height(CONTROL_HEIGHT)
         .fontColor($r('app.color.content_primary'))
         .backgroundColor($r('app.color.card_background'))
-        .border({ width: 1, color: $r('app.color.control_border') })
         .borderRadius(BUTTON_RADIUS)
         .enabled(this.busyProfileId.length === 0)
         .accessibilityText('配置名称')
@@ -501,7 +498,6 @@ export struct ConfigurationPage {
           .type(InputType.URL).width('100%').height(CONTROL_HEIGHT)
           .fontColor($r('app.color.content_primary'))
           .backgroundColor($r('app.color.card_background'))
-          .border({ width: 1, color: $r('app.color.control_border') })
           .borderRadius(BUTTON_RADIUS)
           .enabled(this.busyProfileId.length === 0)
           .accessibilityText('订阅 URL')
@@ -524,7 +520,6 @@ export struct ConfigurationPage {
           .type(InputType.Number).width('100%').height(CONTROL_HEIGHT)
           .fontColor($r('app.color.content_primary'))
           .backgroundColor($r('app.color.card_background'))
-          .border({ width: 1, color: $r('app.color.control_border') })
           .borderRadius(BUTTON_RADIUS)
           .enabled(this.busyProfileId.length === 0)
           .accessibilityText('自动更新间隔，分钟')
@@ -576,6 +571,7 @@ export struct ConfigurationPage {
     }
     .width('100%')
     .height('100%')
+    .scrollBar(BarState.Off)
     .backgroundColor($r('app.color.app_background'))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
@@ -611,7 +607,7 @@ export struct ConfigurationPage {
         .lanes(this.metrics.profileColumns.split(' ').length, this.metrics.cardGap)
         .width('100%').layoutWeight(1)
         .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
-        .scrollBar(BarState.Auto)
+        .scrollBar(BarState.Off)
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
     }
@@ -628,7 +624,7 @@ export struct ConfigurationPage {
       TextInput({ placeholder: '配置名称', text: this.addName })
         .width('100%').height(CONTROL_HEIGHT)
         .fontColor($r('app.color.content_primary')).backgroundColor($r('app.color.surface_muted'))
-        .border({ width: 1, color: $r('app.color.control_border') }).borderRadius(BUTTON_RADIUS)
+        .borderRadius(BUTTON_RADIUS)
         .enabled(!this.isAddingSubscription())
         .accessibilityText('订阅名称，可选')
         .onChange((value: string): void => { this.addName = value; })
@@ -636,7 +632,7 @@ export struct ConfigurationPage {
       TextInput({ placeholder: 'https://example.com/subscription', text: this.addUrl })
         .width('100%').height(CONTROL_HEIGHT).type(InputType.URL)
         .fontColor($r('app.color.content_primary')).backgroundColor($r('app.color.surface_muted'))
-        .border({ width: 1, color: $r('app.color.control_border') }).borderRadius(BUTTON_RADIUS)
+        .borderRadius(BUTTON_RADIUS)
         .enabled(!this.isAddingSubscription())
         .accessibilityText('订阅 URL')
         .onChange((value: string): void => { this.addUrl = value; })
