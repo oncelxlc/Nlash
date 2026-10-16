@@ -3,7 +3,6 @@ import {
   ProxyGroupSnapshot,
   ProxyNodeSnapshot,
   ProxySelection,
-  ProxySnapshotSource,
   RuntimeStoreSnapshot
 } from '../model/RuntimeModels';
 import { proxyNodeRenderKey, visibleProxyGroups } from '../utils/RuntimeUtils';
@@ -20,7 +19,6 @@ import {
 import { PageHeader } from '../components/PageHeader';
 import { EmptyStateBackground } from '../components/EmptyStateBackground';
 import { textTabBar } from '../components/TextTabBar';
-import { StatusBadge } from '../components/StatusBadge';
 import { ProxyNodeCard } from '../components/ProxyNodeCard';
 
 @Component
@@ -31,7 +29,6 @@ export struct ProxyPage {
   @State previewLoading: boolean = false;
   @State groups: ProxyGroupSnapshot[] = [];
   @State selections: ProxySelection[] = [];
-  @State source: ProxySnapshotSource = ProxySnapshotSource.NONE;
   @State selectedGroup: string = '';
   @State delayOperations: ProxyDelayOperationSnapshot[] = [];
   @State settings: AppSettings = settingsStore.getSnapshot().settings;
@@ -55,7 +52,6 @@ export struct ProxyPage {
           selection.group !== this.selections[index]?.group || selection.proxy !== this.selections[index]?.proxy)) {
         this.selections = snapshot.proxySelections;
       }
-      this.source = snapshot.proxySource;
       this.selectedGroup = snapshot.selectedProxyGroup;
       if (snapshot.delayOperations.length !== this.delayOperations.length ||
         snapshot.delayOperations.some((operation: ProxyDelayOperationSnapshot, index: number): boolean =>
@@ -233,19 +229,6 @@ export struct ProxyPage {
         title: $r('app.string.nav_proxy'), contentPadding: this.metrics.pagePadding,
         actions: (): void => { this.testGroupButton(); }
       })
-      Row({ space: 8 }) {
-        StatusBadge({
-          text: this.source === ProxySnapshotSource.RUNTIME ? '运行中' :
-            (this.source === ProxySnapshotSource.CONFIG ? '配置预览' : '无配置'),
-          active: this.coreAvailable
-        })
-        Text(this.currentGroup()?.selectable === false ? '当前代理组由规则自动选择' : '点击节点选择，点击延迟单独测速')
-          .fontSize(CAPTION_FONT_SIZE)
-          .fontColor($r('app.color.content_secondary'))
-          .layoutWeight(1)
-      }
-      .width('100%')
-      .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
       if (this.groups.length === 0) {
         Stack() {
           EmptyStateBackground({

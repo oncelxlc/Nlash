@@ -153,10 +153,12 @@ export struct SettingsPage {
   }
 
   @Builder
-  private sectionTitle(title: string, subtitle: string) {
+  private sectionTitle(title: string, subtitle?: string) {
     Column({ space: 6 }) {
       Text(title).fontSize(18).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary')).width('100%')
-      Text(subtitle).fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
+      if (!!subtitle) {
+        Text(subtitle).fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
+      }
     }
     .alignItems(HorizontalAlign.Start)
     .width('100%')
@@ -165,7 +167,7 @@ export struct SettingsPage {
   @Builder
   private themeCard() {
     Column({ space: 16 }) {
-      this.sectionTitle('外观', '选择适合当前环境的配色')
+      this.sectionTitle('外观')
       SingleChoiceControl({
         labels: THEMES.map((theme: AppThemeMode): string => this.themeLabel(theme)),
         selectedIndex: THEMES.indexOf(this.settings.themeMode),
@@ -191,7 +193,7 @@ export struct SettingsPage {
   @Builder
   private networkCard() {
     Column({ space: 12 }) {
-      this.sectionTitle('网络', '配置 VPN 与节点延迟测试')
+      this.sectionTitle('网络')
       Text('VPN MTU').fontSize(14).fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.content_primary')).width('100%')
       TextInput({ placeholder: '1280–9000', text: this.mtuInput })
@@ -227,7 +229,7 @@ export struct SettingsPage {
   @Builder
   private cleanupCard() {
     Column({ space: 12 }) {
-      this.sectionTitle('数据管理', '管理当前累计统计和会话记录')
+      this.sectionTitle('数据管理')
       Button(this.runtimeBusyKey.length > 0 ? '处理中…' : '重置 Core 流量统计')
         .type(ButtonType.Normal).constraintSize({ minHeight: CONTROL_HEIGHT }).width('100%').borderRadius(BUTTON_RADIUS)
         .fontSize(14).fontColor($r('app.color.status_error')).backgroundColor($r('app.color.status_error_surface'))

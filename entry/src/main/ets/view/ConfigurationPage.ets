@@ -612,9 +612,6 @@ export struct ConfigurationPage {
         .width('100%').layoutWeight(1)
         .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
       } else {
-        Text('长按拖动排序 · 更多操作可上移／下移')
-          .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
-          .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
         List({ space: this.metrics.cardGap }) {
           ForEach(this.profiles, (profile: Profile) => {
             ListItem() { this.profileCard(profile) }
