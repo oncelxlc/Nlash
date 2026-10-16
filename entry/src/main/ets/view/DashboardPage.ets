@@ -438,7 +438,7 @@ export struct DashboardPage {
       .width(CONTROL_HEIGHT)
       .height(CONTROL_HEIGHT)
       .borderRadius(BUTTON_RADIUS)
-      .backgroundColor($r('app.color.surface_muted'))
+      .backgroundColor('transparent')
       .enabled(!this.publicNetworkChecking)
       .accessibilityText('刷新公网出口')
       .onClick((): void => { publicNetworkService.refresh(); })
