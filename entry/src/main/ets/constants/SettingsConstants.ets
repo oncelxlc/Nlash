@@ -1,7 +1,7 @@
 import { AppThemeMode, AppSettings, NavigationTransition } from '../model/SettingsModels';
 
 export const NAVIGATION_TRANSITION_OPTIONS: NavigationTransition[] = [
-  NavigationTransition.NONE, NavigationTransition.FADE, NavigationTransition.SLIDE
+  NavigationTransition.FADE, NavigationTransition.SLIDE
 ];
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {

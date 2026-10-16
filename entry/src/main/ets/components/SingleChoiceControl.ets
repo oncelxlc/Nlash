@@ -15,7 +15,7 @@ export struct SingleChoiceControl {
 
   @Builder
   private choices() {
-    Row() {
+    Row({ space: 8 }) {
       ForEach(this.labels, (label: string, index: number) => {
         Button({ type: ButtonType.Normal }) {
           Text(label)
@@ -28,17 +28,16 @@ export struct SingleChoiceControl {
             .textAlign(TextAlign.Center)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .fontColor(this.textOnly ? (this.selectedIndex === index ?
-              $r('app.color.nav_selected') : $r('app.color.content_secondary')) : $r('app.color.content_primary'))
+            .fontColor(this.selectedIndex === index ? $r('app.color.accent_foreground') :
+              (this.textOnly ? $r('app.color.content_secondary') : $r('app.color.content_primary')))
         }
         .height(this.compact ? 40 : CONTROL_HEIGHT)
         .constraintSize({ minWidth: CONTROL_HEIGHT })
         .responseRegion({ x: 0, y: this.compact ? -4 : 0, width: '100%', height: CONTROL_HEIGHT })
         .layoutWeight(this.scrollable ? 0 : 1)
         .padding(0)
-        .borderRadius(6)
-        .backgroundColor(this.selectedIndex === index ? $r('app.color.nav_selected_background') :
-          (this.textOnly ? Color.Transparent : $r('app.color.card_background')))
+        .borderRadius(8)
+        .backgroundColor(this.selectedIndex === index ? $r('app.color.action_primary') : $r('app.color.surface_muted'))
         .animation(this.animationOptions)
         .enabled(this.isEnabled)
         .accessibilityText(this.accessibilityLabel.length > 0 ? `${this.accessibilityLabel}：${label}` : label)

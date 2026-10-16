@@ -14,12 +14,12 @@ import { settingsStore } from '../stores/SettingsStore';
 import { ResponsiveMetrics } from '../model/ResponsiveModels';
 import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
 import {
-  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET,
+  CONTROL_HEIGHT, HEADER_ACTION_SIZE, HEADER_ACTION_ICON_SIZE, FLOATING_NAVIGATION_INSET,
   CAPTION_FONT_SIZE
 } from '../constants/UiConstants';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyStateBackground } from '../components/EmptyStateBackground';
-import { SingleChoiceControl } from '../components/SingleChoiceControl';
+import { textTabBar } from '../components/TextTabBar';
 import { StatusBadge } from '../components/StatusBadge';
 import { ProxyNodeCard } from '../components/ProxyNodeCard';
 
@@ -27,7 +27,7 @@ import { ProxyNodeCard } from '../components/ProxyNodeCard';
 export struct ProxyPage {
   @Prop forceExpanded: boolean = false;
   @State coreAvailable: boolean = false;
-  @State selecting: boolean = false;
+  private selecting: boolean = false;
   @State previewLoading: boolean = false;
   @State groups: ProxyGroupSnapshot[] = [];
   @State selections: ProxySelection[] = [];
@@ -163,37 +163,67 @@ export struct ProxyPage {
   }
 
   @Builder
-  private groupTabs() {
-    SingleChoiceControl({
-      labels: this.groups.map((group: ProxyGroupSnapshot): string => group.name),
-      selectedIndex: this.groups.findIndex((group: ProxyGroupSnapshot): boolean => group.name === this.selectedGroup),
-      scrollable: true,
-      textOnly: true,
-      compact: true,
-      accessibilityLabel: '代理组',
-      onChange: (index: number): void => {
-        const group = this.groups[index];
-        if (group !== undefined) { this.selectGroup(group.name); }
-      }
-    })
-    .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
-  }
-
-  @Builder
   private testGroupButton() {
     Button({ type: ButtonType.Normal }) {
       if (this.isGroupTesting()) {
-        LoadingProgress().width(20).height(20).color($r('app.color.nav_selected'))
+        LoadingProgress().width(HEADER_ACTION_ICON_SIZE).height(HEADER_ACTION_ICON_SIZE).color($r('app.color.nav_selected'))
       } else {
-        Image($r('app.media.action_refresh')).width(20).height(20).fillColor($r('app.color.nav_selected'))
+        Image($r('app.media.action_refresh')).width(HEADER_ACTION_ICON_SIZE).height(HEADER_ACTION_ICON_SIZE)
+          .fillColor($r('app.color.nav_selected'))
       }
     }
-    .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT)
-    .padding(0).borderRadius(BUTTON_RADIUS)
+    .width(HEADER_ACTION_SIZE).height(HEADER_ACTION_SIZE)
+    .responseRegion({ x: -8, y: -8, width: CONTROL_HEIGHT, height: CONTROL_HEIGHT })
+    .padding(0).borderRadius(8)
     .backgroundColor($r('app.color.nav_selected_background'))
     .enabled(!this.isGroupTesting() && !this.previewLoading && this.currentGroup() !== undefined)
     .accessibilityText(this.isGroupTesting() ? '当前代理组正在测速' : `测试代理组 ${this.selectedGroup} 的节点延迟`)
     .onClick((): void => { this.testCurrentGroup(); })
+  }
+
+  @Builder
+  private groupContent() {
+    Column({ space: 16 }) {
+      Text(`${this.selectedGroup} · ${this.currentGroup()?.nodes.length ?? 0} 个节点`)
+        .fontSize(CAPTION_FONT_SIZE)
+        .fontColor($r('app.color.content_secondary'))
+        .width('100%')
+        .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
+      Stack() {
+        if ((this.currentGroup()?.nodes.length ?? 0) === 0) {
+          EmptyStateBackground({
+            icon: $r('app.media.nav_proxy'), title: '当前代理组暂无节点', description: '尝试其他代理组，或更新活动配置。'
+          })
+        }
+        Grid() {
+          ForEach(this.currentGroup()?.nodes ?? [], (node: ProxyNodeSnapshot, index: number) => {
+            GridItem() {
+              ProxyNodeCard({
+                // Resolve from state so a stable key does not retain the original node.
+                node: this.currentGroup()?.nodes[index] ?? node,
+                selected: this.isNodeSelected(node),
+                canSelect: this.currentGroup()?.selectable === true,
+                testing: this.isNodeTesting(node),
+                canTest: !this.previewLoading,
+                onSelect: (): void => { this.selectNode(node); },
+                onTest: (): void => { this.testNode(node); }
+              })
+            }
+          }, (node: ProxyNodeSnapshot): string => `${this.selectedGroup.length}:${this.selectedGroup}:${proxyNodeRenderKey(node)}`)
+        }
+        .columnsTemplate(this.metrics.proxyColumns)
+        .columnsGap(this.metrics.cardGap)
+        .rowsGap(this.metrics.cardGap)
+        .width('100%').height('100%')
+        .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
+        .scrollBar(BarState.Off)
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+      }
+      .width('100%').layoutWeight(1)
+      .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+    }
+    .width('100%').height('100%').padding({ top: 8 })
   }
 
   @Builder
@@ -227,45 +257,24 @@ export struct ProxyPage {
         .width('100%').layoutWeight(1)
         .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
       } else {
-        this.groupTabs()
-        Text(`${this.selectedGroup} · ${this.currentGroup()?.nodes.length ?? 0} 个节点`)
-          .fontSize(CAPTION_FONT_SIZE)
-          .fontColor($r('app.color.content_secondary'))
-          .width('100%')
-          .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
-        Stack() {
-          if ((this.currentGroup()?.nodes.length ?? 0) === 0) {
-            EmptyStateBackground({
-              icon: $r('app.media.nav_proxy'), title: '当前代理组暂无节点', description: '尝试其他代理组，或更新活动配置。'
-            })
-          }
-          Grid() {
-            ForEach(this.currentGroup()?.nodes ?? [], (node: ProxyNodeSnapshot, index: number) => {
-              GridItem() {
-                ProxyNodeCard({
-                  // Resolve from state so a stable key does not retain the original node.
-                  node: this.currentGroup()?.nodes[index] ?? node,
-                  selected: this.isNodeSelected(node),
-                  canSelect: this.currentGroup()?.selectable === true && !this.selecting,
-                  testing: this.isNodeTesting(node),
-                  canTest: !this.previewLoading,
-                  onSelect: (): void => { this.selectNode(node); },
-                  onTest: (): void => { this.testNode(node); }
-                })
-              }
-            }, (node: ProxyNodeSnapshot): string => `${this.selectedGroup.length}:${this.selectedGroup}:${proxyNodeRenderKey(node)}`)
-          }
-          .columnsTemplate(this.metrics.proxyColumns)
-          .columnsGap(this.metrics.cardGap)
-          .rowsGap(this.metrics.cardGap)
-          .width('100%').height('100%')
-          .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
-          .scrollBar(BarState.Off)
-          .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+        Tabs({ index: this.groups.findIndex((group: ProxyGroupSnapshot): boolean => group.name === this.selectedGroup) }) {
+          ForEach(this.groups, (group: ProxyGroupSnapshot) => {
+            TabContent() { this.groupContent() }
+              .tabBar(textTabBar(group.name))
+          }, (group: ProxyGroupSnapshot): string => group.name)
         }
+        .barMode(BarMode.Scrollable, { margin: this.metrics.pagePadding })
+        .barHeight(CONTROL_HEIGHT)
+        .barBackgroundColor(Color.Transparent)
+        .divider(null)
+        .scrollable(false)
+        .animationDuration(0)
+        .cachedMaxCount(0, TabsCacheMode.CACHE_LATEST_SWITCHED)
+        .onChange((index: number): void => {
+          const group = this.groups[index];
+          if (group !== undefined && group.name !== this.selectedGroup) { this.selectGroup(group.name); }
+        })
         .width('100%').layoutWeight(1)
-        .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
     }
     .alignItems(HorizontalAlign.Start)

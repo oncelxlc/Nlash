@@ -171,6 +171,7 @@ export struct ConnectionsPage {
           Button(this.busyKey.length > 0 ? '处理中…' : '全部关闭')
             .type(ButtonType.Normal)
             .height(CONTROL_HEIGHT - 12)
+            .responseRegion({ x: 0, y: -6, width: '100%', height: CONTROL_HEIGHT })
             .borderRadius(BUTTON_RADIUS)
             .fontSize(14)
             .fontColor($r('app.color.status_error'))

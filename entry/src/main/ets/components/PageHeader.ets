@@ -1,4 +1,4 @@
-import { CAPTION_FONT_SIZE, PAGE_TITLE_SIZE } from '../constants/UiConstants';
+import { CAPTION_FONT_SIZE, HEADER_CONTENT_HEIGHT, PAGE_TITLE_SIZE } from '../constants/UiConstants';
 
 @Component
 export struct PageHeader {
@@ -27,6 +27,8 @@ export struct PageHeader {
         }
       }
       .alignItems(HorizontalAlign.Start)
+      .justifyContent(FlexAlign.Center)
+      .constraintSize({ minHeight: HEADER_CONTENT_HEIGHT })
       .layoutWeight(1)
       this.actions()
     }

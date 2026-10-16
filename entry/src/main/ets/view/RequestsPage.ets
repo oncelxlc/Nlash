@@ -133,10 +133,10 @@ export struct RequestsPage {
   }
 
   build() {
-    Column({ space: 12 }) {
-      Column({ space: 12 }) {
+    Column({ space: 8 }) {
+      Column({ space: 8 }) {
         TextInput({ placeholder: '搜索主机、地址、规则或进程', text: this.query })
-          .height(CONTROL_HEIGHT)
+          .height(CONTROL_HEIGHT - 8)
           .fontSize(BODY_FONT_SIZE)
           .fontColor($r('app.color.content_primary'))
           .placeholderColor($r('app.color.content_secondary'))
@@ -145,19 +145,21 @@ export struct RequestsPage {
           .accessibilityText('搜索请求记录')
           .onChange((value: string): void => { this.query = value; })
         SingleChoiceControl({
+          compact: true,
           labels: FILTERS.map((filter: RequestFilter): string => this.filterLabel(filter)),
           selectedIndex: FILTERS.indexOf(this.filter),
           accessibilityLabel: '请求记录筛选',
           onChange: (index: number): void => { this.filter = FILTERS[index]; }
         })
-        Row() {
+        Row({ space: 8 }) {
           Text(`${this.visibleRequests().length} 条记录`)
             .fontSize(CAPTION_FONT_SIZE)
             .fontColor($r('app.color.content_secondary'))
             .layoutWeight(1)
           Button('清空记录')
             .type(ButtonType.Normal)
-            .height(CONTROL_HEIGHT)
+            .height(CONTROL_HEIGHT - 12)
+            .responseRegion({ x: 0, y: -6, width: '100%', height: CONTROL_HEIGHT })
             .borderRadius(BUTTON_RADIUS)
             .fontSize(14)
             .fontColor($r('app.color.status_error'))

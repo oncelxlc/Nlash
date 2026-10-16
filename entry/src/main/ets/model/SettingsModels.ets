@@ -5,7 +5,6 @@ export enum AppThemeMode {
 }
 
 export enum NavigationTransition {
-  NONE = 'NONE',
   FADE = 'FADE',
   SLIDE = 'SLIDE'
 }

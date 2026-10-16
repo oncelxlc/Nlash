@@ -17,7 +17,8 @@ import { profileStore } from '../stores/ProfileStore';
 import { ResponsiveMetrics } from '../model/ResponsiveModels';
 import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
 import {
-  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
+  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE,
+  HEADER_ACTION_SIZE, HEADER_ACTION_ICON_SIZE, HEADER_CONTENT_HEIGHT, PAGE_TITLE_SIZE
 } from '../constants/UiConstants';
 
 import { PageHeader } from '../components/PageHeader';
@@ -365,23 +366,25 @@ export struct ConfigurationPage {
 
   @Builder
   private headerActions() {
-    Row({ space: 8 }) {
+    Row({ space: 16 }) {
       Button({ type: ButtonType.Normal }) {
-        Image($r('app.media.action_refresh')).width(20).height(20).fillColor($r('app.color.content_primary'))
+        Image($r('app.media.action_refresh')).width(HEADER_ACTION_ICON_SIZE).height(HEADER_ACTION_ICON_SIZE)
+          .fillColor($r('app.color.content_primary'))
       }
-      .width(CONTROL_HEIGHT)
-      .height(CONTROL_HEIGHT)
-      .borderRadius(BUTTON_RADIUS)
+      .width(HEADER_ACTION_SIZE).height(HEADER_ACTION_SIZE)
+      .responseRegion({ x: -8, y: -8, width: CONTROL_HEIGHT, height: CONTROL_HEIGHT })
+      .padding(0).borderRadius(8)
       .backgroundColor($r('app.color.surface_muted'))
       .enabled(this.busyProfileId.length === 0 && this.hasSubscription())
       .accessibilityText('更新全部订阅')
       .onClick((): void => { this.updateAll(); })
       Button({ type: ButtonType.Normal }) {
-        Image($r('app.media.action_add')).width(24).height(24).fillColor($r('app.color.accent_foreground'))
+        Image($r('app.media.action_add')).width(HEADER_ACTION_ICON_SIZE).height(HEADER_ACTION_ICON_SIZE)
+          .fillColor($r('app.color.accent_foreground'))
       }
-      .width(CONTROL_HEIGHT)
-      .height(CONTROL_HEIGHT)
-      .borderRadius(BUTTON_RADIUS)
+      .width(HEADER_ACTION_SIZE).height(HEADER_ACTION_SIZE)
+      .responseRegion({ x: -8, y: -8, width: CONTROL_HEIGHT, height: CONTROL_HEIGHT })
+      .padding(0).borderRadius(8)
       .backgroundColor($r('app.color.action_primary'))
       .enabled(this.busyProfileId.length === 0)
       .accessibilityText('添加订阅或导入配置')
@@ -546,13 +549,16 @@ export struct ConfigurationPage {
     Column({ space: 16 }) {
       Row({ space: 12 }) {
         Button({ type: ButtonType.Normal }) {
-          Image($r('app.media.action_back')).width(24).height(24).fillColor($r('app.color.content_primary'))
+          Image($r('app.media.action_back')).width(HEADER_ACTION_ICON_SIZE).height(HEADER_ACTION_ICON_SIZE)
+            .fillColor($r('app.color.content_primary'))
         }
-        .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
+        .width(HEADER_ACTION_SIZE).height(HEADER_ACTION_SIZE).padding(0).borderRadius(8)
+        .responseRegion({ x: -8, y: -8, width: CONTROL_HEIGHT, height: CONTROL_HEIGHT })
         .backgroundColor($r('app.color.surface_muted'))
         .accessibilityText('返回配置列表')
         .onClick((): void => { this.requestCloseEditor(); })
-        Text('编辑配置').fontSize(24).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary'))
+        Text('编辑配置').fontSize(PAGE_TITLE_SIZE).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary'))
+          .constraintSize({ minHeight: HEADER_CONTENT_HEIGHT })
           .layoutWeight(1)
       }
       .width('100%')

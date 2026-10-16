@@ -20,7 +20,7 @@ import {
 } from '../utils/ResponsiveUtils';
 import {
   BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, FLOATING_ACTION_INSET,
-  CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
+  CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE, HEADER_ACTION_SIZE
 } from '../constants/UiConstants';
 import { PageHeader } from '../components/PageHeader';
 import { AppPage } from '../model/NavigationModels';
@@ -301,10 +301,11 @@ export struct DashboardPage {
           $r('app.color.status_success') : (this.coreState === CoreServiceState.ERROR ?
             $r('app.color.status_error') : $r('app.color.content_secondary')))
       }
-      Text(this.coreStatus()).fontSize(14).fontWeight(FontWeight.Medium)
+      Text(this.coreStatus()).fontSize(CAPTION_FONT_SIZE).fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.content_primary'))
     }
-    .constraintSize({ minHeight: CONTROL_HEIGHT })
+    .height(HEADER_ACTION_SIZE)
+    .responseRegion({ x: 0, y: -8, width: '100%', height: CONTROL_HEIGHT })
     .focusable(true)
     .enabled(!this.isCoreBusy() && !this.isProxyBusy() && !this.profileBusy)
     .opacity(this.isCoreBusy() || this.isProxyBusy() || this.profileBusy ? 0.5 : 1)

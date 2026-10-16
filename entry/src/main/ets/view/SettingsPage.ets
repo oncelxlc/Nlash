@@ -118,7 +118,6 @@ export struct SettingsPage {
 
   private transitionLabel(transition: NavigationTransition): string {
     switch (transition) {
-      case NavigationTransition.NONE: return '关闭';
       case NavigationTransition.FADE: return '淡入';
       case NavigationTransition.SLIDE: return '平移';
     }

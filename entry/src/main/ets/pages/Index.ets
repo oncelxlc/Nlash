@@ -14,14 +14,14 @@ import { configurationEditorService } from '../services/ConfigurationEditorServi
 import { navigationIntentService } from '../services/NavigationIntentService';
 import { NavigationTransition, SettingsStoreSnapshot } from '../model/SettingsModels';
 import { settingsStore } from '../stores/SettingsStore';
+import { PageEntrance } from '../components/PageEntrance';
 
 @Entry
 @Component
 struct Index {
   @State navigationState: AppNavigationState = new AppNavigationState();
   @State navigationTransition: NavigationTransition = settingsStore.getSnapshot().settings.navigationTransition;
-  @State contentOpacity: number = 1;
-  @State contentOffset: number = 0;
+  @State entranceOffset: number = 24;
   private unsubscribeFeedback: (() => void) | undefined = undefined;
   private unsubscribeNavigationIntent: (() => void) | undefined = undefined;
   private unsubscribeSettings: (() => void) | undefined = undefined;
@@ -58,18 +58,7 @@ struct Index {
   }
 
   private selectPage(page: AppPage): void {
-    const previousPage = this.navigationState.selectedPage;
     this.navigationState.selectPage(page);
-    if (previousPage === this.navigationState.selectedPage || this.navigationTransition === NavigationTransition.NONE) {
-      return;
-    }
-    this.contentOpacity = 0;
-    this.contentOffset = this.navigationTransition === NavigationTransition.SLIDE ?
-      (NAVIGATION_PAGES.indexOf(this.navigationState.selectedPage) > NAVIGATION_PAGES.indexOf(previousPage) ? 24 : -24) : 0;
-    this.getUIContext().animateTo({ duration: 200, curve: Curve.EaseOut }, (): void => {
-      this.contentOpacity = 1;
-      this.contentOffset = 0;
-    });
   }
 
   private selectTab(index: number): void {
@@ -168,12 +157,10 @@ struct Index {
     }) {
       ForEach(NAVIGATION_PAGES, (page: AppPage) => {
         TabContent() {
-          Column() {
-            this.pageContent(page)
-          }
-          .width('100%').height('100%')
-          .opacity(this.contentOpacity)
-          .translate({ x: this.contentOffset })
+          PageEntrance({
+            effect: this.navigationTransition, initialOffset: this.entranceOffset,
+            content: (): void => { this.pageContent(page); }
+          })
         }
         .tabBar(this.getTabBarStyle(page))
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
@@ -182,6 +169,10 @@ struct Index {
     .vertical(false)
     .scrollable(false)
     .animationDuration(0)
+    .onContentWillChange((from: number, to: number): boolean => {
+      this.entranceOffset = to > from ? 24 : -24;
+      return true;
+    })
     .barOverlap(true)
     .cachedMaxCount(0, TabsCacheMode.CACHE_LATEST_SWITCHED)
     .barFloatingStyle({
