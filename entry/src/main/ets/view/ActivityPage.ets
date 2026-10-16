@@ -19,25 +19,23 @@ export struct ActivityPage {
 
   build() {
     Column({ space: 8 }) {
-      PageHeader({ title: $r('app.string.nav_activity'), subtitle: '实时连接与本次会话的请求记录' })
+      PageHeader({ title: $r('app.string.nav_activity'), contentPadding: this.metrics.pagePadding })
       SingleChoiceControl({
         labels: ['实时连接', '请求记录'],
         selectedIndex: ACTIVITY_TABS.indexOf(this.selectedTab),
         accessibilityLabel: '活动内容',
         onChange: (index: number): void => { this.onTabChange(ACTIVITY_TABS[index]); }
       })
+      .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
       if (this.selectedTab === ActivityTab.CONNECTIONS) {
-        ConnectionsPage({ query: this.connectionQuery })
+        ConnectionsPage({ query: this.connectionQuery, contentPadding: this.metrics.pagePadding })
       } else {
-        RequestsPage({ query: this.requestQuery, filter: this.requestFilter })
+        RequestsPage({ query: this.requestQuery, filter: this.requestFilter, contentPadding: this.metrics.pagePadding })
       }
     }
     .alignItems(HorizontalAlign.Start)
     .width('100%')
     .height('100%')
-    .padding({
-      top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding
-    })
     .backgroundColor($r('app.color.app_background'))
     .onAreaChange((_old: Area, area: Area): void => {
       this.metrics = resolveResponsiveMetrics(resolveContentWidth(area.width));

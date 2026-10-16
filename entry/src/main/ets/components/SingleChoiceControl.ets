@@ -20,7 +20,7 @@ export struct SingleChoiceControl {
         Button({ type: ButtonType.Normal }) {
           Text(label)
             .width(this.scrollable ? undefined : '100%')
-            .height(this.compact ? 32 : 40)
+            .height('100%')
             .constraintSize({ minWidth: CONTROL_HEIGHT })
             .padding({ left: this.compact ? 4 : 12, right: this.compact ? 4 : 12 })
             .fontSize(this.compact ? CAPTION_FONT_SIZE : 14)
@@ -30,22 +30,16 @@ export struct SingleChoiceControl {
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .fontColor(this.textOnly ? (this.selectedIndex === index ?
               $r('app.color.nav_selected') : $r('app.color.content_secondary')) : $r('app.color.content_primary'))
-            .backgroundColor(this.textOnly ? Color.Transparent : (this.selectedIndex === index ?
-              $r('app.color.nav_selected_background') : $r('app.color.card_background')))
-            .animation(this.animationOptions)
-            .borderRadius({
-              topLeft: index === 0 ? 6 : 0, bottomLeft: index === 0 ? 6 : 0,
-              topRight: index === this.labels.length - 1 ? 6 : 0,
-              bottomRight: index === this.labels.length - 1 ? 6 : 0
-            })
         }
-        // The flat strip retains a full 48vp touch target.
-        .height(CONTROL_HEIGHT)
+        .height(this.compact ? 40 : CONTROL_HEIGHT)
         .constraintSize({ minWidth: CONTROL_HEIGHT })
+        .responseRegion({ x: 0, y: this.compact ? -4 : 0, width: '100%', height: CONTROL_HEIGHT })
         .layoutWeight(this.scrollable ? 0 : 1)
         .padding(0)
         .borderRadius(6)
-        .backgroundColor(Color.Transparent)
+        .backgroundColor(this.selectedIndex === index ? $r('app.color.nav_selected_background') :
+          (this.textOnly ? Color.Transparent : $r('app.color.card_background')))
+        .animation(this.animationOptions)
         .enabled(this.isEnabled)
         .accessibilityText(this.accessibilityLabel.length > 0 ? `${this.accessibilityLabel}：${label}` : label)
         .accessibilitySelected(this.selectedIndex === index)
@@ -57,13 +51,13 @@ export struct SingleChoiceControl {
       }, (label: string, index: number): string => `${index}:${label}`)
     }
     .width(this.scrollable ? undefined : '100%')
-    .height(CONTROL_HEIGHT)
+    .height(this.compact ? 40 : CONTROL_HEIGHT)
   }
 
   build() {
     if (this.scrollable) {
       Scroll() { this.choices() }
-        .width('100%').height(CONTROL_HEIGHT)
+        .width('100%').height(this.compact ? 40 : CONTROL_HEIGHT)
         .scrollable(ScrollDirection.Horizontal)
         .scrollBar(BarState.Off)
         .align(Alignment.Start)

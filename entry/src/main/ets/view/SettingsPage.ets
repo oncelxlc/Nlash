@@ -80,7 +80,6 @@ export struct SettingsPage {
 
   private updateSections(): void {
     this.sections.splice(0, this.sections.length(), [
-      { itemsCount: 1, crossCount: 1, margin: { bottom: 16 } },
       { itemsCount: 3, crossCount: this.metrics.sizeClass === ResponsiveSizeClass.COMPACT ? 1 : 2,
         columnsGap: 12, rowsGap: 12 },
       { itemsCount: 1, crossCount: 1, margin: { top: 16 } }
@@ -245,32 +244,32 @@ export struct SettingsPage {
   }
 
   build() {
-    WaterFlow({ sections: this.sections }) {
-      FlowItem() {
-        PageHeader({ title: $r('app.string.nav_settings'), subtitle: '按你的习惯调整 Nlash' })
-      }
-      FlowItem() { this.themeCard() }
-      FlowItem() { this.networkCard() }
-      FlowItem() { this.cleanupCard() }
-      FlowItem() {
-        Column({ space: 12 }) {
-          this.sectionTitle('关于 Nlash', `1.0.0 · ${this.coreVersion}`)
-          Divider().color($r('app.color.nav_divider'))
-          Text('Clash.Meta 8380d0e7462f')
-            .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.content_primary')).width('100%')
-          Text('配置与订阅保存在应用沙箱中。')
-            .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
+    Column({ space: 16 }) {
+      PageHeader({ title: $r('app.string.nav_settings'), contentPadding: this.metrics.pagePadding })
+      WaterFlow({ sections: this.sections }) {
+        FlowItem() { this.themeCard() }
+        FlowItem() { this.networkCard() }
+        FlowItem() { this.cleanupCard() }
+        FlowItem() {
+          Column({ space: 12 }) {
+            this.sectionTitle('关于 Nlash', `1.0.0 · ${this.coreVersion}`)
+            Divider().color($r('app.color.nav_divider'))
+            Text('Clash.Meta 8380d0e7462f')
+              .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.content_primary')).width('100%')
+            Text('配置与订阅保存在应用沙箱中。')
+              .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
+          }
+          .alignItems(HorizontalAlign.Start).width('100%').padding(16)
+          .borderRadius(CARD_RADIUS).backgroundColor($r('app.color.card_background'))
         }
-        .alignItems(HorizontalAlign.Start).width('100%').padding(16)
-        .borderRadius(CARD_RADIUS).backgroundColor($r('app.color.card_background'))
       }
+      .cachedCount(6)
+      .scrollBar(BarState.Off)
+      .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
+      .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
+      .width('100%').layoutWeight(1)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
-    .cachedCount(6)
-    .scrollBar(BarState.Off)
-    .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
-    .padding({
-      top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding
-    })
     .width('100%').height('100%')
     .backgroundColor($r('app.color.app_background'))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])

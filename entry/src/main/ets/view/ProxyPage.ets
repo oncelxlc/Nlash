@@ -169,12 +169,14 @@ export struct ProxyPage {
       selectedIndex: this.groups.findIndex((group: ProxyGroupSnapshot): boolean => group.name === this.selectedGroup),
       scrollable: true,
       textOnly: true,
+      compact: true,
       accessibilityLabel: '代理组',
       onChange: (index: number): void => {
         const group = this.groups[index];
         if (group !== undefined) { this.selectGroup(group.name); }
       }
     })
+    .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
   }
 
   @Builder
@@ -198,8 +200,7 @@ export struct ProxyPage {
   private mainContent() {
     Column({ space: 16 }) {
       PageHeader({
-        title: $r('app.string.nav_proxy'),
-        subtitle: this.source === ProxySnapshotSource.RUNTIME ? '选择流量出口，查看节点延迟' : '连接前也可预选节点与测试延迟',
+        title: $r('app.string.nav_proxy'), contentPadding: this.metrics.pagePadding,
         actions: (): void => { this.testGroupButton(); }
       })
       Row({ space: 8 }) {
@@ -214,6 +215,7 @@ export struct ProxyPage {
           .layoutWeight(1)
       }
       .width('100%')
+      .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
       if (this.groups.length === 0) {
         Stack() {
           EmptyStateBackground({
@@ -223,12 +225,14 @@ export struct ProxyPage {
           })
         }
         .width('100%').layoutWeight(1)
+        .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
       } else {
         this.groupTabs()
         Text(`${this.selectedGroup} · ${this.currentGroup()?.nodes.length ?? 0} 个节点`)
           .fontSize(CAPTION_FONT_SIZE)
           .fontColor($r('app.color.content_secondary'))
           .width('100%')
+          .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
         Stack() {
           if ((this.currentGroup()?.nodes.length ?? 0) === 0) {
             EmptyStateBackground({
@@ -260,15 +264,13 @@ export struct ProxyPage {
           .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
         }
         .width('100%').layoutWeight(1)
+        .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
     }
     .alignItems(HorizontalAlign.Start)
     .width('100%')
     .height('100%')
-    .padding({
-      top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding
-    })
   }
 
   build() {

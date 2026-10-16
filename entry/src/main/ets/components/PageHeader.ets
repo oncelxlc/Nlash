@@ -4,6 +4,7 @@ import { CAPTION_FONT_SIZE, PAGE_TITLE_SIZE } from '../constants/UiConstants';
 export struct PageHeader {
   @Prop title: ResourceStr = '';
   @Prop subtitle: ResourceStr = '';
+  @Prop contentPadding: number = 16;
   @BuilderParam actions: () => void = this.emptyActions;
 
   @Builder
@@ -31,5 +32,6 @@ export struct PageHeader {
     }
     .width('100%')
     .alignItems(VerticalAlign.Center)
+    .padding({ top: this.contentPadding, left: this.contentPadding, right: this.contentPadding })
   }
 }

@@ -10,6 +10,7 @@ import {
 
 @Component
 export struct ConnectionsPage {
+  @Prop contentPadding: number = 16;
   @State available: boolean = false;
   @State refreshing: boolean = false;
   @State connections: ConnectionSnapshot[] = [];
@@ -149,34 +150,38 @@ export struct ConnectionsPage {
 
   build() {
     Column({ space: 8 }) {
-      TextInput({ placeholder: '搜索主机、地址、进程或链路', text: this.query })
-        .height(CONTROL_HEIGHT - 8)
-        .fontSize(BODY_FONT_SIZE)
-        .fontColor($r('app.color.content_primary'))
-        .placeholderColor($r('app.color.content_secondary'))
-        .backgroundColor($r('app.color.card_background'))
-        .borderRadius(BUTTON_RADIUS)
-        .accessibilityText('搜索实时连接')
-        .onChange((value: string): void => { this.query = value; })
-      Row({ space: 8 }) {
-        if (this.refreshing) {
-          LoadingProgress().width(16).height(16).color($r('app.color.nav_selected'))
-        }
-        Text(`${this.visibleConnections().length} 个活动连接`)
-          .fontSize(CAPTION_FONT_SIZE)
-          .fontColor($r('app.color.content_secondary'))
-          .layoutWeight(1)
-        Button(this.busyKey.length > 0 ? '处理中…' : '全部关闭')
-          .type(ButtonType.Normal)
-          .height(CONTROL_HEIGHT - 12)
+      Column({ space: 8 }) {
+        TextInput({ placeholder: '搜索主机、地址、进程或链路', text: this.query })
+          .height(CONTROL_HEIGHT - 8)
+          .fontSize(BODY_FONT_SIZE)
+          .fontColor($r('app.color.content_primary'))
+          .placeholderColor($r('app.color.content_secondary'))
+          .backgroundColor($r('app.color.card_background'))
           .borderRadius(BUTTON_RADIUS)
-          .fontSize(14)
-          .fontColor($r('app.color.status_error'))
-          .backgroundColor(Color.Transparent)
-          .enabled(this.available && !this.refreshing && this.busyKey.length === 0 && this.connections.length > 0)
-          .onClick((): void => { this.closeAllConnections(); })
+          .accessibilityText('搜索实时连接')
+          .onChange((value: string): void => { this.query = value; })
+        Row({ space: 8 }) {
+          if (this.refreshing) {
+            LoadingProgress().width(16).height(16).color($r('app.color.nav_selected'))
+          }
+          Text(`${this.visibleConnections().length} 个活动连接`)
+            .fontSize(CAPTION_FONT_SIZE)
+            .fontColor($r('app.color.content_secondary'))
+            .layoutWeight(1)
+          Button(this.busyKey.length > 0 ? '处理中…' : '全部关闭')
+            .type(ButtonType.Normal)
+            .height(CONTROL_HEIGHT - 12)
+            .borderRadius(BUTTON_RADIUS)
+            .fontSize(14)
+            .fontColor($r('app.color.status_error'))
+            .backgroundColor(Color.Transparent)
+            .enabled(this.available && !this.refreshing && this.busyKey.length === 0 && this.connections.length > 0)
+            .onClick((): void => { this.closeAllConnections(); })
+        }
+        .width('100%')
       }
       .width('100%')
+      .padding({ left: this.contentPadding, right: this.contentPadding })
       Stack() {
         if (!this.available) {
           EmptyStateBackground({
@@ -205,6 +210,7 @@ export struct ConnectionsPage {
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
       .width('100%').layoutWeight(1)
+      .padding({ left: this.contentPadding, right: this.contentPadding })
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')

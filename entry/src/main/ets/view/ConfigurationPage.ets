@@ -390,16 +390,20 @@ export struct ConfigurationPage {
   }
 
   @Builder
-  private statusBanner() {
+  private statusBanner(contentPadding: number = 0) {
     if (this.busyProfileId.length > 0 && this.getStageLabel().length > 0) {
-      Row({ space: 12 }) {
-        LoadingProgress().width(20).height(20).color($r('app.color.nav_selected'))
-        Text(this.getStageLabel()).fontSize(14).fontColor($r('app.color.nav_selected')).layoutWeight(1)
+      Column() {
+        Row({ space: 12 }) {
+          LoadingProgress().width(20).height(20).color($r('app.color.nav_selected'))
+          Text(this.getStageLabel()).fontSize(14).fontColor($r('app.color.nav_selected')).layoutWeight(1)
+        }
+        .width('100%')
+        .padding(16)
+        .borderRadius(BUTTON_RADIUS)
+        .backgroundColor($r('app.color.nav_selected_background'))
       }
       .width('100%')
-      .padding(16)
-      .borderRadius(BUTTON_RADIUS)
-      .backgroundColor($r('app.color.nav_selected_background'))
+      .padding({ left: contentPadding, right: contentPadding })
     }
   }
 
@@ -539,39 +543,47 @@ export struct ConfigurationPage {
 
   @Builder
   private editorContent() {
-    Scroll() {
-      Column({ space: 16 }) {
-        Row({ space: 12 }) {
-          Button({ type: ButtonType.Normal }) {
-            Image($r('app.media.action_back')).width(24).height(24).fillColor($r('app.color.content_primary'))
-          }
-          .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
-          .backgroundColor($r('app.color.surface_muted'))
-          .accessibilityText('返回配置列表')
-          .onClick((): void => { this.requestCloseEditor(); })
-          Text('编辑配置').fontSize(24).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary'))
-            .layoutWeight(1)
+    Column({ space: 16 }) {
+      Row({ space: 12 }) {
+        Button({ type: ButtonType.Normal }) {
+          Image($r('app.media.action_back')).width(24).height(24).fillColor($r('app.color.content_primary'))
         }
-        .width('100%')
-        this.editorFields()
-        Button(this.busyProfileId.length > 0 ? '保存中…' :
-          (this.editingProfile()?.type === ProfileType.SUBSCRIPTION ? '保存并更新' : '保存名称'))
-          .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
-          .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.action_primary'))
-          .enabled(this.busyProfileId.length === 0)
-          .onClick((): void => { this.saveEditor(); })
+        .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
+        .backgroundColor($r('app.color.surface_muted'))
+        .accessibilityText('返回配置列表')
+        .onClick((): void => { this.requestCloseEditor(); })
+        Text('编辑配置').fontSize(24).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary'))
+          .layoutWeight(1)
       }
       .width('100%')
-      .constraintSize({ maxWidth: 720, minHeight: '100%' })
-      .alignItems(HorizontalAlign.Start)
+      .constraintSize({ maxWidth: 720 })
       .padding({
-        top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
-        bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
+        top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding
       })
+      Scroll() {
+        Column({ space: 16 }) {
+          this.editorFields()
+          Button(this.busyProfileId.length > 0 ? '保存中…' :
+            (this.editingProfile()?.type === ProfileType.SUBSCRIPTION ? '保存并更新' : '保存名称'))
+            .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
+            .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.action_primary'))
+            .enabled(this.busyProfileId.length === 0)
+            .onClick((): void => { this.saveEditor(); })
+        }
+        .width('100%')
+        .constraintSize({ maxWidth: 720, minHeight: '100%' })
+        .alignItems(HorizontalAlign.Start)
+        .padding({
+          left: this.metrics.pagePadding, right: this.metrics.pagePadding,
+          bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
+        })
+      }
+      .width('100%').layoutWeight(1)
+      .scrollBar(BarState.Off)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')
     .height('100%')
-    .scrollBar(BarState.Off)
     .backgroundColor($r('app.color.app_background'))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
@@ -580,10 +592,10 @@ export struct ConfigurationPage {
   private mainContent() {
     Column({ space: this.metrics.sectionGap }) {
       PageHeader({
-        title: $r('app.string.nav_configuration'), subtitle: `${this.profiles.length} 份配置 · 保存在本机`,
+        title: $r('app.string.nav_configuration'), contentPadding: this.metrics.pagePadding,
         actions: (): void => { this.headerActions(); }
       })
-      this.statusBanner()
+      this.statusBanner(this.metrics.pagePadding)
       if (this.profiles.length === 0) {
         Stack() {
           EmptyStateBackground({
@@ -592,9 +604,11 @@ export struct ConfigurationPage {
           })
         }
         .width('100%').layoutWeight(1)
+        .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
       } else {
         Text('长按拖动排序 · 更多操作可上移／下移')
           .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
+          .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
         List({ space: this.metrics.cardGap }) {
           ForEach(this.profiles, (profile: Profile) => {
             ListItem() { this.profileCard(profile) }
@@ -606,6 +620,7 @@ export struct ConfigurationPage {
         }
         .lanes(this.metrics.profileColumns.split(' ').length, this.metrics.cardGap)
         .width('100%').layoutWeight(1)
+        .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
         .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
         .scrollBar(BarState.Off)
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
@@ -613,7 +628,6 @@ export struct ConfigurationPage {
     }
     .alignItems(HorizontalAlign.Start)
     .width('100%').height('100%')
-    .padding({ top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding })
   }
 
   @Builder

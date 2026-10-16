@@ -15,6 +15,7 @@ const FILTERS: RequestFilter[] = [RequestFilter.ALL, RequestFilter.ACTIVE, Reque
 
 @Component
 export struct RequestsPage {
+  @Prop contentPadding: number = 16;
   @State requests: RequestRecord[] = [];
   @Link filter: RequestFilter;
   @Link query: string;
@@ -133,41 +134,45 @@ export struct RequestsPage {
 
   build() {
     Column({ space: 12 }) {
-      TextInput({ placeholder: '搜索主机、地址、规则或进程', text: this.query })
-        .height(CONTROL_HEIGHT)
-        .fontSize(BODY_FONT_SIZE)
-        .fontColor($r('app.color.content_primary'))
-        .placeholderColor($r('app.color.content_secondary'))
-        .backgroundColor($r('app.color.card_background'))
-        .borderRadius(BUTTON_RADIUS)
-        .accessibilityText('搜索请求记录')
-        .onChange((value: string): void => { this.query = value; })
-      SingleChoiceControl({
-        labels: FILTERS.map((filter: RequestFilter): string => this.filterLabel(filter)),
-        selectedIndex: FILTERS.indexOf(this.filter),
-        accessibilityLabel: '请求记录筛选',
-        onChange: (index: number): void => { this.filter = FILTERS[index]; }
-      })
-      Row() {
-        Text(`${this.visibleRequests().length} 条记录`)
-          .fontSize(CAPTION_FONT_SIZE)
-          .fontColor($r('app.color.content_secondary'))
-          .layoutWeight(1)
-        Button('清空记录')
-          .type(ButtonType.Normal)
+      Column({ space: 12 }) {
+        TextInput({ placeholder: '搜索主机、地址、规则或进程', text: this.query })
           .height(CONTROL_HEIGHT)
+          .fontSize(BODY_FONT_SIZE)
+          .fontColor($r('app.color.content_primary'))
+          .placeholderColor($r('app.color.content_secondary'))
+          .backgroundColor($r('app.color.card_background'))
           .borderRadius(BUTTON_RADIUS)
-          .fontSize(14)
-          .fontColor($r('app.color.status_error'))
-          .backgroundColor(Color.Transparent)
-          .enabled(this.requests.length > 0)
-          .onClick((): void => {
-            runtimeStore.clearRequests();
-            this.expandedId = '';
-            feedbackService.success('请求记录已清空');
-          })
+          .accessibilityText('搜索请求记录')
+          .onChange((value: string): void => { this.query = value; })
+        SingleChoiceControl({
+          labels: FILTERS.map((filter: RequestFilter): string => this.filterLabel(filter)),
+          selectedIndex: FILTERS.indexOf(this.filter),
+          accessibilityLabel: '请求记录筛选',
+          onChange: (index: number): void => { this.filter = FILTERS[index]; }
+        })
+        Row() {
+          Text(`${this.visibleRequests().length} 条记录`)
+            .fontSize(CAPTION_FONT_SIZE)
+            .fontColor($r('app.color.content_secondary'))
+            .layoutWeight(1)
+          Button('清空记录')
+            .type(ButtonType.Normal)
+            .height(CONTROL_HEIGHT)
+            .borderRadius(BUTTON_RADIUS)
+            .fontSize(14)
+            .fontColor($r('app.color.status_error'))
+            .backgroundColor(Color.Transparent)
+            .enabled(this.requests.length > 0)
+            .onClick((): void => {
+              runtimeStore.clearRequests();
+              this.expandedId = '';
+              feedbackService.success('请求记录已清空');
+            })
+        }
+        .width('100%')
       }
       .width('100%')
+      .padding({ left: this.contentPadding, right: this.contentPadding })
       Stack() {
         if (this.visibleRequests().length === 0) {
           EmptyStateBackground({
@@ -190,6 +195,7 @@ export struct RequestsPage {
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
       .width('100%').layoutWeight(1)
+      .padding({ left: this.contentPadding, right: this.contentPadding })
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')

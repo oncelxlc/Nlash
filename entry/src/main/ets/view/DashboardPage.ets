@@ -460,13 +460,13 @@ export struct DashboardPage {
 
   build() {
     Stack({ alignContent: Alignment.BottomEnd }) {
-      Column() {
+      Column({ space: this.metrics.sectionGap }) {
+        PageHeader({
+          title: $r('app.string.nav_dashboard'), contentPadding: this.metrics.pagePadding,
+          actions: (): void => { this.headerActions(); }
+        })
         Scroll() {
           Column({ space: this.metrics.sectionGap }) {
-            PageHeader({
-              title: $r('app.string.nav_dashboard'),
-              actions: (): void => { this.headerActions(); }
-            })
             this.controlPanel()
             if (this.metrics.sizeClass === ResponsiveSizeClass.COMPACT) {
               RuntimeSpeedCard({
@@ -496,7 +496,7 @@ export struct DashboardPage {
           .constraintSize({ minHeight: '100%' })
           .justifyContent(FlexAlign.Start)
           .padding({
-            top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
+            left: this.metrics.pagePadding, right: this.metrics.pagePadding,
             bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET + FLOATING_ACTION_INSET
           })
         }
