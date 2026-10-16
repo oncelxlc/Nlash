@@ -17,6 +17,7 @@ import (
 	"github.com/metacubex/mihomo/hub/executor"
 	"github.com/metacubex/mihomo/listener"
 	coreLog "github.com/metacubex/mihomo/log"
+	"github.com/metacubex/mihomo/tunnel"
 )
 
 type coreRuntimeState int32
@@ -170,7 +171,9 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	runtime.protect = nil
 	runtime.proxyEnabled = false
 	activeSocketProtect.Store(nil)
-	executor.ApplyConfig(cfg, true)
+	if err := applyRuntimeConfig(cfg); err != nil {
+		return runtime.setFailure(coreStartFailed, err)
+	}
 	runtime.configPath = options.configPath
 	runtime.configData = data
 	runtime.previousConfigPath = ""
@@ -251,6 +254,8 @@ func applyRuntimeConfig(cfg *config.Config) (err error) {
 		}
 	}()
 	executor.ApplyConfig(cfg, true)
+	// The pinned FlClash branch leaves TUN lifecycle management to its host.
+	listener.ReCreateTun(cfg.General.Tun, tunnel.Tunnel)
 	if listener.GetTunConf().Enable != cfg.General.Tun.Enable {
 		return errors.New("TUN state changed during configuration apply")
 	}
@@ -354,11 +359,7 @@ func (runtime *coreRuntime) applyCoreOnlyConfig() error {
 	}
 	configureHarmonyCore(cfg)
 	activeSocketProtect.Store(nil)
-	executor.ApplyConfig(cfg, true)
-	if listener.GetTunConf().Enable {
-		return errors.New("TUN listener did not stop")
-	}
-	return nil
+	return applyRuntimeConfig(cfg)
 }
 
 func applyConfigAndVerifyTun(cfg *config.Config) error {
@@ -374,16 +375,13 @@ func applyConfigAndVerifyTun(cfg *config.Config) error {
 		tunErrorChannel <- tunError
 	}()
 
-	executor.ApplyConfig(cfg, true)
+	err := applyRuntimeConfig(cfg)
 	coreLog.UnSubscribe(logSubscription)
 	tunError := <-tunErrorChannel
-	if !listener.GetTunConf().Enable {
-		if tunError == "" {
-			tunError = "TUN listener did not start"
-		}
+	if err != nil && tunError != "" {
 		return errors.New(tunError)
 	}
-	return nil
+	return err
 }
 
 const (

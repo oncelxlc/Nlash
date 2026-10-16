@@ -10,6 +10,7 @@ import (
 	"github.com/metacubex/mihomo/component/profile/cachefile"
 	"github.com/metacubex/mihomo/config"
 	C "github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/hub/executor"
 	"github.com/metacubex/mihomo/listener"
 	"github.com/metacubex/mihomo/tunnel"
 )
@@ -109,6 +110,34 @@ func TestReloadKeepsPlatformTunParameters(t *testing.T) {
 	configureReloadTun(replacement, false)
 	if replacement.General.Tun.Enable || replacement.General.Tun.FileDescriptor != -1 {
 		t.Fatal("disabled proxy gained a TUN")
+	}
+}
+
+func TestApplyRuntimeConfigSynchronizesPlatformTun(t *testing.T) {
+	previous := listener.LastTunConf
+	t.Cleanup(func() {
+		executor.Shutdown()
+		listener.LastTunConf = previous
+		if cachefile.Cache().DB != nil {
+			if err := cachefile.Cache().Close(); err != nil {
+				t.Error(err)
+			}
+		}
+	})
+	C.SetHomeDir(t.TempDir())
+	cfg, _, err := parseRuntimeConfigData([]byte("dns:\n  enable: false\nrules:\n  - MATCH,REJECT\n"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configureHarmonyCore(cfg)
+	listener.LastTunConf = cfg.General.Tun
+	listener.LastTunConf.MTU = cfg.General.Tun.MTU + 1
+	if err := applyRuntimeConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	actual := listener.GetTunConf()
+	if !actual.Equal(cfg.General.Tun) {
+		t.Fatal("configuration apply did not synchronize the platform TUN settings")
 	}
 }
 
