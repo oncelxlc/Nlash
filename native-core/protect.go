@@ -18,6 +18,7 @@ const (
 	protectACKTimeout      = 3 * time.Second
 )
 
+// protectRequest 与 ArkTS ProtectProtocol 共用协议；generation 隔离不同代理会话。
 type protectRequest struct {
 	Version    int    `json:"version"`
 	Type       string `json:"type"`
@@ -38,6 +39,7 @@ type protectACK struct {
 
 type protectDialFunc func() (net.Conn, error)
 
+// protectClient 复用本地 socket，mu 保证一个请求及其 ACK 成对完成，避免并发串包。
 type protectClient struct {
 	generation string
 	dial       protectDialFunc
@@ -69,6 +71,7 @@ func newProtectClient(socketPath string, generation string) (*protectClient, err
 	}, nil
 }
 
+// protect 仅对传输故障重连一次；协议不匹配和宿主拒绝直接返回失败。
 func (client *protectClient) protect(fd int) error {
 	if fd < 0 {
 		return errors.New("invalid outbound socket")
@@ -123,6 +126,7 @@ func (client *protectClient) protectLocked(fd int) error {
 		return &protectTransportError{operation: "set protect deadline", err: err}
 	}
 
+	// 帧头为四字节大端 JSON 字节数，与 ArkTS 解码器保持一致。
 	frame := make([]byte, 4+len(payload))
 	binary.BigEndian.PutUint32(frame[:4], uint32(len(payload)))
 	copy(frame[4:], payload)
@@ -138,6 +142,7 @@ func (client *protectClient) protectLocked(fd int) error {
 	if err = json.Unmarshal(responsePayload, &response); err != nil {
 		return errors.New("invalid protect acknowledgement")
 	}
+	// FD 只有在本轮会话的对应 ACK 成功后才可用于出站连接。
 	if response.Version != protectProtocolVersion || response.Type != "protectAck" ||
 		response.RequestID != requestID || response.Generation != client.generation {
 		return errors.New("mismatched protect acknowledgement")
@@ -165,6 +170,7 @@ func (client *protectClient) closeLocked() {
 	}
 }
 
+// readProtectFrame 使用完整读取处理半包，并在分配 payload 前限制帧长。
 func readProtectFrame(reader io.Reader) ([]byte, error) {
 	header := make([]byte, 4)
 	if _, err := io.ReadFull(reader, header); err != nil {

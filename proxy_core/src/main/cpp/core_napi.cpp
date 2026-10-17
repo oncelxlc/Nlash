@@ -14,6 +14,7 @@ namespace nlash {
 
 namespace {
 
+// 独立持有 message 副本，Go 回调返回后原始字符串即失效。
 struct NativeEvent {
     int32_t type;
     int32_t state;
@@ -21,6 +22,7 @@ struct NativeEvent {
     std::string message;
 };
 
+// 同步回调投递与监听器替换，防止使用已释放的线程安全函数。
 std::mutex eventMutex;
 napi_threadsafe_function eventFunction = nullptr;
 
@@ -31,6 +33,7 @@ void SetIntProperty(napi_env env, napi_value object, const char *name, int32_t v
     napi_set_named_property(env, object, name, property);
 }
 
+// 在 JS 线程消费事件；环境销毁时也由 unique_ptr 回收排队中的数据。
 void CallEventListener(napi_env env, napi_value callback, void *context, void *data)
 {
     (void)context;
@@ -52,6 +55,7 @@ void CallEventListener(napi_env env, napi_value callback, void *context, void *d
     napi_call_function(env, receiver, callback, 1, &object, nullptr);
 }
 
+// Go 可从任意线程回调，只通过 threadsafe_function 投递，不能直接操作 JS 值。
 void OnCoreEvent(int32_t type, int32_t state, int32_t code, const char *message, void *userData)
 {
     (void)userData;
@@ -66,9 +70,11 @@ void OnCoreEvent(int32_t type, int32_t state, int32_t code, const char *message,
         napi_call_threadsafe_function(eventFunction, event.get(), napi_tsfn_nonblocking) != napi_ok) {
         return;
     }
+    // 投递成功后，事件的所有权转移给 CallEventListener。
     event.release();
 }
 
+// 调用方须持有 eventMutex；先断开 Go 事件源，再中止 JS 投递队列。
 void ClearEventFunctionLocked()
 {
 #ifdef NLASH_HAS_GO_CORE
@@ -89,6 +95,10 @@ enum class AsyncOperation {
     COMMAND,
 };
 
+/*
+ * 每次异步调用独立持有入参、结果和 Promise。
+ * 工作线程只访问 C++ 数据，JS 值的创建与 Promise 完成统一放在完成回调中。
+ */
 struct AsyncContext {
     napi_env env = nullptr;
     napi_async_work work = nullptr;
@@ -102,6 +112,7 @@ struct AsyncContext {
     std::string commandResult;
 };
 
+// 先查询 UTF-8 字节数，再额外预留结尾空字符，支持多字节配置路径。
 bool ReadString(napi_env env, napi_value value, std::string &target)
 {
     size_t length = 0;
@@ -175,6 +186,7 @@ void ExecuteAsync(napi_env env, void *data)
     }
 }
 
+// 业务失败也 resolve 结构化结果，由 ArkTS 根据 ok/code 决定是否抛出异常。
 void CompleteAsync(napi_env env, napi_status status, void *data)
 {
     std::unique_ptr<AsyncContext> context(static_cast<AsyncContext *>(data));
@@ -196,6 +208,7 @@ void CompleteAsync(napi_env env, napi_status status, void *data)
     napi_delete_async_work(env, context->work);
 }
 
+// 入队成功由完成回调回收 context；创建或入队失败则在当前线程完成 Promise 并清理。
 napi_value QueueAsync(napi_env env, std::unique_ptr<AsyncContext> context, const char *name)
 {
     napi_value promise = nullptr;

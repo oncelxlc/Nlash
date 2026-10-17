@@ -2,6 +2,7 @@ import { CAPTION_FONT_SIZE, CARD_RADIUS } from '../constants/UiConstants';
 import { DashboardSnapshot } from '../model/RuntimeModels';
 import { formatBytes } from '../utils/RuntimeUtils';
 
+/** 展示 Core 快照中的内存统计值，快照缺失时保留占位符。 */
 @Component
 export struct RuntimeMemoryCard {
   @Prop runtime: DashboardSnapshot | undefined = undefined;

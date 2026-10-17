@@ -1,3 +1,4 @@
+/** 统一代理组和活动页的二级文字标签样式。 */
 export function textTabBar(label: ResourceStr): SubTabBarStyle {
   return new SubTabBarStyle(label)
     .indicator({ color: $r('app.color.nav_selected'), height: 2, borderRadius: 1 })

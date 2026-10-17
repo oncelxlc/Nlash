@@ -1,5 +1,6 @@
 import { ResponsiveSizeClass, ResponsiveMetrics } from '../model/ResponsiveModels';
 
+// 各档位复用同一字段集合，窗口宽度变化时由 ResponsiveUtils 整体选择。
 export const COMPACT_METRICS: ResponsiveMetrics = {
   sizeClass: ResponsiveSizeClass.COMPACT,
   pagePadding: 16,

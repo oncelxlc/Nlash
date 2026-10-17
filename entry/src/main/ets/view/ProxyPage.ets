@@ -21,6 +21,7 @@ import { EmptyStateBackground } from '../components/EmptyStateBackground';
 import { textTabBar } from '../components/TextTabBar';
 import { ProxyNodeCard } from '../components/ProxyNodeCard';
 
+/** 展示运行或预览策略组，节点选择、分组偏好和并发测速统一由 RuntimeStore 管理。 */
 @Component
 export struct ProxyPage {
   @Prop forceExpanded: boolean = false;
@@ -42,6 +43,7 @@ export struct ProxyPage {
     this.unsubscribeRuntime = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
       this.coreAvailable = snapshot.coreAvailable;
       this.previewLoading = snapshot.previewLoading;
+      // 快照未变化时保留列表引用，避免定时刷新重建网格、打断当前滚动位置。
       const groups = visibleProxyGroups(snapshot.proxies, snapshot.proxyMode);
       if (groups.length !== this.proxyGroups.length || groups.some((group: ProxyGroupSnapshot, index: number): boolean =>
         group !== this.proxyGroups[index])) {
@@ -86,6 +88,7 @@ export struct ProxyPage {
     return this.selections.find((selection: ProxySelection): boolean => selection.group === group)?.proxy ?? '';
   }
 
+  // 运行时展示 Core 的实际选择；离线预览优先展示用户尚未应用的预选值。
   private isNodeSelected(node: ProxyNodeSnapshot): boolean {
     const group = this.currentGroup();
     if (this.coreAvailable) {

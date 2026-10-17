@@ -7,6 +7,7 @@ import { DashboardSnapshot } from '../model/RuntimeModels';
 import { formatSpeed } from './RuntimeUtils';
 import { CoreServiceState, ProxyState } from '../model/VpnModels';
 
+/** 无有效速率时显示占位符，避免把读取失败误报为真实零流量。 */
 export function buildVpnNotificationPresentation(coreState: CoreServiceState, proxyState: ProxyState,
   dashboard?: DashboardSnapshot, speedAvailable: boolean = true): VpnNotificationPresentation {
   const active = shouldShowVpnNotification(proxyState);
@@ -37,6 +38,7 @@ export function shouldShowVpnNotification(proxyState: ProxyState): boolean {
   return proxyState === ProxyState.ENABLED;
 }
 
+/** 使用持续任务分配的通知 ID 与槽位，只更新已有系统通知，不另建重复通知。 */
 export function buildVpnNotificationUpdate(task: backgroundTaskManager.ContinuousTaskNotification,
   presentation: VpnNotificationPresentation): notificationManager.NotificationRequest {
   return {

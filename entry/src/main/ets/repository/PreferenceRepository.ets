@@ -22,6 +22,7 @@ const PROXY_GROUPS = 'proxyGroups';
 const MAX_PROXY_SELECTIONS = 768;
 const MAX_PROXY_GROUPS = 128;
 
+/** 旧记录没有 mode，仅作为 RULE 模式的兼容回退，不共享到其他模式。 */
 export interface StoredProxySelection {
   profileId: string;
   mode?: RuntimeMode;
@@ -56,6 +57,7 @@ export function parseStoredProxySelections(value: string): StoredProxySelection[
     typeof record.proxy === 'string' && record.proxy.length > 0);
 }
 
+/** 显式模式记录优先于旧格式记录，同一策略组只返回一个最终节点。 */
 export function selectStoredProfile(records: StoredProxySelection[], profileId: string,
   mode: RuntimeMode = RuntimeMode.RULE): ProxySelection[] {
   const selected = new Map<string, string>();
@@ -101,6 +103,7 @@ export function selectStoredProxyGroup(records: StoredProxyGroup[], profileId: s
     record.profileId === profileId && record.mode === mode)?.group ?? '';
 }
 
+/** 集中管理应用偏好键及兼容读取；写操作 flush 后才能供另一个进程重新加载。 */
 class PreferenceRepository {
   private store: preferences.Preferences | undefined;
   private initializeOperation: Promise<void> | undefined;
@@ -182,6 +185,7 @@ class PreferenceRepository {
     }
   }
 
+  /** refreshContext 用于宿主主动清除进程缓存，读取 UI 最近保存的 MTU 等设置。 */
   async getAppSettings(refreshContext?: common.Context): Promise<AppSettings> {
     if (refreshContext !== undefined) {
       // The VPN host must read settings flushed by the UI process before creating a new TUN.
@@ -248,6 +252,7 @@ class PreferenceRepository {
     await this.replaceProxySelections(profileId, mode, replaced);
   }
 
+  /** 按配置与模式替换选择；写入 RULE 时一并淘汰该配置旧格式的无模式记录。 */
   async replaceProxySelections(profileId: string, mode: RuntimeMode, selections: ProxySelection[]): Promise<void> {
     const records = (await this.readProxySelectionRecords()).filter((record: StoredProxySelection): boolean =>
       record.profileId !== profileId || (record.mode !== mode &&

@@ -14,6 +14,7 @@ import (
 	"github.com/metacubex/mihomo/component/profile/cachefile"
 )
 
+// writeDelayLifecycleConfig 故意开启组与 provider 的自动检查，验证宿主适配会将其暂停。
 func writeDelayLifecycleConfig(t *testing.T, testURL string) (string, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -54,6 +55,7 @@ rules: ['MATCH,Route']
 	return dir, path
 }
 
+// closeDelayTestRuntime 释放 Mihomo 全局缓存数据库，避免测试间残留文件锁。
 func closeDelayTestRuntime(runtime *coreRuntime) {
 	runtime.stop()
 	if cachefile.Cache().DB != nil {
@@ -113,6 +115,7 @@ func TestOpeningConfigurationDoesNotStartDelayQueries(t *testing.T) {
 func TestDelayQueriesDoNotBlockLifecycleOrSelection(t *testing.T) {
 	for _, commandType := range []string{"previewGroupDelay", "testGroupDelay", "testDelay"} {
 		t.Run(commandType, func(t *testing.T) {
+			// 人为阻塞测速响应，确认生命周期和节点选择不需要等待网络请求结束。
 			entered := make(chan struct{}, 1)
 			release := make(chan struct{})
 			var releaseOnce sync.Once

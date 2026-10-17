@@ -17,6 +17,7 @@ napi_value CoreVersion(napi_env env, napi_callback_info info)
 EXTERN_C_START
 static napi_value Init(napi_env env, napi_value exports)
 {
+    // 导出名须与 libproxy_core/Index.d.ts 及 ArkTS 门面一致。
     napi_property_descriptor descriptors[] = {
         {"coreVersion", nullptr, CoreVersion, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"validateConfig", nullptr, nlash::ValidateConfigAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -47,6 +48,7 @@ static napi_module proxyCoreModule = {
 
 } // namespace
 
+// 动态库加载时向运行时注册 proxy_core 原生模块。
 extern "C" __attribute__((constructor)) void RegisterProxyCoreModule(void)
 {
     napi_module_register(&proxyCoreModule);

@@ -2,6 +2,7 @@ import { FeedbackEvent, FeedbackLevel, FeedbackListener } from '../model/Feedbac
 
 const DEFAULT_DEDUPE_WINDOW_MS = 3000;
 
+/** 统一发布带递增 ID 的用户反馈，展示方式由页面订阅者决定。 */
 export class FeedbackService {
   private nextId: number = 1;
   private listeners: Set<FeedbackListener> = new Set<FeedbackListener>();
@@ -31,6 +32,7 @@ export class FeedbackService {
     this.publish(FeedbackLevel.ERROR, message);
   }
 
+  /** 仅抑制时间窗内与最近一条同级同文案的反馈，适合自动更新等后台错误。 */
   publishDeduplicated(level: FeedbackLevel, message: string,
     windowMs: number = DEFAULT_DEDUPE_WINDOW_MS): void {
     const normalized = message.trim();

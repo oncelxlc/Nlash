@@ -8,6 +8,7 @@ import {
   BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
 } from '../constants/UiConstants';
 
+/** 展示 Core 当前活动连接，共用父页查询条件，关闭连接后由 Store 刷新快照。 */
 @Component
 export struct ConnectionsPage {
   @Prop contentPadding: number = 16;

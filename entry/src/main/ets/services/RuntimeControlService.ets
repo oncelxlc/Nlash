@@ -20,12 +20,14 @@ const COMMAND_TIMEOUT_MS = 12000;
 const DOMAIN = 0x4E4C;
 const TAG = 'NlashRuntimeControl';
 
+/** 每个在途请求拥有独立的超时器，响应、发送失败或超时后必须移除。 */
 interface PendingCommand {
   resolve: (response: string) => void;
   reject: (error: Error) => void;
   timeoutId: number;
 }
 
+/** UI 进程的控制通道，以 UUID 关联 CommonEvent 请求与 Extension 返回的响应。 */
 class RuntimeControlService {
   private subscriber: commonEventManager.CommonEventSubscriber | undefined;
   private initializeOperation: Promise<void> | undefined;
@@ -50,6 +52,7 @@ class RuntimeControlService {
     return this.initializeOperation;
   }
 
+  /** 先建立响应订阅再发送命令；这里只校验响应信封，data 的领域约束由调用方处理。 */
   async execute<T>(type: string, payload?: Object,
     timeoutMs: number = COMMAND_TIMEOUT_MS): Promise<RuntimeCommandResponse<T>> {
     await this.initialize();
@@ -115,6 +118,7 @@ class RuntimeControlService {
         hilog.warn(DOMAIN, TAG, 'control request timed out request=%{public}s', requestId.substring(0, 8));
         reject(new Error('Core 控制请求超时'));
       }, timeoutMs);
+      // 先登记等待项，再发布事件，避免快速响应早于 Promise 注册。
       this.pending.set(requestId, {
         resolve: resolve,
         reject: reject,

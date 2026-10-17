@@ -5,6 +5,7 @@ import { DashboardSnapshot } from '../model/RuntimeModels';
 import { AppPage } from '../model/NavigationModels';
 import { navigationIntentService } from '../services/NavigationIntentService';
 
+/** 活动连接数卡片兼作活动页连接标签入口，跳转通过统一导航意图服务处理。 */
 @Component
 export struct RuntimeStatusCard {
   @Prop runtime: DashboardSnapshot | undefined = undefined;

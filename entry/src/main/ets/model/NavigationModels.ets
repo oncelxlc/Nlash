@@ -1,3 +1,4 @@
+/** 保留请求与连接的独立跳转目标，实际一级入口统一映射到 ACTIVITY。 */
 export enum AppPage {
   DASHBOARD,
   PROXY,

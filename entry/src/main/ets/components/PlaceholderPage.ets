@@ -1,6 +1,7 @@
 import { EmptyStateBackground } from './EmptyStateBackground';
 import { PageHeader } from './PageHeader';
 
+/** 为尚未实现的页面复用统一标题与空态布局。 */
 @Component
 export struct PlaceholderPage {
   @Prop pageTitle: Resource;

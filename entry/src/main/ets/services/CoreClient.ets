@@ -28,6 +28,7 @@ import {
   CoreStartOptions
 } from '../model/CoreModels';
 
+// 数组索引就是原生 ABI 的枚举值，须与 core_bridge.h 和 Go 定义保持一致。
 const CORE_STATES: CoreRuntimeState[] = [
   CoreRuntimeState.STOPPED,
   CoreRuntimeState.VALIDATING,
@@ -60,6 +61,7 @@ const CORE_EVENT_TYPES: CoreEventType[] = [
   CoreEventType.PROXY_DELAY_PROGRESS
 ];
 
+/** 将原生数值协议转换为领域类型，并将单个 N-API 回调分发给应用内订阅者。 */
 class NativeCoreClient implements CoreClient {
   private listeners: Set<CoreEventListener> = new Set<CoreEventListener>();
   private readonly nativeEventListener = (event: NativeCoreEvent): void => {
@@ -139,6 +141,7 @@ class NativeCoreClient implements CoreClient {
     return value >= 0 && value < CORE_STATES.length ? CORE_STATES[value] : CoreRuntimeState.FAILED;
   }
 
+  /** 首个订阅者连接原生事件源，最后一个取消时释放回调，避免页面反复进入后积累监听。 */
   subscribe(listener: CoreEventListener): () => void {
     if (this.listeners.size === 0) {
       setCoreEventListener(this.nativeEventListener);

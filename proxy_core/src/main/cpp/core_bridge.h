@@ -6,6 +6,7 @@
 
 namespace nlash {
 
+// 数值跨越 Go C ABI 与 ArkTS 映射表，调整顺序时必须同步所有层。
 enum class CoreErrorCode : int32_t {
     OK = 0,
     INVALID_ARGUMENT = 1,
@@ -27,6 +28,7 @@ enum class CoreRuntimeState : int32_t {
     FAILED = 5,
 };
 
+// 桥接层拥有错误文本副本，调用方不需要管理 Go 返回的 C 字符串。
 struct CoreResult {
     CoreErrorCode code;
     std::string message;
@@ -42,6 +44,7 @@ struct CoreStartOptions {
     std::string workDir;
 };
 
+// tunFd 由 HarmonyOS 持有；EnableCoreProxy 内部复制后才交给 Go。
 struct CoreProxyOptions {
     int32_t tunFd = -1;
     int32_t mtu = 0;
@@ -49,8 +52,10 @@ struct CoreProxyOptions {
     std::string generation;
 };
 
+// 未链接 Go 预编译库的 ABI 返回 unavailable/non-arm64，供上层阻止启动。
 std::string CoreVersion();
 CoreResult ValidateCoreConfig(const std::string &configPath);
+// Core 启停与系统代理启停分离，关闭代理后仍可执行 Core 业务命令。
 CoreResult StartCore(const CoreStartOptions &options);
 CoreResult EnableCoreProxy(const CoreProxyOptions &options);
 CoreResult DisableCoreProxy();

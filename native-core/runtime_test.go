@@ -15,6 +15,7 @@ import (
 	"github.com/metacubex/mihomo/tunnel"
 )
 
+// 同一文件后续被覆盖为无效内容，验证回滚依赖已接受的内存字节而非重新读取磁盘。
 func TestConfigurationHotApplyPreservesRuntimeAndAcceptedData(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "active.yaml")

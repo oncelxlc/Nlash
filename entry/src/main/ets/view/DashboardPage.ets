@@ -39,6 +39,7 @@ import { navigationIntentService } from '../services/NavigationIntentService';
 const MODES: RuntimeMode[] = [RuntimeMode.RULE, RuntimeMode.GLOBAL, RuntimeMode.DIRECT];
 const VIEW_SYNC_INTERVAL_MS = 1000;
 
+/** 仪表盘聚合运行状态和可排序卡片；用户操作交给 Store 与服务完成。 */
 @Component
 export struct DashboardPage {
   @State coreState: CoreServiceState = vpnService.getCoreState();
@@ -108,6 +109,7 @@ export struct DashboardPage {
     }
   }
 
+  // 每秒刷新计时和展示快照，仅在新流量样本到达时替换图表数据，避免重复绘制。
   private syncViewState(): void {
     const lifecycle = vpnService.getLifecycleSnapshot();
     this.applyLifecycle(lifecycle);
@@ -249,6 +251,7 @@ export struct DashboardPage {
       (this.coreState === CoreServiceState.ERROR ? $r('app.color.status_error') : $r('app.color.content_secondary'));
   }
 
+  // 卡片跨度依当前顺序计算，拖动后仍保留速度、流量等卡片的不同尺寸。
   private gridLayoutOptions(): GridLayoutOptions {
     return {
       regularSize: [1, 1],
@@ -277,6 +280,7 @@ export struct DashboardPage {
     ];
   }
 
+  /** 进入编辑前加载保存顺序，退出时保存；失败则保留编辑状态供用户重试。 */
   private async toggleLayoutEditing(): Promise<void> {
     if (this.savingLayout || this.draggingCard !== undefined) {
       return;
@@ -589,6 +593,7 @@ export struct DashboardPage {
     }
   }
 
+  // 编辑时屏蔽卡片内部操作与其无障碍子节点，保留独立的移动菜单。
   @Builder
   private editableCard(card: DashboardCard) {
     Stack({ alignContent: Alignment.TopEnd }) {

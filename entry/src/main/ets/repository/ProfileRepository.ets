@@ -25,6 +25,7 @@ const CREATE_PROFILE_TABLE = `CREATE TABLE IF NOT EXISTS ${PROFILE_TABLE} (
 const PROFILE_COLUMN_AUTO_UPDATE = 'auto_update_enabled';
 const PROFILE_COLUMN_UPDATE_INTERVAL = 'update_interval_minutes';
 
+/** 只负责配置元数据的 RDB 读写；配置文件与下载流程由 SubscriptionService 管理。 */
 class ProfileRepository {
   private store: relationalStore.RdbStore | undefined;
   private initializeOperation: Promise<void> | undefined;
@@ -95,6 +96,7 @@ class ProfileRepository {
     this.store = store;
   }
 
+  // 按实际列集合增量补齐旧数据库，保留已有配置记录并允许重复初始化。
   private async migrateProfileTable(store: relationalStore.RdbStore): Promise<void> {
     const result = await store.querySql(`PRAGMA table_info(${PROFILE_TABLE})`);
     const columns = new Set<string>();
@@ -116,6 +118,7 @@ class ProfileRepository {
     }
   }
 
+  // 可选数值保留“缺失”语义，不能把未知流量或到期时间误读为 0。
   private readProfile(result: relationalStore.ResultSet): Profile {
     const profile: Profile = {
       id: result.getString(result.getColumnIndex('id')),

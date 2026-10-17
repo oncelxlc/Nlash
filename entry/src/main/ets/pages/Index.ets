@@ -16,6 +16,7 @@ import { NavigationTransition, SettingsStoreSnapshot } from '../model/SettingsMo
 import { settingsStore } from '../stores/SettingsStore';
 import { PageEntrance } from '../components/PageEntrance';
 
+/** 应用页面容器，统一导航、反馈展示及返回行为，并管理页面级订阅的释放。 */
 @Entry
 @Component
 struct Index {
@@ -50,6 +51,7 @@ struct Index {
     this.unsubscribeSettings = undefined;
   }
 
+  /** 返回优先级：编辑器关闭确认 → 回到仪表盘 → 将 Ability 移到后台。 */
   onBackPress(): boolean {
     if (this.navigationState.selectedPage === AppPage.CONFIGURATION && configurationEditorService.handleBack()) {
       return true;
@@ -118,6 +120,7 @@ struct Index {
       });
   }
 
+  // 仪表盘返回只切入后台，保留现有 UI Ability，避免返回操作触发整套入口重建。
   private handlePrimaryBack(page: AppPage): boolean {
     if (page !== AppPage.DASHBOARD) {
       this.selectPage(AppPage.DASHBOARD);

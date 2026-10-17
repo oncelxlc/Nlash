@@ -14,6 +14,7 @@ interface SpeedValueParams {
   speed: number | undefined;
 }
 
+/** 展示最近一分钟上传与下载合计速度；Canvas 绘制失败时回退为空态，不影响数值展示。 */
 @Component
 export struct RuntimeSpeedCard {
   @Prop runtime: DashboardSnapshot | undefined = undefined;
@@ -47,6 +48,7 @@ export struct RuntimeSpeedCard {
     this.scheduleThemeRedraw();
   }
 
+  // Canvas 不会自动重绘既有像素，主题应用后下一轮再读取资源色并重新绘制。
   private scheduleThemeRedraw(): void {
     if (this.applicationContext === undefined) { return; }
     if (this.themeRedrawTimer !== undefined) { clearTimeout(this.themeRedrawTimer); }
@@ -101,6 +103,7 @@ export struct RuntimeSpeedCard {
         for (let index = 1; index < points.length; index++) {
           const previous = points[index - 1];
           const current = points[index];
+          // 用工具函数限制后的切线构造三次贝塞尔段，避免插值制造虚假的峰值。
           const handleWidth = (current.x - previous.x) / 3;
           context.bezierCurveTo(previous.x + handleWidth, previous.y + previous.slope * handleWidth,
             current.x - handleWidth, current.y - current.slope * handleWidth, current.x, current.y);

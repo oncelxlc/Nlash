@@ -13,6 +13,7 @@ import {
 
 const FILTERS: RequestFilter[] = [RequestFilter.ALL, RequestFilter.ACTIVE, RequestFilter.COMPLETED];
 
+/** 展示会话内请求历史，通过父页状态组合活动/已完成筛选与文本查询。 */
 @Component
 export struct RequestsPage {
   @Prop contentPadding: number = 16;

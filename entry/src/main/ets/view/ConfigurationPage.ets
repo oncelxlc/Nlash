@@ -25,6 +25,7 @@ import { PageHeader } from '../components/PageHeader';
 import { selectionAnimation } from '../utils/AnimationUtils';
 import { EmptyStateBackground } from '../components/EmptyStateBackground';
 
+/** 配置管理页面，编辑草稿独立于 Store，下载、保存与活动配置切换统一交给 ProfileStore。 */
 @Component
 export struct ConfigurationPage {
   private selectionAnimationOptions: AnimateParam = selectionAnimation();
@@ -163,6 +164,7 @@ export struct ConfigurationPage {
     return this.profiles.find((profile: Profile): boolean => profile.id === this.editingProfileId);
   }
 
+  // 复制到表单字段，取消编辑不会修改已保存的配置元数据。
   private openEditor(profile: Profile): void {
     this.formError = '';
     this.editingProfileId = profile.id;
@@ -182,6 +184,7 @@ export struct ConfigurationPage {
     configurationEditorService.setOpen(false);
   }
 
+  /** 系统返回与页面关闭共用未保存检查，确认放弃后才清空编辑上下文。 */
   private requestCloseEditor(): void {
     if (!this.hasEditorChanges()) {
       this.closeEditorImmediately();
@@ -205,6 +208,7 @@ export struct ConfigurationPage {
     });
   }
 
+  // 本地配置仅支持重命名，不把订阅专用字段计入未保存变化。
   private hasEditorChanges(): boolean {
     const profile = this.editingProfile();
     if (profile === undefined) {

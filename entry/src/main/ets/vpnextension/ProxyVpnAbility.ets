@@ -55,6 +55,7 @@ interface SelectProxyPayload {
   proxy: string;
 }
 
+/** 将协议层的 FD 保护请求交给创建本轮 TUN 的 VpnConnection。 */
 class VpnSocketProtector implements SocketProtector {
   private readonly connection: vpnExtension.VpnConnection;
 
@@ -72,6 +73,10 @@ class VpnSocketProtector implements SocketProtector {
   }
 }
 
+/**
+ * 系统 VPN 宿主，集中持有 Core、平台 TUN 和 protect 通道，UI 通过控制事件驱动它。
+ * 生命周期变更进入同一队列；desiredProxyEnabled 表示重启后是否需要恢复代理。
+ */
 export default class ProxyVpnAbility extends VpnExtensionAbility {
   private vpnConnection: vpnExtension.VpnConnection | undefined;
   private protectChannel: ProtectChannelServer | undefined;
@@ -124,12 +129,14 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     });
   }
 
+  // 前项失败仍执行后项，但把本次错误返回给调用者，避免一次故障阻断整个队列。
   private enqueue(operation: () => Promise<void>): Promise<void> {
     const next = this.lifecycleQueue.then(operation, operation);
     this.lifecycleQueue = next.then((): void => {}, (): void => {});
     return next;
   }
 
+  // 宿主接管涉及平台资源和持久化的命令，其余命令由 CoreControlServer 继续转给 Go。
   private async handleControlCommand(raw: string): Promise<string | undefined> {
     let command: LifecycleCommand;
     try {
@@ -218,6 +225,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     return undefined;
   }
 
+  /** 完整重启路径：撤下代理、校验并启动 Core、恢复选择，再按原意图重新开启代理。 */
   private async loadCore(profileId: string, configPath: string,
     profileSignature: string, reloading: boolean): Promise<void> {
     const restoreProxy = this.desiredProxyEnabled || this.proxyState === ProxyState.ENABLED ||
@@ -291,6 +299,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     }
   }
 
+  /** 热应用配置；Core 成功后若模式或选择恢复失败，回滚原配置及宿主快照。 */
   private async applyProfile(profileId: string, configPath: string, profileSignature: string): Promise<void> {
     if (this.coreState !== CoreServiceState.RUNNING || coreClient.getState() !== CoreRuntimeState.RUNNING) {
       throw new Error('Core 尚未就绪，请点击 Core 状态重试');
@@ -352,6 +361,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     }
   }
 
+  /** 依次创建平台 TUN、监听 protect 通道、接入 Core，失败时回收本轮平台资源。 */
   private async enableProxy(): Promise<void> {
     if (this.proxyState === ProxyState.ENABLED && coreClient.isProxyEnabled()) {
       return;
@@ -375,6 +385,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
         throw new Error(`VpnConnection.create returned invalid fd=${fd}`);
       }
       this.tunFd = fd;
+      // 每次开启使用独立会话，旧 Core 连接不能复用新一轮的 FD 保护通道。
       const generation = util.generateRandomUUID();
       const protectSocketPath = `${this.context.filesDir}/p-${generation.substring(0, 8)}.sock`;
       const channel = new ProtectChannelServer(
@@ -418,6 +429,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     }
   }
 
+  /** preserveDesired 用于重启时临时撤下代理，保留用户开启意图和会话计时。 */
   private async disableProxy(preserveDesired: boolean): Promise<void> {
     if (!preserveDesired) {
       this.desiredProxyEnabled = false;
@@ -434,6 +446,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     }
     this.proxyState = ProxyState.DISABLING;
     this.publish('正在关闭代理');
+    // 必须先确认 Core 已撤下 TUN，再销毁平台连接；失败时保留仍工作的资源。
     let coreReconfigured = false;
     try {
       if (coreClient.getState() === CoreRuntimeState.RUNNING && coreClient.isProxyEnabled()) {
@@ -471,6 +484,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     this.publish('代理已关闭，Core 继续运行');
   }
 
+  // 平台原始 FD 随 VpnConnection.destroy 释放，不能与 Go 持有的副本重复关闭。
   private async cleanupProxyResources(): Promise<void> {
     this.tunFd = -1;
     const channel = this.protectChannel;
@@ -493,6 +507,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     }
   }
 
+  // protect 失败时撤下代理并报告错误，防止出站连接反复进入自身的 VPN。
   private handleProtectFailure(): void {
     if (this.destroying) {
       return;
@@ -508,6 +523,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     }).catch((): void => {});
   }
 
+  // 合并重复异常事件，并遵循一次自动恢复上限，防止持续重启占用系统资源。
   private beginRecovery(): void {
     if (this.destroying || this.recoveryOperation !== undefined) {
       return;
@@ -574,6 +590,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
       .map((group: ProxyGroupSnapshot): ProxySelection => ({ group: group.name, proxy: group.selected }));
   }
 
+  /** 以配置默认值为基础覆盖仍有效的保存选择，并清理已被订阅移除的节点记录。 */
   private async restoreRuntimeModeAndSelections(): Promise<void> {
     if (coreClient.getState() !== CoreRuntimeState.RUNNING) {
       return;
@@ -619,6 +636,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     }
   }
 
+  // 节点切换与保存作为一个用户操作处理；保存失败时尽量恢复 Core 原节点。
   private async selectRuntimeProxy(raw: string, payload: SelectProxyPayload): Promise<string> {
     const snapshot = await this.runtimeProxySnapshot();
     const group = snapshot.groups.find((item: ProxyGroupSnapshot): boolean => item.name === payload.group);
@@ -714,6 +732,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     return mode === RuntimeMode.RULE || mode === RuntimeMode.GLOBAL || mode === RuntimeMode.DIRECT;
   }
 
+  // 平台接管 IPv4 默认路由；地址、前缀和 MTU 须与 Go configureHarmonyTun 保持一致。
   private vpnConfig(): vpnExtension.VpnConfig {
     return {
       addresses: [{
@@ -796,6 +815,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     this.sessionTimer.finish(systemDateTime.getUptime(systemDateTime.TimeType.STARTUP));
   }
 
+  // 无用户配置时也让 Core 保持可用，bootstrap 不允许开启系统代理。
   private async prepareBootstrapConfig(): Promise<string> {
     const workDir = `${this.context.filesDir}/core/work`;
     await this.ensureDirectory(workDir);

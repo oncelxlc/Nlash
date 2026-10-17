@@ -8,10 +8,12 @@ import { VPN_BUNDLE_NAME, VPN_STATE_COMMON_EVENT, VPN_STATE_EVENT } from '../con
 
 const DOMAIN = 0x4E4C;
 const TAG = 'NlashVpnState';
+// 每次宿主进程启动拥有独立来源；同一来源的序号递增，供接收方过滤乱序广播。
 const SOURCE_ID: string = util.generateRandomUUID();
 const SOURCE_STARTED_AT: number = Date.now();
 let nextSequence: number = 0;
 
+/** 同时发布进程内 EventHub 与跨进程 CommonEvent，确保两种运行布局都能同步状态。 */
 export function publishVpnState(
   applicationContext: common.ApplicationContext,
   coreState: CoreServiceState,

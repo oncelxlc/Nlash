@@ -6,6 +6,7 @@ export function resolveContentWidth(width: Length): number {
   return Number.isFinite(numericWidth) ? numericWidth : 0;
 }
 
+/** 按实际内容宽度选择档位，折叠展开或分屏后可重新计算，不依赖设备型号。 */
 export function resolveResponsiveMetrics(contentWidth: number, forceExpanded: boolean = false): ResponsiveMetrics {
   if (forceExpanded || contentWidth >= 900) {
     return EXPANDED_METRICS;

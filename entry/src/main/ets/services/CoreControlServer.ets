@@ -25,8 +25,10 @@ interface CoreCommandTypeOnly {
   type?: string;
 }
 
+/** 宿主优先处理生命周期命令；返回 undefined 时交给 Go 业务命令入口。 */
 export type CoreCommandInterceptor = (command: string) => Promise<string | undefined>;
 
+/** Extension 侧的跨进程命令入口，限定事件发布包并转发响应与测速进度。 */
 class CoreControlServer {
   private subscriber: commonEventManager.CommonEventSubscriber | undefined;
   private startOperation: Promise<void> | undefined;
@@ -122,6 +124,7 @@ class CoreControlServer {
     this.publishResponse(envelope.requestId, response);
   }
 
+  // 日志仅提取受限命令名，避免输出可能含配置路径或连接信息的完整 payload。
   private safeCommandType(command: string): string {
     try {
       const parsed = JSON.parse(command) as CoreCommandTypeOnly;

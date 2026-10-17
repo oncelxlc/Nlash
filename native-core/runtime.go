@@ -20,6 +20,7 @@ import (
 	"github.com/metacubex/mihomo/tunnel"
 )
 
+// coreRuntimeState 的数值属于跨语言 ABI，须与 C++ 枚举和 ArkTS 映射顺序一致。
 type coreRuntimeState int32
 
 const (
@@ -31,6 +32,7 @@ const (
 	coreFailed
 )
 
+// coreErrorCode 通过 C ABI 返回；错误描述由 lastError 单独传递。
 type coreErrorCode int32
 
 const (
@@ -49,6 +51,7 @@ type coreStartOptions struct {
 	workDir    string
 }
 
+// coreProxyOptions 接收宿主提供的 TUN 副本和本轮 protect 通道标识。
 type coreProxyOptions struct {
 	tunFD             int
 	mtu               int
@@ -56,6 +59,10 @@ type coreProxyOptions struct {
 	generation        string
 }
 
+/*
+coreRuntime 管理进程内唯一的 Mihomo 实例，mu 串行保护配置和生命周期变更。
+Core 运行与系统代理启用是独立状态；配置字节保留在内存中，供重载失败时恢复。
+*/
 type coreRuntime struct {
 	mu                 sync.RWMutex
 	state              coreRuntimeState
@@ -71,6 +78,8 @@ type coreRuntime struct {
 }
 
 var runtimeInstance = &coreRuntime{state: coreStopped}
+
+// 拨号线程只读取原子指针，避免等待持有 mu 的启动、重载或停止操作。
 var activeSocketProtect atomic.Pointer[protectClient]
 
 func init() {
@@ -95,6 +104,7 @@ func (runtime *coreRuntime) getLastError() string {
 	return runtime.lastError
 }
 
+// setFailure 在调用方持有写锁时进入失败状态；reject 只拒绝当前操作。
 func (runtime *coreRuntime) setFailure(code coreErrorCode, err error) coreErrorCode {
 	runtime.state = coreFailed
 	runtime.lastError = sanitizeCoreError(err)
@@ -107,6 +117,7 @@ func (runtime *coreRuntime) reject(code coreErrorCode, err error) coreErrorCode 
 	return code
 }
 
+// validate 会设置 Mihomo 的全局配置路径，因此仅允许在 Core 未运行时执行。
 func (runtime *coreRuntime) validate(configPath string) coreErrorCode {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
@@ -133,6 +144,7 @@ func (runtime *coreRuntime) validate(configPath string) coreErrorCode {
 	return coreOK
 }
 
+// start 先启动不接管系统流量的 Core，TUN 由后续 enableProxy 单独接入。
 func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode) {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
@@ -213,6 +225,7 @@ func (runtime *coreRuntime) applyConfig(configPath string, rollback bool) coreCo
 		return commandFailure("CONFIG_INVALID", sanitizeCoreError(err))
 	}
 	configureReloadTun(cfg, runtime.proxyEnabled)
+	// 同时保留模式与节点选择，避免配置回滚后丢失用户的运行时选择。
 	previous := runtime.proxySnapshot()
 	if err = applyRuntimeConfig(cfg); err != nil {
 		oldConfig, restoreErr := runtime.parseActiveConfig(runtime.proxyEnabled)
@@ -240,6 +253,7 @@ func (runtime *coreRuntime) applyConfig(configPath string, rollback bool) coreCo
 	return commandSuccess(runtime.proxySnapshot())
 }
 
+// configureReloadTun 复用正在工作的 TUN 参数，避免热重载替换平台提供的 FD。
 func configureReloadTun(cfg *config.Config, proxyEnabled bool) {
 	configureHarmonyCore(cfg)
 	if proxyEnabled {
@@ -262,6 +276,7 @@ func applyRuntimeConfig(cfg *config.Config) (err error) {
 	return nil
 }
 
+// enableProxy 在接入 TUN 前安装 protect 客户端，使新建出站 socket 绕过 VPN。
 func (runtime *coreRuntime) enableProxy(options coreProxyOptions) (code coreErrorCode) {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
@@ -308,6 +323,7 @@ func (runtime *coreRuntime) enableProxy(options coreProxyOptions) (code coreErro
 	return coreOK
 }
 
+// disableProxy 撤下 TUN 和 protect 通道，保留 Core 供预览、测速和配置操作使用。
 func (runtime *coreRuntime) disableProxy() (code coreErrorCode) {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
@@ -362,6 +378,7 @@ func (runtime *coreRuntime) applyCoreOnlyConfig() error {
 	return applyRuntimeConfig(cfg)
 }
 
+// applyConfigAndVerifyTun 捕获本次应用期间的 TUN 错误，为失败结果补充底层原因。
 func applyConfigAndVerifyTun(cfg *config.Config) error {
 	logSubscription := coreLog.Subscribe()
 	tunErrorChannel := make(chan string, 1)
@@ -402,6 +419,7 @@ func parseRuntimeConfigWithPath(configPath string) (*config.Config, []string, er
 	return parseRuntimeConfigData(data, true)
 }
 
+// parseRuntimeConfigData 在解析前适配平台资源与健康检查，并保留 YAML 中的策略组顺序。
 func parseRuntimeConfigData(data []byte, autoHealthChecks bool) (*config.Config, []string, error) {
 	raw, err := config.UnmarshalRawConfig(data)
 	if err != nil {
@@ -436,6 +454,7 @@ func rawProxyGroupOrder(raw *config.RawConfig) []string {
 	return order
 }
 
+// configHomeDir 让 profiles 下的配置共用 Core 工作目录，复用下载的规则与地理数据。
 func configHomeDir(configPath string) string {
 	configDir := filepath.Dir(filepath.Clean(configPath))
 	if filepath.Base(configDir) == "profiles" {
@@ -452,6 +471,7 @@ func prepareConfigHome(configPath string) (string, error) {
 	return homeDir, nil
 }
 
+// applyHarmonyGeoMirrors 仅替换上游默认资源地址，保留配置显式指定的下载源。
 func applyHarmonyGeoMirrors(raw *config.RawConfig) {
 	if raw.GeoXUrl.Mmdb == defaultGeoBaseURL+"geoip.metadb" {
 		raw.GeoXUrl.Mmdb = mirrorGeoBaseURL + "geoip.metadb"
@@ -467,6 +487,7 @@ func applyHarmonyGeoMirrors(raw *config.RawConfig) {
 	}
 }
 
+// configureHarmonyTun 使用系统创建的 TUN；地址、路由和 VPN 授权由 HarmonyOS 宿主管理。
 func configureHarmonyTun(cfg *config.Config, tunFD int, mtu int) {
 	cfg.General.Tun.Enable = true
 	cfg.General.Tun.Device = "nlash0"
@@ -483,6 +504,7 @@ func configureHarmonyTun(cfg *config.Config, tunFD int, mtu int) {
 	cfg.General.IPv6 = false
 }
 
+// configureHarmonyCore 禁用 Mihomo 自建 TUN 和路由管理，支持 Core 独立运行。
 func configureHarmonyCore(cfg *config.Config) {
 	cfg.General.Tun.Enable = false
 	cfg.General.Tun.FileDescriptor = -1
@@ -493,6 +515,7 @@ func configureHarmonyCore(cfg *config.Config) {
 	cfg.General.IPv6 = false
 }
 
+// protectSocket 必须收到宿主确认后才允许拨号继续，防止出站流量重新进入 TUN。
 func protectSocket(protect *protectClient, connection syscall.RawConn) error {
 	var fd int = -1
 	if err := connection.Control(func(value uintptr) {
@@ -510,6 +533,7 @@ func protectSocket(protect *protectClient, connection syscall.RawConn) error {
 	return nil
 }
 
+// stop 先撤销拨号钩子的客户端，再关闭 Core 与通道，清空本轮配置和回滚快照。
 func (runtime *coreRuntime) stop() (code coreErrorCode) {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
@@ -553,6 +577,7 @@ func sanitizeCoreError(err error) string {
 	return sanitizeCoreErrorText(err.Error())
 }
 
+// sanitizeCoreErrorText 只折叠换行并限制长度，不承担 URL、路径或凭据的内容脱敏。
 func sanitizeCoreErrorText(value string) string {
 	message := strings.ReplaceAll(value, "\r", " ")
 	message = strings.ReplaceAll(message, "\n", " ")

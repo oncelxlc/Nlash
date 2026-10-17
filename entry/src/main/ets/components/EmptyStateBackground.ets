@@ -2,6 +2,7 @@ import {
   BODY_FONT_SIZE, CAPTION_FONT_SIZE, FLOATING_NAVIGATION_INSET
 } from '../constants/UiConstants';
 
+/** 可复用空态背景；compact 用于卡片内展示，组件不拦截底层交互。 */
 @Component
 export struct EmptyStateBackground {
   @Prop title: ResourceStr = '';

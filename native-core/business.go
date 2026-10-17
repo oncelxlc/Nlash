@@ -24,6 +24,7 @@ import (
 const maxCoreCommandBytes = 16 * 1024
 const groupDelayConcurrency = 8
 
+// coreCommand 是 ArkTS 经 N-API 传入的命令信封，payload 由各命令校验后解析。
 type coreCommand struct {
 	Type    string          `json:"type"`
 	Payload json.RawMessage `json:"payload,omitempty"`
@@ -46,6 +47,7 @@ type dashboardSnapshot struct {
 	ConnectionCount int    `json:"connectionCount"`
 }
 
+// proxyNodeSnapshot 用 Tested 区分未测速与测速失败，Delay 为 -1 时没有可用延迟。
 type proxyNodeSnapshot struct {
 	Name   string `json:"name"`
 	Type   string `json:"type"`
@@ -70,6 +72,7 @@ type proxySnapshot struct {
 	Groups []proxyGroupSnapshot `json:"groups"`
 }
 
+// 预览解析也会修改 Mihomo 全局路径，多个预览任务之间必须串行解析。
 var previewParseMutex sync.Mutex
 
 type previewProxyPayload struct {
@@ -105,6 +108,7 @@ type groupDelayResult struct {
 	Results []proxyDelayResult `json:"results"`
 }
 
+// proxyDelayProgress 携带 operationId，便于 UI 丢弃已切换配置或已结束任务的结果。
 type proxyDelayProgress struct {
 	OperationID string `json:"operationId"`
 	Group       string `json:"group"`
@@ -156,6 +160,7 @@ type setModePayload struct {
 	Mode string `json:"mode"`
 }
 
+// executeCommand 在信任边界限制命令大小，并按操作所需的锁范围分发请求。
 func (runtime *coreRuntime) executeCommand(raw string) string {
 	if len(raw) == 0 || len(raw) > maxCoreCommandBytes {
 		return marshalCommandResponse(commandFailure("INVALID_ARGUMENT", "command is empty or too large"))
@@ -164,6 +169,7 @@ func (runtime *coreRuntime) executeCommand(raw string) string {
 	if err := json.Unmarshal([]byte(raw), &command); err != nil || command.Type == "" {
 		return marshalCommandResponse(commandFailure("INVALID_ARGUMENT", "command is invalid"))
 	}
+	// 写配置和网络测速自行管理锁，不能放进下方覆盖普通快照请求的读锁区间。
 	if command.Type == "applyConfig" {
 		var payload previewProxyPayload
 		if !decodeCommandPayload(command.Payload, &payload) || strings.TrimSpace(payload.ConfigPath) == "" {
@@ -287,6 +293,7 @@ func (runtime *coreRuntime) executeDelayCommand(command coreCommand) coreCommand
 	return commandSuccess(result)
 }
 
+// restoreProxySnapshot 在配置恢复后还原运行模式与可手选策略组的节点。
 func restoreProxySnapshot(snapshot proxySnapshot) error {
 	mode, ok := tunnel.ModeMapping[strings.ToLower(snapshot.Mode)]
 	if !ok {
@@ -326,6 +333,7 @@ func (runtime *coreRuntime) proxySnapshot() proxySnapshot {
 	return buildProxySnapshot(tunnel.Proxies(), runtime.proxyGroupOrder, "runtime", tunnel.Mode().String())
 }
 
+// buildProxySnapshot 优先使用配置顺序，其余策略组按名称排序，避免 map 遍历造成 UI 跳动。
 func buildProxySnapshot(proxies map[string]C.Proxy, preferredOrder []string, source string,
 	mode string) proxySnapshot {
 	groups := make([]proxyGroupSnapshot, 0)
@@ -390,6 +398,7 @@ type closeableProvider interface {
 	Close() error
 }
 
+// manualHealthCheckProvider 保留节点访问能力，跳过会启动后台健康检查的 Initial。
 type manualHealthCheckProvider struct {
 	*provider.CompatibleProvider
 }
@@ -417,6 +426,7 @@ func pauseCompatibleHealthChecks(cfg *config.Config) {
 	}
 }
 
+// parsePreviewConfig 加载独立预览对象；调用方须执行返回的 cleanup 关闭已初始化 provider。
 func parsePreviewConfig(configPath string) (*config.Config, []string, func(), error) {
 	previewParseMutex.Lock()
 	defer previewParseMutex.Unlock()
@@ -509,6 +519,10 @@ type indexedProxyDelayResult struct {
 	result proxyDelayResult
 }
 
+/*
+runGroupDelay 限制同时等待的测速任务数，按完成顺序推送进度、按原节点顺序汇总结果。
+每个任务单独计时；缓冲结果通道允许超时返回后，底层 URLTest 仍安全地写入结果。
+*/
 func runGroupDelay(groupName string, nodes []C.Proxy, proxyName string, testURL string,
 	timeout int64, progress func(proxyDelayResult)) groupDelayResult {
 	selected := make([]C.Proxy, 0, len(nodes))
@@ -567,6 +581,7 @@ func runGroupDelay(groupName string, nodes []C.Proxy, proxyName string, testURL 
 	return groupDelayResult{Group: groupName, Results: results}
 }
 
+// buildDelayProgressReporter 将展示用结果与简短诊断日志分开，日志只记录操作与错误分类。
 func buildDelayProgressReporter(operationID string, groupName string,
 	state coreRuntimeState) func(proxyDelayResult) {
 	if strings.TrimSpace(operationID) == "" {
@@ -597,6 +612,7 @@ func buildDelayProgressReporter(operationID string, groupName string,
 	}
 }
 
+// normalizeDelayRequest 为测速补齐默认地址，并把单节点等待时间限制在 1 至 10 秒。
 func normalizeDelayRequest(value string, timeout int64) (string, int64, error) {
 	testURL := strings.TrimSpace(value)
 	if testURL == "" {
@@ -614,6 +630,7 @@ func normalizeDelayRequest(value string, timeout int64) (string, int64, error) {
 	return testURL, timeout, nil
 }
 
+// connectionsSnapshot 拷贝展示字段并按开始时间倒序，避免把内部 tracker 暴露给宿主。
 func (runtime *coreRuntime) connectionsSnapshot() connectionsSnapshot {
 	snapshot := statistic.DefaultManager.Snapshot()
 	connections := make([]connectionSnapshot, 0, len(snapshot.Connections))
@@ -649,6 +666,7 @@ func (runtime *coreRuntime) connectionsSnapshot() connectionsSnapshot {
 	}
 }
 
+// selectProxy 仅允许手选策略组；切换后关闭现有连接，使后续请求使用新节点。
 func selectProxy(groupName string, proxyName string) error {
 	if groupName == "" || proxyName == "" {
 		return errors.New("proxy selection is empty")
@@ -702,6 +720,7 @@ func (failure *delayTestError) Error() string {
 	return fmt.Sprintf("delay test failed (%s)", failure.code)
 }
 
+// classifyDelayError 只输出稳定错误分类，避免将底层连接错误原文带入测速进度。
 func classifyDelayError(err error) string {
 	if err == nil {
 		return "UNKNOWN"

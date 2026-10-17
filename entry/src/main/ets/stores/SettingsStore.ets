@@ -5,6 +5,7 @@ import { preferenceRepository } from '../repository/PreferenceRepository';
 import { DashboardCard } from '../model/DashboardModels';
 import { normalizeDashboardCardOrder } from '../utils/DashboardUtils';
 
+/** 维护应用设置快照，并在持久化成功后通知页面、应用系统主题。 */
 class SettingsStore {
   private context: common.ApplicationContext | undefined;
   private settings: AppSettings = DEFAULT_APP_SETTINGS;
@@ -107,6 +108,7 @@ class SettingsStore {
     });
   }
 
+  /** 同时校验并保存网络设置，避免表单的一部分成功、另一部分失败。 */
   async setNetworkSettings(mtu: number, url: string): Promise<void> {
     if (!Number.isFinite(mtu) || mtu < 1280 || mtu > 9000) {
       throw new Error('MTU 必须在 1280–9000 之间');
@@ -132,6 +134,7 @@ class SettingsStore {
     this.publish();
   }
 
+  // 先落盘再替换内存设置，失败时仍向订阅者保留最后一次成功保存的值。
   private async save(settings: AppSettings): Promise<void> {
     if (this.initializeOperation !== undefined) {
       await this.initializeOperation;

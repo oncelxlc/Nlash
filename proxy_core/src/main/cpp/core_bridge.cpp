@@ -10,6 +10,7 @@ namespace nlash {
 
 namespace {
 
+// 复制错误文本后立即归还 C ABI 内存，避免将跨语言指针暴露到异步任务之外。
 CoreResult ResultFromCode(int32_t value)
 {
     const auto code = static_cast<CoreErrorCode>(value);
@@ -74,6 +75,7 @@ CoreResult EnableCoreProxy(const CoreProxyOptions &options)
         return {CoreErrorCode::INVALID_ARGUMENT, "TUN fd is invalid"};
     }
 #ifdef NLASH_HAS_GO_CORE
+    // 成功时副本交由 Go TUN 管理；失败时在此关闭，平台原始 FD 始终归宿主所有。
     const int duplicateFd = dup(options.tunFd);
     if (duplicateFd < 0) {
         return {CoreErrorCode::START_FAILED, "failed to duplicate TUN fd"};

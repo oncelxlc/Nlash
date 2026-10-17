@@ -17,6 +17,7 @@ export enum ProtectFailureCode {
   INVALID_MESSAGE_TYPE = 'INVALID_MESSAGE_TYPE'
 }
 
+/** 由持有 VpnConnection 的宿主提供能力，协议层不直接依赖系统 VPN 对象。 */
 export interface SocketProtector {
   protect(socketFd: number): Promise<void>;
 }
@@ -25,6 +26,7 @@ export type ProtectChannelDiagnosticListener = (message: string) => void;
 
 const DEFAULT_REQUEST_HISTORY_LIMIT = 4096;
 
+/** 校验会话并记录有限请求历史，防止旧会话或重复请求再次操作出站 FD。 */
 export class ProtectRequestCoordinator {
   private readonly generation: string;
   private readonly protector: SocketProtector;
@@ -74,6 +76,7 @@ export class ProtectRequestCoordinator {
   }
 }
 
+/** 在 VPN 宿主进程内接收 Go 的本地 socket 请求，完成 protect 后才发送 ACK。 */
 export class ProtectChannelServer {
   private readonly address: string;
   private readonly coordinator: ProtectRequestCoordinator;
@@ -154,6 +157,7 @@ export class ProtectChannelServer {
     }
   }
 
+  // 同一连接串行解码和确认，避免异步 protect 导致 ACK 顺序与数据帧顺序不一致。
   private enqueueMessage(connection: socket.LocalSocketConnection, decoder: ProtectFrameDecoder,
     data: ArrayBuffer): void {
     const previous = this.operations.get(connection) ?? Promise.resolve();

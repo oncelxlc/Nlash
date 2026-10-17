@@ -2,6 +2,7 @@ import { AppPage } from '../model/NavigationModels';
 
 export type NavigationIntentListener = (page: AppPage) => void;
 
+/** 缓存页面挂载前到达的最后一个跳转意图，首个订阅者注册时消费一次。 */
 class NavigationIntentService {
   private pendingPage: AppPage | undefined;
   private listeners: Set<NavigationIntentListener> = new Set<NavigationIntentListener>();

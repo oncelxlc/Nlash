@@ -1,5 +1,6 @@
 import { CAPTION_FONT_SIZE, HEADER_CONTENT_HEIGHT, PAGE_TITLE_SIZE } from '../constants/UiConstants';
 
+/** 统一一级页面标题区域，操作区由调用方通过 Builder 注入。 */
 @Component
 export struct PageHeader {
   @Prop title: ResourceStr = '';

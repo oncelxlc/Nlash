@@ -1,6 +1,7 @@
 import { CAPTION_FONT_SIZE, CARD_RADIUS } from '../constants/UiConstants';
 import { formatVpnRunDuration } from '../utils/VpnUtils';
 
+/** 只格式化父页传入的秒数，单调时钟计算与会话状态由宿主和仪表盘统一维护。 */
 @Component
 export struct RuntimeDurationCard {
   @Prop elapsedSeconds: number = 0;
@@ -18,6 +19,7 @@ export struct RuntimeDurationCard {
       }
       .constraintSize({ minHeight: 20 })
       Stack({ alignContent: Alignment.Start }) {
+        // 隐藏占位文本仍参与布局，防止无会话占位符与计时文本切换时高度跳变。
         Text('00:00:00').fontSize(20).fontFamily('monospace').fontWeight(FontWeight.Medium).maxLines(1)
           .visibility(Visibility.Hidden).accessibilityLevel('no')
         Text(this.hasSession ? formatVpnRunDuration(this.elapsedSeconds) : '—')

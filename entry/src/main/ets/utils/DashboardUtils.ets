@@ -1,6 +1,7 @@
 import { DEFAULT_DASHBOARD_CARD_ORDER } from '../constants/DashboardConstants';
 import { DashboardCard } from '../model/DashboardModels';
 
+/** 用户保存顺序优先；仅未自定义布局的窄屏将公网出口卡片前移。 */
 export function resolveDashboardCardOrder(cards: DashboardCard[] | undefined, compact: boolean): DashboardCard[] {
   if (cards !== undefined) {
     return cards.slice();
@@ -10,6 +11,7 @@ export function resolveDashboardCardOrder(cards: DashboardCard[] | undefined, co
     defaults.indexOf(DashboardCard.SPEED)) : defaults;
 }
 
+/** 丢弃未知 ID，保留已保存卡片的相对顺序，并在末尾补上新增默认卡片。 */
 export function normalizeDashboardCardOrder(ids: string[]): DashboardCard[] {
   return DEFAULT_DASHBOARD_CARD_ORDER.slice().sort((left: DashboardCard, right: DashboardCard): number => {
     const leftIndex = ids.indexOf(left);
@@ -29,6 +31,7 @@ export function moveDashboardCard(cards: DashboardCard[], from: number, to: numb
   return result;
 }
 
+/** 返回逻辑网格中的 [列跨度, 行跨度]，实际尺寸由页面按网格单位换算。 */
 export function dashboardCardSpan(card: DashboardCard): [number, number] {
   if (card === DashboardCard.MODE || card === DashboardCard.SPEED || card === DashboardCard.TRAFFIC) {
     return [2, card === DashboardCard.SPEED ? 2 : 1];

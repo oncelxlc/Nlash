@@ -9,6 +9,7 @@ import { RequestsPage } from './RequestsPage';
 
 const ACTIVITY_TABS: ActivityTab[] = [ActivityTab.CONNECTIONS, ActivityTab.REQUESTS];
 
+/** 活动页持有两类列表的查询与筛选状态，切换子标签后保留输入条件。 */
 @Component
 export struct ActivityPage {
   @Prop selectedTab: ActivityTab = ActivityTab.CONNECTIONS;

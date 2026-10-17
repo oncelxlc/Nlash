@@ -1,5 +1,6 @@
 import { CAPTION_FONT_SIZE } from '../constants/UiConstants';
 
+/** 通用状态标签，error 优先于 active，颜色从主题资源读取。 */
 @Component
 export struct StatusBadge {
   @Prop text: ResourceStr = '';

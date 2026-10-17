@@ -61,6 +61,7 @@ interface GroupDelayCommandPayload {
 interface CloseConnectionCommandPayload { id: string; }
 interface SetModeCommandPayload { mode: RuntimeMode; }
 
+/** 固定测速发起时的配置身份与数据来源，异步结果只能写回对应上下文。 */
 interface DelayOperationContext {
   operationId: string;
   group: string;
@@ -72,6 +73,10 @@ interface DelayOperationContext {
   runtime: boolean;
 }
 
+/**
+ * 聚合仪表盘、策略组、连接和请求历史，向页面发布统一运行快照。
+ * Core 可用时读取宿主数据，否则使用配置预览；各 generation 防止旧异步结果覆盖新状态。
+ */
 class RuntimeStore {
   private coreAvailable: boolean = false;
   private refreshing: boolean = false;
@@ -165,6 +170,7 @@ class RuntimeStore {
     });
   }
 
+  /** 页面进入后台时暂停 UI 轮询；前台代次用于抑制过期请求的后台错误提示。 */
   setForeground(foreground: boolean): void {
     if (this.foreground === foreground) {
       return;
@@ -208,6 +214,7 @@ class RuntimeStore {
     };
   }
 
+  /** 各类快照独立刷新并合并重复请求，较慢的连接或策略组读取不会阻塞仪表盘。 */
   refresh(): Promise<void> {
     if (!this.coreAvailable) {
       if (this.previewLoading || (this.proxySource === ProxySnapshotSource.CONFIG && this.proxies.length > 0)) {
@@ -220,6 +227,7 @@ class RuntimeStore {
     return this.dashboardRefreshMerger.run((): Promise<void> => this.refreshInternal());
   }
 
+  /** 运行时由宿主切换并保存；预览时只保存预选值，待 Core 就绪后应用。 */
   async selectProxy(group: string, proxy: string): Promise<void> {
     if (this.profileId.length === 0) {
       throw new Error('请先选择活动配置');
@@ -381,6 +389,7 @@ class RuntimeStore {
     this.publish();
   }
 
+  // 配置身份包含更新时间，同一订阅更新后也要失效旧预览、测速及模式偏好缓存。
   private handleProfileSnapshot(snapshot: ProfileStoreSnapshot): void {
     const active = snapshot.profiles.find((profile: Profile): boolean => profile.id === snapshot.activeProfileId);
     const signature = active === undefined ? '' : `${active.id}:${active.localPath}:${active.updatedAt}`;
@@ -483,6 +492,7 @@ class RuntimeStore {
     this.loadedModePreferenceKey = key;
   }
 
+  // 订阅内容可能变化，保存的分组和节点只有在当前快照中仍存在时才能继续使用。
   private async reconcileProxyPreferences(): Promise<void> {
     if (this.profileId.length === 0 || this.proxies.length === 0) {
       return;
@@ -550,6 +560,7 @@ class RuntimeStore {
     }
   }
 
+  // 只累计代理开启期间相邻采样的总量差，开启、关闭或清零后的首帧不计入增量。
   private async refreshDashboard(expectedGeneration: number = this.runtimeSnapshotGeneration): Promise<boolean> {
     const trafficGeneration = this.trafficGeneration;
     const response = await runtimeControlService.execute<DashboardSnapshot>('dashboardSnapshot');
@@ -636,6 +647,7 @@ class RuntimeStore {
     this.connections = snapshot.connections;
   }
 
+  // 当前连接保留活动标记，消失的连接冻结为历史记录，列表限制为最近 200 条。
   private mergeRequestHistory(current: ConnectionSnapshot[]): void {
     const now = Date.now();
     const previousById = new Map<string, RequestRecord>();
@@ -697,6 +709,7 @@ class RuntimeStore {
     }
   }
 
+  // 进度事件与最终响应共用注册表去重，且不能跨配置写回节点延迟。
   private applyDelayProgress(progress: ProxyDelayProgress): void {
     const context = this.delayContexts.get(progress.operationId);
     if (context === undefined || context.group !== progress.group || !this.isDelayContextCurrent(context) ||
@@ -738,6 +751,7 @@ class RuntimeStore {
     }
   }
 
+  // 补齐尚未返回结果的节点，避免超时或失败后页面一直显示“测速中”。
   private finishDelayOperation(context: DelayOperationContext): void {
     if (this.delayContexts.get(context.operationId) !== context) {
       return;
@@ -771,6 +785,7 @@ class RuntimeStore {
     this.delayContexts.clear();
   }
 
+  // 总超时按 Go 的并发批次数计算，并预留跨进程传输余量。
   private delayCommandTimeout(nodeCount: number): number {
     const rounds = Math.ceil(Math.max(1, nodeCount) / DELAY_TEST_CONCURRENCY);
     return Math.max(MIN_DELAY_COMMAND_TIMEOUT_MS,

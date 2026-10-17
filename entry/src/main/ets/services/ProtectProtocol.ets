@@ -17,6 +17,7 @@ export enum ProtectProtocolErrorCode {
   UNSUPPORTED_VERSION = 'UNSUPPORTED_VERSION'
 }
 
+/** Go 与 ArkTS 共用的消息字段；generation 隔离会话，requestId 关联单次请求与 ACK。 */
 export interface ProtectWireMessage {
   version: number;
   type: string;
@@ -38,6 +39,7 @@ export interface ProtectAck extends ProtectWireMessage {
   ok: boolean;
 }
 
+/** 用稳定错误码区分帧、编码与消息结构错误，供通道层拒绝异常输入。 */
 export class ProtectProtocolError extends Error {
   readonly code: ProtectProtocolErrorCode;
 
@@ -90,6 +92,7 @@ export function validateProtectMessage(message: ProtectWireMessage): void {
     `Unsupported protect message type ${message.type}`);
 }
 
+/** 四字节大端长度头后跟 UTF-8 JSON；长度按字节计算，与 Go readProtectFrame 对齐。 */
 export function encodeProtectMessage(message: ProtectWireMessage): ArrayBuffer {
   validateProtectMessage(message);
   const payload = buffer.from(JSON.stringify(message), 'utf8');
@@ -127,6 +130,7 @@ export function createProtectAck(request: ProtectRequest, ok: boolean,
   };
 }
 
+/** 每个连接独享一个解码器，保留半包并一次提取粘连的多个完整帧。 */
 export class ProtectFrameDecoder {
   private pending: Uint8Array = new Uint8Array(0);
 
@@ -175,6 +179,7 @@ export class ProtectFrameDecoder {
     let text: string;
     try {
       text = buffer.from(payload).toString('utf8');
+      // 往返编码校验，拒绝被解码器替换为占位字符的非法 UTF-8。
       const encoded = buffer.from(text, 'utf8');
       if (encoded.length !== payload.byteLength) {
         throw new Error('UTF-8 round trip length mismatch');

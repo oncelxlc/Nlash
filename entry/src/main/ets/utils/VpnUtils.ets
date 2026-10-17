@@ -2,6 +2,7 @@ import {
   VpnState, CoreServiceState, ProxyState, CoreRestartAction, VpnStateEnvelope, ProxySessionTiming
 } from '../model/VpnModels';
 
+/** 使用系统启动后的单调毫秒计时；重启代理资源时可保留同一会话，显式结束后才重新计时。 */
 export class ProxySessionTimer {
   private startedAt: number = 0;
   private endedAt: number = 0;
@@ -24,6 +25,7 @@ export class ProxySessionTimer {
   }
 }
 
+/** 已结束会话显示为零，调用方须传入与起止时间相同来源的单调时钟。 */
 export function proxySessionElapsedSeconds(startedAt: number, endedAt: number, now: number): number {
   if (startedAt <= 0 || endedAt > 0) {
     return 0;
@@ -68,6 +70,7 @@ export function encodeVpnStateEnvelope(envelope: VpnStateEnvelope): string {
   return JSON.stringify(envelope);
 }
 
+/** 跨进程信任边界：校验来源、枚举、字段上限与起止时间关系，不接受部分有效的状态。 */
 export function decodeVpnStateEnvelope(data: string): VpnStateEnvelope | undefined {
   let envelope: VpnStateEnvelope;
   try {
@@ -120,6 +123,7 @@ export function vpnStateFromProxyState(state: ProxyState): VpnState {
   return VpnState.DISCONNECTED;
 }
 
+/** 关闭失败恢复 ENABLED 时沿用原连接时间，避免把仍在工作的代理视为新连接。 */
 export function resolveProxyConnectedAt(previousState: ProxyState, state: ProxyState,
   connectedAt: number, now: number): number {
   if (state === ProxyState.ENABLED && previousState !== ProxyState.ENABLED &&
@@ -159,6 +163,7 @@ function isProxyState(state: ProxyState): boolean {
   }
 }
 
+/** 只接收更新宿主或当前宿主更大的序号，防止迟到的广播让 UI 状态倒退。 */
 export class VpnStateSequenceTracker {
   private sourceId: string = '';
   private sourceStartedAt: number = 0;

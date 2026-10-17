@@ -11,6 +11,7 @@ import { feedbackService } from './FeedbackService';
 const DOMAIN = 0x4E4C;
 const TAG = 'NlashNotifyPermission';
 
+/** 合并并发授权请求，并记住已提示状态，避免每次进入前台都弹出通知授权。 */
 class NotificationPermissionService {
   private operation: Promise<boolean> | undefined;
 
@@ -43,6 +44,7 @@ class NotificationPermissionService {
       if (!shouldRequestNotificationPermission(enabled, requested)) {
         return false;
       }
+      // 弹窗前保存提示记录；拒绝或系统调用失败后也不循环打扰用户。
       await preferenceRepository.setNotificationPermissionRequested();
       await notificationManager.requestEnableNotification(context);
       const granted = await notificationManager.isNotificationEnabled();

@@ -39,6 +39,10 @@ interface SetProxyEnabledPayload {
   enabled: boolean;
 }
 
+/**
+ * UI 侧的 VPN 门面：串行协调用户操作，通过控制通道驱动 Extension 宿主。
+ * Core 运行状态与系统代理状态分别维护，页面不能把“Core 已启动”等同于“代理已开启”。
+ */
 export class VpnService {
   private readonly hostStarter: () => Promise<void>;
   private applicationContext: common.ApplicationContext | undefined;
@@ -83,6 +87,7 @@ export class VpnService {
     this.stateChannelReady = this.initializeCrossProcessStateChannel();
   }
 
+  /** 按请求顺序应用配置；前次失败也继续处理后续请求，相同运行中签名可直接复用。 */
   applyProfile(profileId: string, configPath: string, profileSignature: string): Promise<void> {
     if (this.profileOperation !== undefined) {
       return this.profileOperation.then(() => this.applyProfile(profileId, configPath, profileSignature),
@@ -106,6 +111,7 @@ export class VpnService {
     return operation;
   }
 
+  /** 合并并发宿主连接，避免多个页面同时初始化时重复启动 Extension。 */
   ensureHost(): Promise<void> {
     if (this.hostOperation !== undefined) {
       return this.hostOperation;
@@ -120,6 +126,7 @@ export class VpnService {
     return operation;
   }
 
+  /** 只开启系统代理；与关闭操作互斥，多次点击共享同一个在途操作。 */
   start(): Promise<void> {
     if (this.proxyState === ProxyState.ENABLED || this.proxyState === ProxyState.ENABLING) {
       return this.startOperation ?? Promise.resolve();
@@ -143,6 +150,7 @@ export class VpnService {
     return this.startOperation;
   }
 
+  /** 等待开启操作收尾后再关闭代理，保留 Core 和宿主供后续操作使用。 */
   stop(): Promise<void> {
     if (this.proxyState === ProxyState.DISABLED) {
       return this.stopOperation ?? Promise.resolve();
@@ -243,6 +251,7 @@ export class VpnService {
     };
   }
 
+  // 通过来源和递增序号过滤延迟广播，避免旧宿主状态覆盖当前会话。
   private async initializeCrossProcessStateChannel(): Promise<void> {
     try {
       const subscriber = await commonEventManager.createSubscriber({
@@ -359,6 +368,7 @@ export class VpnService {
     return response.data;
   }
 
+  // 命令响应和状态广播共用此入口，统一维护连接时间、用户反馈与订阅通知。
   private updateLifecycle(coreState: CoreServiceState, proxyState: ProxyState, message: string,
     profileId: string, profileSignature: string, sessionStartedAt: number = this.sessionStartedAt,
     sessionEndedAt: number = this.sessionEndedAt): void {

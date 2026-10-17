@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// testProtectClient 用内存双向连接替代平台 socket，独立验证握手与 ACK 匹配规则。
 func testProtectClient(t *testing.T, responder func(net.Conn)) *protectClient {
 	t.Helper()
 	return &protectClient{

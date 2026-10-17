@@ -16,6 +16,7 @@ import { feedbackService } from '../services/FeedbackService';
 import { vpnService } from '../services/VpnService';
 import { BOOTSTRAP_PROFILE_SIGNATURE } from '../constants/VpnConstants';
 
+/** 维护配置列表、活动配置和操作阶段，协调持久化、Core 应用及订阅自动更新。 */
 class ProfileStore {
   private readonly autoUpdateTickMs: number = 60 * 1000;
   private readonly autoUpdateRetryMs: number = 15 * 60 * 1000;
@@ -210,6 +211,7 @@ class ProfileStore {
     }
   }
 
+  /** 拖动后先更新显示顺序，持久化失败时恢复原列表。 */
   async move(id: string, to: number): Promise<void> {
     if (!this.initialized) {
       await this.ensureReady();
@@ -233,6 +235,7 @@ class ProfileStore {
     }
   }
 
+  /** 删除活动配置前先切换到替代配置或 bootstrap，避免 Core 继续引用待删除文件。 */
   async remove(id: string): Promise<void> {
     await this.ensureReady();
     this.assertIdle();
@@ -294,6 +297,7 @@ class ProfileStore {
     this.publish();
   }
 
+  // Core 应用成功后再保存活动项；保存失败时恢复原运行配置，避免 UI 与宿主不一致。
   private async activate(profile: Profile): Promise<void> {
     const previous = this.profiles.find((item: Profile): boolean => item.id === this.activeProfileId);
     await this.applyRuntimeProfile(profile);
@@ -342,6 +346,7 @@ class ProfileStore {
     });
   }
 
+  // 逐个更新到期订阅，手动操作占用时停止本轮；失败项延后重试，避免每分钟重复下载。
   private async runDueAutoUpdatesInternal(): Promise<void> {
     const now = Date.now();
     const dueProfiles = this.profiles.filter((profile: Profile): boolean => {

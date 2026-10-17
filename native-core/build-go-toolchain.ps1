@@ -1,3 +1,7 @@
+<#
+复制固定版本的 Go 并应用 ARM64 musl TLS 补丁，不修改系统安装的 Go。
+已有完整工具链可直接复用；遇到不完整目录时停止，避免混用不同构建产物。
+#>
 param(
   [string]$OutputRoot = (Join-Path $PSScriptRoot '.toolchains\go1.27.0-tlsgd')
 )

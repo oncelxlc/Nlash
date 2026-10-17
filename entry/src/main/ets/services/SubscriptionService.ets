@@ -21,6 +21,7 @@ export function buildDefaultImportPath(downloadDirectory: string): string {
 
 export type ProfileStageListener = (stage: ProfileUpdateStage) => void;
 
+/** 响应头可选元数据；流量单位为字节，expireAt 已转换为毫秒时间戳。 */
 export interface SubscriptionMetadata {
   title?: string;
   uploadBytes?: number;
@@ -73,6 +74,7 @@ function subscriptionDispositionFilename(disposition: string): string {
   return filenameMatch !== null && filenameMatch.length > 1 ? filenameMatch[1].trim() : '';
 }
 
+/** 兼容大小写和数组形式响应头，无效或缺失的字段保持 undefined。 */
 export function parseSubscriptionMetadata(headers: Object): SubscriptionMetadata {
   const metadata: SubscriptionMetadata = {};
   const title = extractSubscriptionHeader(headers, 'profile-title');
@@ -105,6 +107,7 @@ export function parseSubscriptionMetadata(headers: Object): SubscriptionMetadata
   return metadata;
 }
 
+/** 按响应头标题、URL 文件名、主机名依次回退，避免把查询参数作为配置名称。 */
 export function inferSubscriptionName(sourceUrl: string, headerTitle: string | undefined): string {
   const cleanTitle = cleanSubscriptionTitle(headerTitle ?? '');
   if (cleanTitle.length > 0) {
@@ -134,6 +137,10 @@ export function inferSubscriptionName(sourceUrl: string, headerTitle: string | u
   return cleanHost.length > 0 ? cleanHost : '订阅配置';
 }
 
+/**
+ * 管理 YAML 文件与配置元数据；下载或导入先写临时文件，通过 Core 校验后再替换正式文件。
+ * 本层成功表示文件与元数据已保存，活动配置是否应用到运行 Core 由 ProfileStore 协调。
+ */
 class SubscriptionService {
   private context: common.UIAbilityContext | undefined;
 
@@ -141,6 +148,7 @@ class SubscriptionService {
     this.context = context;
   }
 
+  /** 优先尝试约定的下载路径，否则使用文件选择器；仅复制内容，不修改用户源文件。 */
   async importLocal(listener: ProfileStageListener): Promise<Profile> {
     const context = this.requireContext();
     const defaultPath = buildDefaultImportPath(Environment.getUserDownloadDir());
@@ -283,6 +291,7 @@ class SubscriptionService {
     }, listener);
   }
 
+  /** 更新前保留旧文件备份；元数据保存失败时用备份恢复，成功后再清除备份。 */
   async editAndUpdate(profile: Profile, draft: ProfileEditDraft,
     listener: ProfileStageListener): Promise<Profile> {
     if (profile.type !== ProfileType.SUBSCRIPTION || profile.sourceUrl.length === 0) {
@@ -371,6 +380,7 @@ class SubscriptionService {
     return renamed;
   }
 
+  /** 先把文件暂存为 .delete，数据库删除失败时可恢复原路径。 */
   async remove(profile: Profile): Promise<void> {
     const tombstonePath = `${profile.localPath}.delete`;
     const hadFile = this.safeAccess(profile.localPath);
@@ -391,6 +401,7 @@ class SubscriptionService {
     await this.safeUnlink(`${profile.localPath}.tmp`);
   }
 
+  // 在落盘前检查状态码、内容大小和常见 HTML 错页，YAML 语义仍交给 Core 校验。
   private async download(sourceUrl: string): Promise<SubscriptionDownload> {
     const request = http.createHttp();
     try {

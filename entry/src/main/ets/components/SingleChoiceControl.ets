@@ -1,6 +1,7 @@
 import { CAPTION_FONT_SIZE, CONTROL_HEIGHT } from '../constants/UiConstants';
 import { selectionAnimation } from '../utils/AnimationUtils';
 
+/** 受控单选组件，选中项由父级更新；横向滚动用于容纳较多或较长选项。 */
 @Component
 export struct SingleChoiceControl {
   @Prop labels: string[] = [];

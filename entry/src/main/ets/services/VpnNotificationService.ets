@@ -26,6 +26,7 @@ const TAG = 'NlashVpnNotification';
 const ENTRY_ABILITY_NAME = 'EntryAbility';
 const TAP_REQUEST_CODE = 1001;
 
+/** 依据代理生命周期维护常驻通知，独立轮询速率并串行更新同一系统通知任务。 */
 class VpnNotificationService {
   private running: boolean = false;
   private coreState: CoreServiceState = CoreServiceState.STOPPED;
@@ -35,6 +36,7 @@ class VpnNotificationService {
   private startOperation: Promise<void> | undefined;
   private publishQueue: Promise<void> = Promise.resolve();
   private pollTimer: number | undefined;
+  // 每次停止轮询使旧请求失效，避免关闭代理后异步结果重新发布通知。
   private pollGeneration: number = 0;
   private subscriber: commonEventManager.CommonEventSubscriber | undefined;
   private tapWantAgent: WantAgent | undefined;
@@ -211,6 +213,7 @@ class VpnNotificationService {
     }
   }
 
+  // 请求完成后再安排下一次轮询，避免控制通道延迟时叠加流量请求。
   private async refreshAndSchedule(generation: number): Promise<void> {
     if (!this.isPollingCurrent(generation)) {
       return;
@@ -250,6 +253,7 @@ class VpnNotificationService {
     return shouldShowVpnNotification(this.proxyState);
   }
 
+  // 前一次发布失败不能阻断后续状态更新；实际发布时读取最新生命周期。
   private enqueuePublish(): void {
     if (!this.running) {
       return;

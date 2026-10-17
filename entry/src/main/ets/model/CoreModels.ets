@@ -1,3 +1,4 @@
+/** 原生 Core 的内部生命周期；不表示平台 VPN 是否已开启。 */
 export enum CoreRuntimeState {
   STOPPED = 'STOPPED',
   VALIDATING = 'VALIDATING',
@@ -30,6 +31,7 @@ export interface CoreStartOptions {
   workDir: string;
 }
 
+/** 宿主创建的 TUN 与本轮 protect 参数，generation 不得跨代理会话复用。 */
 export interface CoreProxyOptions {
   tunFd: number;
   mtu: number;
@@ -54,6 +56,7 @@ export interface CoreEvent {
 
 export type CoreEventListener = (event: CoreEvent) => void;
 
+/** 原生 Core 能力边界，统一配置校验、生命周期、业务命令与事件订阅。 */
 export interface CoreClient {
   getVersion(): string;
   validateConfig(configPath: string): Promise<CoreResult>;

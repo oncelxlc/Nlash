@@ -4,24 +4,28 @@ export enum RuntimeMode {
   DIRECT = 'direct'
 }
 
+/** 区分无数据、静态配置预览与运行 Core 快照，供页面决定可执行的操作。 */
 export enum ProxySnapshotSource {
   NONE = 'none',
   CONFIG = 'config',
   RUNTIME = 'runtime'
 }
 
+/** timestamp 为 Unix 毫秒，上传和下载速率为字节/秒。 */
 export interface TrafficSample {
   timestamp: number;
   uploadSpeed: number;
   downloadSpeed: number;
 }
 
+/** 图表局部坐标及曲线切线斜率，供 Canvas 构建平滑路径。 */
 export interface TrafficChartPoint {
   x: number;
   y: number;
   slope: number;
 }
 
+/** 与 Go 仪表盘响应对齐；速率为字节/秒，总量和内存为字节。 */
 export interface DashboardSnapshot {
   mode: RuntimeMode;
   uploadSpeed: number;
@@ -32,6 +36,7 @@ export interface DashboardSnapshot {
   connectionCount: number;
 }
 
+/** tested 区分未知与失败；仅 alive 且 delay > 0 时展示有效毫秒延迟。 */
 export interface ProxyNodeSnapshot {
   name: string;
   type: string;
@@ -73,6 +78,7 @@ export interface ProxySelection {
   proxy: string;
 }
 
+/** proxy 为空表示整组测速，pendingProxies 只包含仍由该任务负责的节点。 */
 export interface ProxyDelayOperationSnapshot {
   operationId: string;
   group: string;
@@ -80,6 +86,7 @@ export interface ProxyDelayOperationSnapshot {
   pendingProxies: string[];
 }
 
+/** 保留上次成功出口；checking/errorMessage 表示本轮刷新状态，lastSuccessAt 为 Unix 毫秒。 */
 export interface PublicNetworkSnapshot {
   publicIpv4: string;
   country: string;
@@ -89,6 +96,7 @@ export interface PublicNetworkSnapshot {
   errorMessage: string;
 }
 
+/** 运行中连接的展示副本，start 为 Unix 毫秒，upload/download 为该连接累计字节。 */
 export interface ConnectionSnapshot {
   id: string;
   network: string;
@@ -112,6 +120,7 @@ export interface ConnectionsSnapshot {
   connections: ConnectionSnapshot[];
 }
 
+/** UI 内存中的有限请求历史；连接消失后标记 inactive 并冻结结束时间及流量。 */
 export interface RequestRecord {
   id: string;
   network: string;
@@ -133,6 +142,7 @@ export interface DelayTestResult {
   delay: number;
 }
 
+/** 命令传输成功不等于业务成功，调用方须检查 ok，并按命令判断 data 是否必需。 */
 export interface RuntimeCommandResponse<T> {
   ok: boolean;
   code: string;
@@ -140,6 +150,7 @@ export interface RuntimeCommandResponse<T> {
   data?: T;
 }
 
+/** 页面订阅的聚合视图；busyKey 表示互斥操作，独立测速任务由 delayOperations 描述。 */
 export interface RuntimeStoreSnapshot {
   coreAvailable: boolean;
   refreshing: boolean;

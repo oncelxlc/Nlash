@@ -22,12 +22,14 @@ interface CoreCommandEnvelope<T> {
   payload: T;
 }
 
+/** 在 UI 进程的原生 Core 中解析配置和手动测速，供无运行宿主时展示代理节点。 */
 class ProfilePreviewService {
   async load(configPath: string): Promise<ProxySnapshot> {
     const payload: PreviewProxyPayload = { configPath: configPath };
     return this.execute<PreviewProxyPayload, ProxySnapshot>('previewProxySnapshot', payload);
   }
 
+  /** 只接收本次 operationId 的进度，命令完成或失败后均解除原生事件订阅。 */
   async testGroup(configPath: string, group: string, proxy: string,
     url: string, operationId: string = '',
     progressListener: ProxyDelayProgressListener | undefined = undefined): Promise<GroupDelayResult> {

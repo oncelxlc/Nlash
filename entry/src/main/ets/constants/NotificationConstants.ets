@@ -1,3 +1,4 @@
+// 固定 ID/label 用于清理旧状态通知；持续任务的实时通知使用系统返回的 ID。
 export const VPN_NOTIFICATION_ID = 1001;
 
 export const VPN_NOTIFICATION_LABEL = 'nlash-vpn-status';

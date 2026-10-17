@@ -3,6 +3,7 @@ import { ProxyNodeSnapshot } from '../model/RuntimeModels';
 import { selectionAnimation } from '../utils/AnimationUtils';
 import { proxyDelayLabel } from '../utils/RuntimeUtils';
 
+/** 节点展示与操作组件；节点选择和延迟测试分开触发，业务状态由父页面提供。 */
 @Component
 export struct ProxyNodeCard {
   @Prop node: ProxyNodeSnapshot = { name: '', type: '', alive: false, tested: false, delay: 0, udp: false };

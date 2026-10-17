@@ -16,6 +16,7 @@ import { SingleChoiceControl } from '../components/SingleChoiceControl';
 
 const THEMES: AppThemeMode[] = [AppThemeMode.SYSTEM, AppThemeMode.LIGHT, AppThemeMode.DARK];
 
+/** 设置表单维护输入草稿，SettingsStore 校验并保存，运行数据清理由 RuntimeStore 执行。 */
 @Component
 export struct SettingsPage {
   @State settings: AppSettings = settingsStore.getSnapshot().settings;
@@ -78,6 +79,7 @@ export struct SettingsPage {
     return (this.pageWidth - this.metrics.pagePadding * 2 - (columns - 1) * 12) / columns;
   }
 
+  // 前三张设置卡按窗口档位排列，关于区域独占一行，保持与 FlowItem 顺序一致。
   private updateSections(): void {
     this.sections.splice(0, this.sections.length(), [
       { itemsCount: 3, crossCount: this.metrics.sizeClass === ResponsiveSizeClass.COMPACT ? 1 : 2,

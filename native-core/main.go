@@ -22,6 +22,13 @@ import "C"
 
 import "unsafe"
 
+/*
+C ABI 返回的字符串均由 C.CString 分配，调用方须使用 NlashCoreFree 释放。
+事件回调的 message 仅在回调期间有效，接收方需要异步使用时必须先复制。
+*/
+
+// NlashCoreVersion 返回固定的 Core 版本，供宿主检查原生库是否可用。
+//
 //export NlashCoreVersion
 func NlashCoreVersion() *C.char {
 	return C.CString(coreVersion)
@@ -43,6 +50,8 @@ func NlashCoreValidateConfig(configPath *C.char) C.int32_t {
 	return C.int32_t(runtimeInstance.validate(C.GoString(configPath)))
 }
 
+// NlashCoreStart 启动 Core；接管系统流量还需调用 NlashCoreEnableProxy。
+//
 //export NlashCoreStart
 func NlashCoreStart(
 	configPath *C.char,
@@ -58,6 +67,8 @@ func NlashCoreStart(
 	return C.int32_t(runtimeInstance.start(options))
 }
 
+// NlashCoreEnableProxy 接收桥接层复制的 TUN FD，成功后由 Core 的 TUN 生命周期管理。
+//
 //export NlashCoreEnableProxy
 func NlashCoreEnableProxy(
 	tunFD C.int32_t,
@@ -105,6 +116,8 @@ func NlashCoreLastError() *C.char {
 	return C.CString(runtimeInstance.getLastError())
 }
 
+// NlashCoreExecuteCommand 使用 JSON 信封传递业务命令，避免为每个操作扩展 C ABI。
+//
 //export NlashCoreExecuteCommand
 func NlashCoreExecuteCommand(command *C.char) *C.char {
 	if command == nil {
@@ -113,6 +126,8 @@ func NlashCoreExecuteCommand(command *C.char) *C.char {
 	return C.CString(runtimeInstance.executeCommand(C.GoString(command)))
 }
 
+// NlashCoreRegisterEventCallback 替换进程内回调；调用可能来自 Go 的不同 goroutine。
+//
 //export NlashCoreRegisterEventCallback
 func NlashCoreRegisterEventCallback(callback C.NlashCoreEventCallback, userData unsafe.Pointer) {
 	if callback == nil {

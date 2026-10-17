@@ -1,3 +1,4 @@
+// UI 与 Extension 的控制事件名称；命令、响应和增量进度使用独立通道。
 export const CORE_COMMAND_EVENT = 'com.zhexian.nlash.event.CORE_COMMAND';
 
 export const CORE_RESPONSE_EVENT = 'com.zhexian.nlash.event.CORE_RESPONSE';

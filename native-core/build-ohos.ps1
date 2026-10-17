@@ -1,3 +1,7 @@
+<#
+固定依赖与工具链，先运行宿主 Go 测试，再交叉编译并同步 ARM64 c-shared 产物。
+仅在当前进程临时设置编译环境，结束时恢复调用方原有环境变量。
+#>
 param(
   [string]$SdkRoot = $env:DEVECO_SDK_HOME
 )
@@ -13,6 +17,7 @@ foreach ($line in Get-Content -LiteralPath $versionFile) {
   }
 }
 
+# 同时约束版本、源码提交和校验和，防止同名依赖或本地配置漂移。
 $requiredVersionValues = @{
   go = 'go1.27.0'
   go_tls_patch = '97ce7c6ef39edf2a0a0eba7d6fd1075abf26dc2f'
@@ -42,6 +47,7 @@ if ([string]::IsNullOrWhiteSpace($SdkRoot)) {
   throw 'DEVECO_SDK_HOME is empty. Pass -SdkRoot or set the environment variable.'
 }
 
+# 用无空格的本地联接路径传递给 CGO，避免 SDK 安装路径被拆成多个参数。
 $nativeTarget = Join-Path $SdkRoot 'default\openharmony\native'
 $nativeRoot = Join-Path $PSScriptRoot '.ohos-native'
 if (-not (Test-Path -LiteralPath $nativeRoot)) {
@@ -126,6 +132,7 @@ try {
   Copy-Item -Force (Join-Path $outputDirectory 'libnlash_core.so') $prebuiltDirectory
   Copy-Item -Force (Join-Path $outputDirectory 'libnlash_core.h') $prebuiltDirectory
 
+  # N-API 通过 dlopen 加载 Go 库，必须使用 musl 支持的动态 TLS 重定位。
   $readelf = Join-Path $llvmBin 'llvm-readelf.exe'
   $coreLibrary = Join-Path $outputDirectory 'libnlash_core.so'
   $relocations = (& $readelf -rW $coreLibrary | Out-String)

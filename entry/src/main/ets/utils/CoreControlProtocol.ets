@@ -10,6 +10,7 @@ export function encodeCoreCommandEnvelope(envelope: CoreCommandEnvelope): string
   return JSON.stringify(envelope);
 }
 
+/** 先验证跨进程信封，再由宿主或 Go 解析内层业务命令，避免两层协议耦合。 */
 export function decodeCoreCommandEnvelope(value: string): CoreCommandEnvelope | undefined {
   let envelope: CoreCommandEnvelope;
   try {
@@ -48,6 +49,7 @@ export function encodeProxyDelayProgress(progress: ProxyDelayProgress): string {
   return JSON.stringify(progress);
 }
 
+/** 增量结果限制字段长度、延迟范围和错误分类，避免异常事件污染 UI 测速状态。 */
 export function decodeProxyDelayProgress(value: string): ProxyDelayProgress | undefined {
   if (typeof value !== 'string' || value.length === 0 || value.length > MAX_CORE_PROGRESS_LENGTH) {
     return undefined;

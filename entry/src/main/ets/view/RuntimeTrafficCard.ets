@@ -9,12 +9,14 @@ interface TrafficTotalParams {
   color: ResourceColor;
 }
 
+/** 上传/下载累计量及比例展示，缺失快照与真实零流量分别显示。 */
 @Component
 export struct RuntimeTrafficCard {
   @Prop runtime: DashboardSnapshot | undefined = undefined;
   @Prop cardWidth: Length = '100%';
   @Prop cardHeight: number = 188;
 
+  // Path 命令使用像素坐标，先把固定 64vp 的绘图区转换到当前设备像素。
   private donutPath(isUpload: boolean): string {
     return buildTrafficDonutPath(this.runtime?.uploadTotal ?? 0, this.runtime?.downloadTotal ?? 0,
       isUpload, this.getUIContext().vp2px(64));

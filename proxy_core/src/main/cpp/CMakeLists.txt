@@ -21,6 +21,7 @@ set_target_properties(proxy_core PROPERTIES
 
 target_include_directories(proxy_core PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
+# 仅 ARM64 链接固定 Go 预编译库，其他 ABI 保留可构建但返回 UNAVAILABLE 的桥接实现。
 if(OHOS_ARCH STREQUAL "arm64-v8a")
     set(NLASH_CORE_PREBUILT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/prebuilt/arm64-v8a)
     add_library(nlash_core SHARED IMPORTED)

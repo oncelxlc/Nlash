@@ -34,6 +34,7 @@ function slice(value: ArrayBuffer, start: number, end?: number): ArrayBuffer {
   return new Uint8Array(value).slice(start, end).buffer;
 }
 
+// 绕过生产编码器构造原始帧，用于测试非法 UTF-8、JSON 与长度边界。
 function framePayload(payload: Uint8Array): ArrayBuffer {
   const frame = new Uint8Array(4 + payload.byteLength);
   frame[0] = (payload.byteLength >>> 24) & 0xFF;

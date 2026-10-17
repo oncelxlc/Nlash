@@ -12,6 +12,7 @@ import {
   FormattedBytes
 } from '../model/RuntimeModels';
 
+/** 合并同类在途请求；当前请求完成前的新调用共用 Promise，不额外排队。 */
 export class RuntimeRequestMerger {
   private operation: Promise<void> | undefined;
 
@@ -35,6 +36,10 @@ export class RuntimeRequestMerger {
   }
 }
 
+/**
+ * 以任务记录和节点归属跟踪并发测速；同一节点由最后发起的任务负责。
+ * 进度事件与最终结果均调用 accept，确保一个结果只结算一次。
+ */
 export class ProxyDelayOperationRegistry {
   private operations: Map<string, ProxyDelayOperationSnapshot> = new Map<string, ProxyDelayOperationSnapshot>();
   private owners: Map<string, string> = new Map<string, string>();
@@ -68,6 +73,7 @@ export class ProxyDelayOperationRegistry {
     return true;
   }
 
+  /** 返回本任务仍拥有但尚未完成的节点，供调用方在失败或超时后补齐状态。 */
   complete(operationId: string): string[] {
     const operation = this.operations.get(operationId);
     if (operation === undefined) {
@@ -125,6 +131,7 @@ export class ProxyDelayOperationRegistry {
     return result;
   }
 
+  // 长度前缀消除分组名或节点名含冒号时的拼接歧义。
   private nodeKey(group: string, proxy: string): string {
     return `${group.length}:${group}:${proxy}`;
   }
@@ -154,6 +161,7 @@ export function formatSpeed(value: number): string {
   return `${formatBytes(value)}/s`;
 }
 
+/** 按上传/下载比例生成圆环路径；先归一化再求比例，避免大总量相加溢出。 */
 export function buildTrafficDonutPath(uploadTotal: number, downloadTotal: number,
   isUpload: boolean, size: number): string {
   const upload = Number.isFinite(uploadTotal) && uploadTotal > 0 ? uploadTotal : 0;
@@ -184,6 +192,7 @@ export function connectionTitle(connection: ConnectionSnapshot): string {
   return connection.destination;
 }
 
+/** 只累加有效代理采样区间的总量差，无基线时速率归零，计数器重置不产生负流量。 */
 export function mergeProxyTrafficSnapshot(snapshot: DashboardSnapshot, previous: DashboardSnapshot | undefined,
   baseline: DashboardSnapshot | undefined): DashboardSnapshot {
   // ponytail: count completed VPN sampling intervals; native session counters for exact start/stop boundaries.
@@ -210,6 +219,7 @@ export function appendTrafficSample(history: TrafficSample[], sample: TrafficSam
     item.timestamp >= earliestTimestamp && item.timestamp <= sample.timestamp).concat([sample]);
 }
 
+/** 固定映射最近一分钟，按本窗口峰值缩放纵轴，并限制切线避免平滑曲线越过真实峰谷。 */
 export function buildTrafficChartPoints(history: TrafficSample[], width: number, height: number): TrafficChartPoint[] {
   if (history.length === 0 || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
     return [];
@@ -234,6 +244,7 @@ export function buildTrafficChartPoints(history: TrafficSample[], width: number,
   return points;
 }
 
+/** 只替换延迟状态发生变化的节点与分组，保留其余引用，减少 UI 无效重绘。 */
 export function mergeGroupDelay(groups: ProxyGroupSnapshot[], groupName: string,
   results: ProxyDelayResult[]): ProxyGroupSnapshot[] {
   const resultByName = new Map<string, ProxyDelayResult>();
@@ -269,6 +280,7 @@ export function mergeGroupDelay(groups: ProxyGroupSnapshot[], groupName: string,
   return merged.every((group: ProxyGroupSnapshot, index: number): boolean => group === groups[index]) ? groups : merged;
 }
 
+/** 轮询刷新保留已有手动测速结果，并复用字段相同的对象，避免节点列表抖动。 */
 export function preserveTestedProxyDelays(freshGroups: ProxyGroupSnapshot[],
   currentGroups: ProxyGroupSnapshot[]): ProxyGroupSnapshot[] {
   let merged = freshGroups;
@@ -400,6 +412,7 @@ export function visibleProxyGroups(groups: ProxyGroupSnapshot[], mode: RuntimeMo
   return global === undefined ? visible : [global].concat(visible);
 }
 
+/** 优先恢复仍可见的保存分组，全局模式回退 GLOBAL，否则使用首个可见分组。 */
 export function resolveSelectedProxyGroup(groups: ProxyGroupSnapshot[], mode: RuntimeMode,
   savedGroup: string): string {
   const visible = visibleProxyGroups(groups, mode);

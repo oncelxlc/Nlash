@@ -29,6 +29,7 @@ export function shouldRefreshPublicNetworkAfterProxyStateChange(previousState: P
   return currentState === ProxyState.ENABLED && previousState !== ProxyState.ENABLED;
 }
 
+/** 只有正在工作的代理切换节点才影响公网出口，离线预选不触发探测。 */
 export function shouldRefreshPublicNetworkAfterProxySelection(previousProxy: string, currentProxy: string,
   runtimeAvailable: boolean, proxyConnected: boolean): boolean {
   return previousProxy !== currentProxy && runtimeAvailable && proxyConnected;
@@ -58,6 +59,7 @@ export function countryCodeFlag(countryCode: string): string {
     normalized.charCodeAt(1) - 65 + 0x1F1E6);
 }
 
+/** 地理信息必须对应刚探测的出口 IPv4，避免将不同请求的地址和地区组合展示。 */
 export function parseGeoIpResponse(raw: string, expectedIpv4: string): PublicNetworkSnapshot {
   const parsed = JSON.parse(raw) as GeoIpResponse;
   const ipv4 = typeof parsed.ip === 'string' && isValidIpv4(parsed.ip) ? parsed.ip.trim() : expectedIpv4;
@@ -77,6 +79,7 @@ export function parseGeoIpResponse(raw: string, expectedIpv4: string): PublicNet
   };
 }
 
+/** 监听网络变化并探测公网出口；刷新去抖、串行执行，以 generation 丢弃失效结果。 */
 class PublicNetworkService {
   private snapshot: PublicNetworkSnapshot = {
     publicIpv4: '未知', country: '未知地区', countryCode: '', checking: false, errorMessage: ''
@@ -139,6 +142,7 @@ class PublicNetworkService {
     if (!this.initialized) {
       return;
     }
+    // 在途探测期间的多次刷新合并为下一轮，不并发访问地址和地理信息服务。
     if (this.refreshInFlight) {
       this.refreshPending = true;
       return;
@@ -272,6 +276,7 @@ class PublicNetworkService {
     }
   }
 
+  // 刷新中或失败时保留上次成功数据，通过状态字段提示其新鲜度。
   private withStatus(checking: boolean, errorMessage: string): PublicNetworkSnapshot {
     return {
       publicIpv4: this.snapshot.publicIpv4,

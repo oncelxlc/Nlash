@@ -20,6 +20,7 @@ import { settingsStore } from '../stores/SettingsStore';
 
 const DOMAIN = 0x0000;
 
+/** UI 进程入口，装配状态服务并转发前后台事件；VPN 资源由独立 Extension 生命周期管理。 */
 export default class EntryAbility extends UIAbility {
   private foreground: boolean = false;
   private proxyState: ProxyState = ProxyState.DISABLED;
@@ -51,6 +52,7 @@ export default class EntryAbility extends UIAbility {
     settingsOperation.catch((): void => {
       hilog.error(DOMAIN, 'NlashSettings', 'Settings initialization failed');
     });
+    // 宿主、配置和设置可并行准备，全部就绪后再恢复活动配置，避免初始化顺序竞争。
     Promise.all([hostOperation, profileOperation, settingsOperation]).then((): void => {
       const snapshot = profileStore.getSnapshot();
       const active = snapshot.profiles.find((profile: Profile): boolean =>
@@ -68,6 +70,7 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
   }
 
+  /** 已有窗口被通知点击重新唤起时，仍需消费新的页面跳转参数。 */
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     this.handleNavigationWant(want);
   }
@@ -117,6 +120,7 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');
   }
 
+  /** 暂停界面轮询，代理和通知继续遵循各自的服务生命周期。 */
   onBackground(): void {
     this.foreground = false;
     runtimeStore.setForeground(false);

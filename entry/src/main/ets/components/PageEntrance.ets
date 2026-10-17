@@ -1,6 +1,7 @@
 import { NavigationTransition } from '../model/SettingsModels';
 import { selectionAnimation } from '../utils/AnimationUtils';
 
+/** 包装页面入场效果；initialOffset 由切换方向决定，并遵循系统减少动画偏好。 */
 @Component
 export struct PageEntrance {
   @Prop effect: NavigationTransition = NavigationTransition.FADE;

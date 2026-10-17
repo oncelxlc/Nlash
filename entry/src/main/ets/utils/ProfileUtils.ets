@@ -5,6 +5,7 @@ import {
   MAX_PROFILE_UPDATE_INTERVAL_MINUTES
 } from '../constants/ProfileConstants';
 
+/** 保存顺序优先，未记录配置按创建时间和 ID 稳定排序，不修改传入数组。 */
 export function orderProfiles(profiles: Profile[], ids: string[]): Profile[] {
   const positions = new Map<string, number>();
   ids.forEach((id: string, index: number): void => {
@@ -37,6 +38,7 @@ export function normalizeProfileUpdateInterval(value: number): number {
     Math.max(MIN_PROFILE_UPDATE_INTERVAL_MINUTES, rounded));
 }
 
+/** 仅订阅参与自动更新，首次更新前以创建时间为基准，间隔单位为分钟。 */
 export function isProfileUpdateDue(profile: Profile, now: number): boolean {
   if (profile.type !== ProfileType.SUBSCRIPTION || !profile.autoUpdateEnabled) {
     return false;
@@ -76,6 +78,7 @@ export function formatProfileRelativeTime(timestamp: number | undefined, now: nu
   return new Date(timestamp).toLocaleDateString();
 }
 
+/** 只展示主机与端口，去掉用户凭据、路径、查询参数及片段中的潜在订阅令牌。 */
 export function getSubscriptionHost(sourceUrl: string): string {
   const schemeSeparator = sourceUrl.indexOf('://');
   if (schemeSeparator < 0) {

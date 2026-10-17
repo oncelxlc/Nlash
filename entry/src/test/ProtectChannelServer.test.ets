@@ -10,6 +10,7 @@ import {
   ProtectRequest
 } from '../main/ets/services/ProtectProtocol';
 
+/** 记录 FD 并可注入失败，测试协议协调器时无需创建真实系统 VPN。 */
 class RecordingProtector implements SocketProtector {
   protectedFd: number = -1;
   shouldFail: boolean = false;
