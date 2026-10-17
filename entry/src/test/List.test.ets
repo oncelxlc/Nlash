@@ -12,6 +12,7 @@ import feedbackServiceTest from './FeedbackService.test';
 import settingsModelsTest from './SettingsModels.test';
 import notificationModelsTest from './NotificationModels.test';
 import uiUtilsTest from './UiUtils.test';
+import dashboardLayoutTest from './DashboardLayout.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -28,4 +29,5 @@ export default function testsuite() {
   settingsModelsTest();
   notificationModelsTest();
   uiUtilsTest();
+  dashboardLayoutTest();
 }

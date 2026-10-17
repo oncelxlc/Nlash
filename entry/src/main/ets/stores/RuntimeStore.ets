@@ -79,6 +79,7 @@ class RuntimeStore {
   private dashboard: DashboardSnapshot | undefined;
   private trafficBaseline: DashboardSnapshot | undefined;
   private proxyState: ProxyState = ProxyState.DISABLED;
+  private sessionEndedAt: number = 0;
   private trafficGeneration: number = 0;
   private proxies: ProxyGroupSnapshot[] = [];
   private proxySource: ProxySnapshotSource = ProxySnapshotSource.NONE;
@@ -120,12 +121,17 @@ class RuntimeStore {
       this.handleProfileSnapshot(snapshot);
     });
     this.lifecycleUnsubscribe = vpnService.subscribeLifecycle((snapshot: RuntimeLifecycleSnapshot): void => {
-      if (snapshot.proxyState !== this.proxyState) {
+      if (snapshot.proxyState !== this.proxyState || snapshot.sessionEndedAt !== this.sessionEndedAt) {
         this.proxyState = snapshot.proxyState;
+        this.sessionEndedAt = snapshot.sessionEndedAt;
         this.trafficGeneration += 1;
         this.trafficBaseline = undefined;
+        if (snapshot.sessionEndedAt > 0) {
+          this.trafficHistory = [];
+        }
         if (this.dashboard !== undefined) {
-          this.dashboard = mergeProxyTrafficSnapshot(this.dashboard, this.dashboard, undefined);
+          this.dashboard = mergeProxyTrafficSnapshot(this.dashboard,
+            snapshot.sessionEndedAt > 0 ? undefined : this.dashboard, undefined);
         }
         this.publish();
       }

@@ -25,10 +25,10 @@ export class ProxySessionTimer {
 }
 
 export function proxySessionElapsedSeconds(startedAt: number, endedAt: number, now: number): number {
-  if (startedAt <= 0) {
+  if (startedAt <= 0 || endedAt > 0) {
     return 0;
   }
-  return Math.max(0, Math.floor(((endedAt > 0 ? endedAt : now) - startedAt) / 1000));
+  return Math.max(0, Math.floor((now - startedAt) / 1000));
 }
 
 export function resolveCoreRestartAction(state: VpnState): CoreRestartAction {

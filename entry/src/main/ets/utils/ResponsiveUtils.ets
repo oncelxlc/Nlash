@@ -19,3 +19,7 @@ export function resolveResponsiveMetrics(contentWidth: number, forceExpanded: bo
 export function resolveDashboardSpeedCardHeight(metrics: ResponsiveMetrics): number {
   return metrics.dashboardCardHeight * 2 + metrics.cardGap;
 }
+
+export function resolveDashboardTrafficCardHeight(metrics: ResponsiveMetrics): number {
+  return metrics.dashboardInfoCardHeight * 2 + metrics.cardGap;
+}

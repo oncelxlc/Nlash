@@ -2,6 +2,7 @@ import { describe, expect, it } from '@ohos/hypium';
 import {
   appendTrafficSample,
   buildTrafficChartPoints,
+  buildTrafficDonutPath,
   connectionTitle,
   formatBytes,
   formatBytesParts,
@@ -34,6 +35,37 @@ export default function runtimeModelsTest() {
 
     it('defaultsRuntimeModeToRule', 0, () => {
       expect(DEFAULT_RUNTIME_MODE).assertEqual(RuntimeMode.RULE);
+    });
+
+    it('drawsTrafficDonutWithProportionalSegmentsAndScalableCoordinates', 0, () => {
+      const upload = buildTrafficDonutPath(1, 3, true, 96).split(' ').filter((part: string): boolean =>
+        part !== 'M' && part !== 'A').map((part: string): number => Number(part));
+      const download = buildTrafficDonutPath(1, 3, false, 96).split(' ').filter((part: string): boolean =>
+        part !== 'M' && part !== 'A').map((part: string): number => Number(part));
+      const uploadEnd = Math.atan2(upload[15] - 48, upload[14] - 48);
+      const uploadStart = Math.atan2(upload[1] - 48, upload[0] - 48);
+      const downloadStart = Math.atan2(download[1] - 48, download[0] - 48);
+      expect(Math.abs(uploadEnd - uploadStart - Math.PI * 9 / 20) < 0.00001).assertTrue();
+      expect(Math.abs(downloadStart - uploadEnd - Math.PI / 10) < 0.00001).assertTrue();
+      expect(download[14] < 48).assertTrue();
+      const scaled = buildTrafficDonutPath(1, 3, true, 192);
+      expect(scaled.startsWith(`M ${upload[0] * 2} ${upload[1] * 2} A 84 84`)).assertTrue();
+      expect(buildTrafficDonutPath(100, 300, true, 96)).assertEqual(buildTrafficDonutPath(1, 3, true, 96));
+      expect(buildTrafficDonutPath(Number.MAX_VALUE, Number.MAX_VALUE, true, 96))
+        .assertEqual(buildTrafficDonutPath(1, 1, true, 96));
+    });
+
+    it('handlesEmptyInvalidAndSingleDirectionTrafficDonuts', 0, () => {
+      expect(buildTrafficDonutPath(0, 0, true, 96)).assertEqual('');
+      expect(buildTrafficDonutPath(Number.NaN, -1, false, 96)).assertEqual('');
+      expect(buildTrafficDonutPath(1, 1, true, 0)).assertEqual('');
+      expect(buildTrafficDonutPath(1, 1, true, Number.POSITIVE_INFINITY)).assertEqual('');
+      expect(buildTrafficDonutPath(0, 1, true, 96)).assertEqual('');
+      expect(buildTrafficDonutPath(1, 0, false, 96)).assertEqual('');
+      const fullCircle = buildTrafficDonutPath(1, 0, true, 96);
+      expect(fullCircle.startsWith('M 48 6 A 42 42 0 0 1 48 90 A 42 42')).assertTrue();
+      expect(buildTrafficDonutPath(0, 1, false, 96)).assertEqual(fullCircle);
+      expect(buildTrafficDonutPath(Number.POSITIVE_INFINITY, 1, false, 96)).assertEqual(fullCircle);
     });
 
     it('prefersHostForConnectionTitle', 0, () => {
@@ -116,7 +148,7 @@ export default function runtimeModelsTest() {
       }
     });
 
-    it('countsOnlyConnectedProxyIntervalsAndFreezesStoppedTraffic', 0, () => {
+    it('countsOnlyConnectedProxyIntervalsAndPreservesTrafficDuringRecovery', 0, () => {
       const baseline: DashboardSnapshot = {
         mode: RuntimeMode.RULE, uploadSpeed: 10, downloadSpeed: 20,
         uploadTotal: 100, downloadTotal: 200, memoryBytes: 1024, connectionCount: 1
@@ -162,6 +194,28 @@ export default function runtimeModelsTest() {
       const reset = mergeProxyTrafficSnapshot(baseline, connected, active);
       expect(reset.uploadTotal).assertEqual(30);
       expect(reset.downloadTotal).assertEqual(60);
+    });
+
+    it('clearsCompletedSessionTrafficAndStartsTheNextSessionFromZero', 0, () => {
+      const raw: DashboardSnapshot = {
+        mode: RuntimeMode.GLOBAL, uploadSpeed: 30, downloadSpeed: 60,
+        uploadTotal: 1000, downloadTotal: 2000, memoryBytes: 2048, connectionCount: 0
+      };
+      const stopped = mergeProxyTrafficSnapshot(raw, undefined, undefined);
+      expect(stopped.uploadSpeed).assertEqual(0);
+      expect(stopped.downloadSpeed).assertEqual(0);
+      expect(stopped.uploadTotal).assertEqual(0);
+      expect(stopped.downloadTotal).assertEqual(0);
+      expect(stopped.mode).assertEqual(RuntimeMode.GLOBAL);
+      expect(stopped.memoryBytes).assertEqual(2048);
+      const restarted = mergeProxyTrafficSnapshot(raw, stopped, undefined);
+      const next: DashboardSnapshot = {
+        mode: RuntimeMode.GLOBAL, uploadSpeed: 10, downloadSpeed: 20,
+        uploadTotal: 1010, downloadTotal: 2020, memoryBytes: 2048, connectionCount: 1
+      };
+      const active = mergeProxyTrafficSnapshot(next, restarted, raw);
+      expect(active.uploadTotal).assertEqual(10);
+      expect(active.downloadTotal).assertEqual(20);
     });
 
     it('mergesOverlappingRefreshRequests', 0, async () => {

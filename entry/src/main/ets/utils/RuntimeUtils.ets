@@ -154,6 +154,29 @@ export function formatSpeed(value: number): string {
   return `${formatBytes(value)}/s`;
 }
 
+export function buildTrafficDonutPath(uploadTotal: number, downloadTotal: number,
+  isUpload: boolean, size: number): string {
+  const upload = Number.isFinite(uploadTotal) && uploadTotal > 0 ? uploadTotal : 0;
+  const download = Number.isFinite(downloadTotal) && downloadTotal > 0 ? downloadTotal : 0;
+  const maximum = Math.max(upload, download);
+  if (maximum === 0 || !Number.isFinite(size) || size <= 0 || (isUpload ? upload : download) === 0) {
+    return '';
+  }
+  const uploadRatio = (upload / maximum) / (upload / maximum + download / maximum);
+  const gap = upload > 0 && download > 0 ? Math.PI / 10 : 0;
+  const available = Math.PI * 2 - gap * 2;
+  const start = -Math.PI / 2 + gap / 2 + (isUpload ? 0 : available * uploadRatio + gap);
+  const sweep = available * (isUpload ? uploadRatio : 1 - uploadRatio);
+  const center = size / 2;
+  const radius = size * 0.4375;
+  const middle = start + sweep / 2;
+  const end = start + sweep;
+  // Two arcs also draw the complete circle when only one direction has traffic.
+  return `M ${center + radius * Math.cos(start)} ${center + radius * Math.sin(start)} ` +
+    `A ${radius} ${radius} 0 0 1 ${center + radius * Math.cos(middle)} ${center + radius * Math.sin(middle)} ` +
+    `A ${radius} ${radius} 0 0 1 ${center + radius * Math.cos(end)} ${center + radius * Math.sin(end)}`;
+}
+
 export function connectionTitle(connection: ConnectionSnapshot): string {
   if (connection.host.length > 0) {
     return connection.host;

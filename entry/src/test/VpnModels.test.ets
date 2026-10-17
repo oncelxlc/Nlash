@@ -142,7 +142,7 @@ export default function vpnModelsTest() {
       expect(vpnStateFromProxyState(ProxyState.DISABLED)).assertEqual(VpnState.DISCONNECTED);
     });
 
-    it('keepsSessionAcrossRecoveryAndFreezesOnStop', 0, () => {
+    it('keepsSessionAcrossRecoveryAndClearsElapsedTimeOnStop', 0, () => {
       const timer = new ProxySessionTimer();
       timer.finish(500);
       expect(timer.getSnapshot().sessionStartedAt).assertEqual(0);
@@ -155,7 +155,7 @@ export default function vpnModelsTest() {
       timer.finish(70000);
       const stopped = timer.getSnapshot();
       expect(stopped.sessionEndedAt).assertEqual(62000);
-      expect(proxySessionElapsedSeconds(stopped.sessionStartedAt, stopped.sessionEndedAt, 90000)).assertEqual(61);
+      expect(proxySessionElapsedSeconds(stopped.sessionStartedAt, stopped.sessionEndedAt, 90000)).assertEqual(0);
       timer.connected(100000);
       expect(timer.getSnapshot().sessionStartedAt).assertEqual(100000);
       expect(timer.getSnapshot().sessionEndedAt).assertEqual(0);

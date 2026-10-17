@@ -2,10 +2,13 @@ import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { AppSettings, AppThemeMode, NavigationTransition, SettingsStoreListener, SettingsStoreSnapshot } from '../model/SettingsModels';
 import { DEFAULT_APP_SETTINGS } from '../constants/SettingsConstants';
 import { preferenceRepository } from '../repository/PreferenceRepository';
+import { DashboardCard } from '../model/DashboardModels';
+import { normalizeDashboardCardOrder } from '../utils/DashboardUtils';
 
 class SettingsStore {
   private context: common.ApplicationContext | undefined;
   private settings: AppSettings = DEFAULT_APP_SETTINGS;
+  private dashboardCardOrder: DashboardCard[] | undefined = undefined;
   private saving: boolean = false;
   private initialized: boolean = false;
   private initializeOperation: Promise<void> | undefined;
@@ -41,6 +44,23 @@ class SettingsStore {
     return (): void => {
       this.listeners.delete(listener);
     };
+  }
+
+  getDashboardCardOrder(): DashboardCard[] | undefined {
+    return this.dashboardCardOrder?.slice();
+  }
+
+  async saveDashboardCardOrder(cards: DashboardCard[]): Promise<void> {
+    if (this.initializeOperation !== undefined) {
+      await this.initializeOperation;
+    }
+    if (!this.initialized) {
+      throw new Error('设置尚未初始化');
+    }
+    const order = normalizeDashboardCardOrder(cards);
+    await preferenceRepository.setDashboardCardOrder(order);
+    this.dashboardCardOrder = order;
+    this.publish();
   }
 
   async setThemeMode(mode: AppThemeMode): Promise<void> {
@@ -106,6 +126,7 @@ class SettingsStore {
   private async initializeInternal(context: common.ApplicationContext): Promise<void> {
     await preferenceRepository.initialize(context);
     this.settings = await preferenceRepository.getAppSettings();
+    this.dashboardCardOrder = await preferenceRepository.getDashboardCardOrder();
     this.initialized = true;
     this.applyTheme(this.settings.themeMode);
     this.publish();

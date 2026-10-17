@@ -14,8 +14,14 @@ export struct RuntimeStatusCard {
   build() {
     Button({ type: ButtonType.Normal }) {
       Column({ space: 8 }) {
-        Text('活动连接').fontSize(CAPTION_FONT_SIZE).fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.content_secondary')).constraintSize({ minHeight: 20 })
+        Row({ space: 8 }) {
+          Image($r('app.media.nav_connections'))
+            .width(16).height(16).fillColor($r('app.color.content_secondary'))
+            .accessibilityLevel('no')
+          Text('活动连接').fontSize(CAPTION_FONT_SIZE).fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.content_secondary'))
+        }
+        .constraintSize({ minHeight: 20 })
         Row({ space: 8 }) {
           Text(this.runtime === undefined ? '—' : `${this.runtime.connectionCount} 个`)
             .fontSize(20)

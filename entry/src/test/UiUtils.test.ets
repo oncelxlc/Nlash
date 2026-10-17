@@ -1,7 +1,9 @@
 import { describe, expect, it } from '@ohos/hypium';
 import { ResponsiveSizeClass } from '../main/ets/model/ResponsiveModels';
 import { formatLocalTime } from '../main/ets/utils/DateUtils';
-import { resolveContentWidth, resolveResponsiveMetrics } from '../main/ets/utils/ResponsiveUtils';
+import {
+  resolveContentWidth, resolveResponsiveMetrics, resolveDashboardTrafficCardHeight
+} from '../main/ets/utils/ResponsiveUtils';
 
 export default function uiUtilsTest() {
   describe('uiUtils', () => {
@@ -32,6 +34,12 @@ export default function uiUtilsTest() {
       expect(formatLocalTime(0)).assertEqual('--');
       expect(formatLocalTime(-1)).assertEqual('--');
       expect(formatLocalTime(Number.NaN)).assertEqual('--');
+    });
+
+    it('alignsTrafficCardWithTwoStandardInfoCardsAndTheirGap', 0, () => {
+      expect(resolveDashboardTrafficCardHeight(resolveResponsiveMetrics(360))).assertEqual(188);
+      expect(resolveDashboardTrafficCardHeight(resolveResponsiveMetrics(717))).assertEqual(188);
+      expect(resolveDashboardTrafficCardHeight(resolveResponsiveMetrics(1000))).assertEqual(188);
     });
   });
 }

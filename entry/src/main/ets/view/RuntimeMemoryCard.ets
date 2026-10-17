@@ -9,8 +9,14 @@ export struct RuntimeMemoryCard {
 
   build() {
     Column({ space: 8 }) {
-      Text('Core 内存').fontSize(CAPTION_FONT_SIZE).fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.content_secondary')).constraintSize({ minHeight: 20 })
+      Row({ space: 8 }) {
+        Image($r('app.media.runtime_memory'))
+          .width(16).height(16).fillColor($r('app.color.content_secondary'))
+          .accessibilityLevel('no')
+        Text('Core 内存').fontSize(CAPTION_FONT_SIZE).fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.content_secondary'))
+      }
+      .constraintSize({ minHeight: 20 })
       Text(this.runtime === undefined ? '—' : formatBytes(this.runtime.memoryBytes))
         .fontSize(20).fontFamily('monospace').fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.content_primary'))

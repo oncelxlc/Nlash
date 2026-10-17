@@ -33,6 +33,7 @@ export struct ProxyPage {
   @State delayOperations: ProxyDelayOperationSnapshot[] = [];
   @State settings: AppSettings = settingsStore.getSnapshot().settings;
   @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
+  private nodeScroller: Scroller = new Scroller();
   private proxyGroups: ProxyGroupSnapshot[] = [];
   private unsubscribeRuntime: (() => void) | undefined = undefined;
   private unsubscribeSettings: (() => void) | undefined = undefined;
@@ -191,7 +192,7 @@ export struct ProxyPage {
             icon: $r('app.media.nav_proxy'), title: '当前代理组暂无节点', description: '尝试其他代理组，或更新活动配置。'
           })
         }
-        Grid() {
+        Grid(this.nodeScroller) {
           ForEach(this.currentGroup()?.nodes ?? [], (node: ProxyNodeSnapshot, index: number) => {
             GridItem() {
               ProxyNodeCard({
@@ -213,6 +214,13 @@ export struct ProxyPage {
         .width('100%').height('100%')
         .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
         .scrollBar(BarState.Off)
+        .onAppear((): void => {
+          const index = this.currentGroup()?.nodes.findIndex((node: ProxyNodeSnapshot): boolean =>
+            this.isNodeSelected(node)) ?? -1;
+          if (index >= 0) {
+            this.nodeScroller.scrollToIndex(index, false, ScrollAlign.CENTER);
+          }
+        })
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
       .width('100%').layoutWeight(1)
@@ -263,6 +271,7 @@ export struct ProxyPage {
     .alignItems(HorizontalAlign.Start)
     .width('100%')
     .height('100%')
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   build() {

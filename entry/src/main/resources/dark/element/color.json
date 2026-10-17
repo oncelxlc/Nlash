@@ -133,6 +133,14 @@
       "value": "#C2D2D6"
     },
     {
+      "name": "traffic_chart_upload",
+      "value": "#CCD8D9"
+    },
+    {
+      "name": "traffic_chart_download",
+      "value": "#6D7572"
+    },
+    {
       "name": "action_primary",
       "value": "#8AB4FF"
     }
