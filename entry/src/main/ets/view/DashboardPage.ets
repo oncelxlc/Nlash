@@ -1,13 +1,15 @@
 import { RuntimeStatusCard } from './RuntimeStatusCard';
 import { RuntimeTrafficCard } from './RuntimeTrafficCard';
 import { RuntimeSpeedCard } from './RuntimeSpeedCard';
+import { RuntimeDurationCard } from './RuntimeDurationCard';
+import { RuntimeMemoryCard } from './RuntimeMemoryCard';
 import { systemDateTime } from '@kit.BasicServicesKit';
 import { SingleChoiceControl } from '../components/SingleChoiceControl';
 import { Profile } from '../model/ProfileModels';
 import { DashboardSnapshot, PublicNetworkSnapshot, RuntimeMode, TrafficSample } from '../model/RuntimeModels';
 import { DEFAULT_RUNTIME_MODE } from '../constants/RuntimeConstants';
 import { CoreServiceState, ProxyState, RuntimeLifecycleSnapshot } from '../model/VpnModels';
-import { formatVpnRunDuration, proxySessionElapsedSeconds } from '../utils/VpnUtils';
+import { proxySessionElapsedSeconds } from '../utils/VpnUtils';
 import { feedbackService } from '../services/FeedbackService';
 import { publicNetworkService } from '../services/LocalNetworkService';
 import { vpnService } from '../services/VpnService';
@@ -16,7 +18,8 @@ import { runtimeStore } from '../stores/RuntimeStore';
 import { ResponsiveMetrics, ResponsiveSizeClass } from '../model/ResponsiveModels';
 import {
   resolveResponsiveMetrics,
-  resolveContentWidth
+  resolveContentWidth,
+  resolveDashboardSpeedCardHeight
 } from '../utils/ResponsiveUtils';
 import {
   BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, FLOATING_ACTION_INSET,
@@ -52,6 +55,14 @@ export struct DashboardPage {
   @State proxyOperation: boolean = false;
   @State elapsedSeconds: number = 0;
   @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
+  private gridLayoutOptions: GridLayoutOptions = {
+    regularSize: [1, 1],
+    irregularIndexes: [0, 1, 2, 3],
+    onGetIrregularSizeByIndex: (index: number): [number, number] => [
+      index === 1 ? 2 : 1,
+      2
+    ]
+  };
   private unsubscribeNetwork: (() => void) | undefined = undefined;
   private unsubscribeLifecycle: (() => void) | undefined = undefined;
   private viewSyncTimer: number | undefined = undefined;
@@ -283,12 +294,27 @@ export struct DashboardPage {
 
   private proxyStatus(): string {
     switch (this.proxyState) {
-      case ProxyState.ENABLED: return '代理已连接';
-      case ProxyState.ENABLING: return '正在连接…';
-      case ProxyState.DISABLING: return '正在断开…';
+      case ProxyState.ENABLED: return '已连接';
+      case ProxyState.ENABLING: return '连接中…';
+      case ProxyState.DISABLING: return '断开中…';
       case ProxyState.ERROR: return '连接异常';
-      default: return '代理未连接';
+      default: return '未连接';
     }
+  }
+
+  private hasStatusError(): boolean {
+    return this.coreState === CoreServiceState.ERROR || this.proxyState === ProxyState.ERROR ||
+      this.message.startsWith('配置应用失败');
+  }
+
+  private headerHint(): string {
+    if (this.hasStatusError()) {
+      return this.message || '连接异常，请重试';
+    }
+    if (this.runtimeProfileId.length === 0 && this.coreState === CoreServiceState.RUNNING) {
+      return '请选择配置';
+    }
+    return this.proxyStatus();
   }
 
   @Builder
@@ -320,7 +346,7 @@ export struct DashboardPage {
     SingleChoiceControl({
       labels: MODES.map((mode: RuntimeMode): string => this.modeLabel(mode)),
       selectedIndex: MODES.indexOf(this.selectedMode),
-      compact: false,
+      compact: true,
       isEnabled: this.coreState === CoreServiceState.RUNNING && !this.profileBusy &&
         !this.isCoreBusy() && !this.isProxyBusy() && this.runtimeBusyKey.length === 0,
       accessibilityLabel: '流量处理模式',
@@ -353,28 +379,24 @@ export struct DashboardPage {
 
   @Builder
   private controlPanel() {
-    Column({ space: 12 }) {
+    Column({ space: 8 }) {
+      Text('当前配置').fontSize(CAPTION_FONT_SIZE).fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.content_secondary'))
+        .constraintSize({ minHeight: 20 })
       Row({ space: 12 }) {
         Button({ type: ButtonType.Normal }) {
-          Column({ space: 6 }) {
-            Text(this.proxyStatus())
-              .fontSize(CAPTION_FONT_SIZE)
-              .fontColor(this.proxyState === ProxyState.ERROR ? $r('app.color.status_error') :
-                (this.proxyState === ProxyState.ENABLED ? $r('app.color.status_success') : $r('app.color.content_secondary')))
-              .width('100%')
-            Text(this.getActiveProfile()?.name ?? '添加配置')
-              .fontSize(BODY_FONT_SIZE)
-              .fontWeight(FontWeight.Medium)
-              .fontColor($r('app.color.content_primary'))
-              .width('100%')
-              .maxLines(2)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-          }
-          .alignItems(HorizontalAlign.Start)
-          .width('100%')
+          Text(this.getActiveProfile()?.name ?? '选择配置')
+            .fontSize(BODY_FONT_SIZE)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.content_primary'))
+            .textAlign(TextAlign.Start)
+            .width('100%')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
         }
         .layoutWeight(1)
-        .constraintSize({ minHeight: CONTROL_HEIGHT })
+        .constraintSize({ minHeight: 40 })
+        .responseRegion({ x: 0, y: -4, width: '100%', height: CONTROL_HEIGHT })
         .padding(0)
         .borderRadius(0)
         .backgroundColor(Color.Transparent)
@@ -384,123 +406,105 @@ export struct DashboardPage {
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)
-      if (this.sessionStartedAt > 0) {
-        Row() {
-          Text('本次使用').fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
-          Blank()
-          Text(formatVpnRunDuration(this.elapsedSeconds)).fontSize(18).fontFamily('monospace')
-            .fontColor($r('app.color.content_primary'))
-        }
-        .width('100%')
-      }
-      if (this.coreState === CoreServiceState.ERROR || this.proxyState === ProxyState.ERROR ||
-        this.message.startsWith('配置应用失败')) {
-        Text(this.message || '连接遇到问题，请检查配置后重试。')
-          .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.status_error')).width('100%')
-      } else if (this.runtimeProfileId.length === 0 && this.coreState === CoreServiceState.RUNNING) {
-        Text('Core 已就绪，选择有效配置后即可开启代理。')
-          .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
-      }
     }
     .width('100%')
+    .constraintSize({ minHeight: this.metrics.dashboardCardHeight })
     .alignItems(HorizontalAlign.Start)
-    .padding(16)
+    .padding(12)
     .borderRadius(CARD_RADIUS)
     .backgroundColor($r('app.color.card_background'))
   }
 
   @Builder
   private publicNetworkCard() {
-    Row({ space: 12 }) {
-      Column({ space: 6 }) {
+    Column({ space: 8 }) {
+      Row({ space: 8 }) {
         Text('公网出口')
           .fontSize(CAPTION_FONT_SIZE)
+          .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.content_secondary'))
+          .layoutWeight(1)
+        Button({ type: ButtonType.Normal }) {
+          if (this.publicNetworkChecking) {
+            LoadingProgress().width(16).height(16).color($r('app.color.nav_selected'))
+          } else {
+            Image($r('app.media.action_refresh'))
+              .width(16).height(16).fillColor($r('app.color.nav_selected'))
+          }
+        }
+        .width(24).height(24).padding(0).borderRadius(BUTTON_RADIUS)
+        .responseRegion({ x: -12, y: -12, width: CONTROL_HEIGHT, height: CONTROL_HEIGHT })
+        .backgroundColor(Color.Transparent)
+        .enabled(!this.publicNetworkChecking)
+        .accessibilityText('刷新公网出口')
+        .onClick((): void => { publicNetworkService.refresh(); })
+      }
+      .width('100%')
+      Column({ space: 2 }) {
         Text(this.publicIpv4 === '未知' ? '—' : this.publicIpv4)
-          .fontSize(20)
+          .fontSize(BODY_FONT_SIZE)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.content_primary'))
           .wordBreak(WordBreak.BREAK_ALL)
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
         Text(this.publicNetworkDetail())
           .fontSize(CAPTION_FONT_SIZE)
           .fontColor(this.publicNetworkError.length > 0 ? $r('app.color.status_error') : $r('app.color.content_secondary'))
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
       }
       .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-      Button({ type: ButtonType.Normal }) {
-        if (this.publicNetworkChecking) {
-          LoadingProgress().width(20).height(20).color($r('app.color.nav_selected'))
-        } else {
-          Image($r('app.media.action_refresh'))
-            .width(20).height(20).fillColor($r('app.color.nav_selected'))
-        }
-      }
-      .width(CONTROL_HEIGHT)
-      .height(CONTROL_HEIGHT)
-      .borderRadius(BUTTON_RADIUS)
-      .backgroundColor('transparent')
-      .enabled(!this.publicNetworkChecking)
-      .accessibilityText('刷新公网出口')
-      .onClick((): void => { publicNetworkService.refresh(); })
+      .width('100%')
     }
     .width('100%')
-    .padding(16)
+    .constraintSize({ minHeight: this.metrics.dashboardCardHeight })
+    .alignItems(HorizontalAlign.Start)
+    .justifyContent(FlexAlign.SpaceBetween)
+    .padding(12)
     .borderRadius(CARD_RADIUS)
     .backgroundColor($r('app.color.card_background'))
-  }
-
-  @Builder
-  private runtimeSummary() {
-    Column({ space: 12 }) {
-      RuntimeTrafficCard({ runtime: this.runtime })
-      RuntimeStatusCard({ runtime: this.runtime })
-      this.publicNetworkCard()
-    }
-    .width('100%')
   }
 
   build() {
     Stack({ alignContent: Alignment.BottomEnd }) {
       Column({ space: this.metrics.sectionGap }) {
         PageHeader({
-          title: $r('app.string.nav_dashboard'), contentPadding: this.metrics.pagePadding,
+          title: $r('app.string.nav_dashboard'), subtitle: this.headerHint(), contentPadding: this.metrics.pagePadding,
+          subtitleColor: this.hasStatusError() ? $r('app.color.status_error') : $r('app.color.content_secondary'),
           actions: (): void => { this.headerActions(); }
         })
-        Scroll() {
-          Column({ space: this.metrics.sectionGap }) {
-            this.controlPanel()
-            if (this.metrics.sizeClass === ResponsiveSizeClass.COMPACT) {
-              RuntimeSpeedCard({
-                runtime: this.runtime, history: this.history,
-                proxyState: this.proxyState, coreState: this.coreState
-              })
-              this.runtimeSummary()
-            } else {
-              Row({ space: this.metrics.cardGap }) {
-                Column() {
-                  RuntimeSpeedCard({
-                    runtime: this.runtime, history: this.history,
-                    proxyState: this.proxyState, coreState: this.coreState,
-                    cardHeight: 216
-                  })
-                }
-                .layoutWeight(3)
-                Column() { this.runtimeSummary() }
-                  .layoutWeight(2)
-              }
-              .width('100%')
-              .alignItems(VerticalAlign.Top)
-            }
+        Grid(undefined, this.gridLayoutOptions) {
+          GridItem() { this.controlPanel() }
+          GridItem() {
+            RuntimeSpeedCard({
+              runtime: this.runtime, history: this.history,
+              proxyState: this.proxyState, coreState: this.coreState,
+              cardHeight: this.metrics.sizeClass === ResponsiveSizeClass.COMPACT ? 176 :
+                resolveDashboardSpeedCardHeight(this.metrics)
+            })
           }
-          .alignItems(HorizontalAlign.Start)
-          .width('100%')
-          .constraintSize({ minHeight: '100%' })
-          .justifyContent(FlexAlign.Start)
-          .padding({
-            left: this.metrics.pagePadding, right: this.metrics.pagePadding,
-            bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET + FLOATING_ACTION_INSET
-          })
+          GridItem() { this.publicNetworkCard() }
+          GridItem() {
+            RuntimeTrafficCard({
+              runtime: this.runtime, cardHeight: this.metrics.dashboardCardHeight
+            })
+          }
+          GridItem() {
+            RuntimeDurationCard({
+              elapsedSeconds: this.elapsedSeconds, hasSession: this.sessionStartedAt > 0,
+              cardHeight: this.metrics.dashboardInfoCardHeight
+            })
+          }
+          GridItem() { RuntimeStatusCard({ runtime: this.runtime, cardHeight: this.metrics.dashboardInfoCardHeight }) }
+          GridItem() { RuntimeMemoryCard({ runtime: this.runtime, cardHeight: this.metrics.dashboardInfoCardHeight }) }
         }
+        .columnsTemplate(this.metrics.sizeClass === ResponsiveSizeClass.COMPACT ? '1fr 1fr' : '1fr 1fr 1fr 1fr')
+        .columnsGap(this.metrics.cardGap)
+        .rowsGap(this.metrics.cardGap)
+        .cachedCount(8)
+        .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET + FLOATING_ACTION_INSET)
+        .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
         .width('100%')
         .layoutWeight(1)
         .scrollBar(BarState.Off)

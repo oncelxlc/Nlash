@@ -2,7 +2,6 @@ import {
   CARD_RADIUS, CAPTION_FONT_SIZE
 } from '../constants/UiConstants';
 import { DashboardSnapshot } from '../model/RuntimeModels';
-import { formatBytes } from '../utils/RuntimeUtils';
 import { AppPage } from '../model/NavigationModels';
 import { navigationIntentService } from '../services/NavigationIntentService';
 
@@ -10,45 +9,40 @@ import { navigationIntentService } from '../services/NavigationIntentService';
 export struct RuntimeStatusCard {
   @Prop runtime: DashboardSnapshot | undefined = undefined;
   @Prop cardWidth: Length = '100%';
-  @Prop cardHeight: number = 120;
+  @Prop cardHeight: number = 88;
 
   build() {
-    Row({ space: 16 }) {
-      Button({ type: ButtonType.Normal }) {
-        Column({ space: 6 }) {
-          Text('活动连接').fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
-          Row({ space: 8 }) {
-            Text(this.runtime === undefined ? '—' : `${this.runtime.connectionCount} 个`)
-              .fontSize(20)
-              .fontWeight(FontWeight.Medium)
-              .fontColor($r('app.color.nav_selected'))
-            Image($r('app.media.action_chevron_down'))
-              .width(16).height(16).rotate({ angle: -90 }).fillColor($r('app.color.nav_selected'))
-          }
+    Button({ type: ButtonType.Normal }) {
+      Column({ space: 8 }) {
+        Text('活动连接').fontSize(CAPTION_FONT_SIZE).fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.content_secondary')).constraintSize({ minHeight: 20 })
+        Row({ space: 8 }) {
+          Text(this.runtime === undefined ? '—' : `${this.runtime.connectionCount} 个`)
+            .fontSize(20)
+            .fontFamily('monospace')
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.nav_selected'))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
+          Image($r('app.media.action_chevron_down'))
+            .width(16).height(16).rotate({ angle: -90 }).fillColor($r('app.color.nav_selected'))
+            .accessibilityLevel('no')
         }
-        .alignItems(HorizontalAlign.Start)
         .width('100%')
       }
-      .layoutWeight(1)
-      .constraintSize({ minHeight: 48 })
-      .padding(0)
-      .borderRadius(0)
-      .backgroundColor(Color.Transparent)
-      .accessibilityText('查看实时连接')
-      .onClick((): void => { navigationIntentService.publish(AppPage.CONNECTIONS); })
-      Column({ space: 6 }) {
-        Text('Core 内存').fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
-        Text(this.runtime === undefined ? '—' : formatBytes(this.runtime.memoryBytes))
-          .fontSize(20)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.content_primary'))
-      }
       .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
+      .justifyContent(FlexAlign.SpaceBetween)
+      .width('100%')
+      .constraintSize({ minHeight: this.cardHeight })
+      .padding(12)
     }
     .width(this.cardWidth)
-    .padding(16)
+    .padding(0)
     .borderRadius(CARD_RADIUS)
     .backgroundColor($r('app.color.card_background'))
+    .accessibilityText(this.runtime === undefined ? '活动连接数据暂不可用，查看实时连接' :
+      `活动连接 ${this.runtime.connectionCount} 个，查看实时连接`)
+    .onClick((): void => { navigationIntentService.publish(AppPage.CONNECTIONS); })
   }
 }

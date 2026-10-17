@@ -145,33 +145,30 @@ export struct RuntimeSpeedCard {
   }
 
   build() {
-    Column() {
-      Row({ space: 12 }) {
-        Row({ space: 8 }) {
-          Image($r('app.media.network_speed'))
-            .width(16).height(16).fillColor($r('app.color.content_secondary'))
-            .accessibilityLevel('no')
-          Text('网络速度').fontSize(14).fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.content_secondary'))
-        }
-        .flexShrink(0)
-        Flex({
-          wrap: FlexWrap.Wrap, justifyContent: FlexAlign.End, alignItems: ItemAlign.Center,
-          space: { main: LengthMetrics.vp(8), cross: LengthMetrics.vp(8) }
-        }) {
-          this.speedValue({ label: '↑', speed: this.runtime?.uploadSpeed })
-          this.speedValue({ label: '↓', speed: this.runtime?.downloadSpeed })
-        }
-        .layoutWeight(1)
+    Column({ space: 8 }) {
+      Row({ space: 8 }) {
+        Image($r('app.media.network_speed'))
+          .width(16).height(16).fillColor($r('app.color.content_secondary'))
+          .accessibilityLevel('no')
+        Text('网络速度').fontSize(CAPTION_FONT_SIZE).fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.content_secondary'))
       }
       .width('100%')
-      .padding({ left: 16, right: 16, top: 16, bottom: 12 })
+      .constraintSize({ minHeight: 20 })
+      Flex({
+        wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Start, alignItems: ItemAlign.Center,
+        space: { main: LengthMetrics.vp(16), cross: LengthMetrics.vp(8) }
+      }) {
+        this.speedValue({ label: '↑', speed: this.runtime?.uploadSpeed })
+        this.speedValue({ label: '↓', speed: this.runtime?.downloadSpeed })
+      }
+      .width('100%')
       Stack({ alignContent: Alignment.Center }) {
         if (this.proxyState !== ProxyState.ENABLED || this.chartUnavailable || !this.hasTrafficData()) {
           EmptyStateBackground({
             compact: true,
-            title: this.proxyState !== ProxyState.ENABLED ? '代理未连接，流量统计已暂停' :
-              (this.chartUnavailable ? '图表暂不可用，实时数值仍会更新' : '正在等待网络流量')
+            title: this.proxyState !== ProxyState.ENABLED ? '未连接，统计暂停' :
+              (this.chartUnavailable ? '图表暂不可用' : '等待流量')
           })
         }
         Canvas(this.chartContext)
@@ -189,10 +186,12 @@ export struct RuntimeSpeedCard {
           .opacity(this.proxyState !== ProxyState.ENABLED || this.chartUnavailable || !this.hasTrafficData() ? 0 : 1)
       }
       .width('100%')
-      .height(Math.max(96, this.cardHeight - 48))
+      .height(Math.max(72, this.cardHeight - 76))
     }
     .alignItems(HorizontalAlign.Start)
     .width(this.cardWidth)
+    .constraintSize({ minHeight: this.cardHeight })
+    .padding(12)
     .borderRadius(CARD_RADIUS)
     .backgroundColor($r('app.color.card_background'))
     .clip(true)

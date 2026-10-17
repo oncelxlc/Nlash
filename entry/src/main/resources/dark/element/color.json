@@ -21,6 +21,10 @@
       "value": "#333338"
     },
     {
+      "name": "selection_background",
+      "value": "#172C4D"
+    },
+    {
       "name": "nav_selected",
       "value": "#F4F4F5"
     },

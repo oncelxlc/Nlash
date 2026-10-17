@@ -416,14 +416,23 @@ export struct ConfigurationPage {
       Row({ space: 8 }) {
         Text(profile.name)
           .fontSize(BODY_FONT_SIZE)
-          .fontWeight(FontWeight.Medium)
+          .fontWeight(profile.id === this.activeProfileId ? FontWeight.Bold : FontWeight.Medium)
           .fontColor($r('app.color.content_primary'))
           .layoutWeight(1)
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
+        if (profile.id === this.activeProfileId) {
+          Image($r('app.media.action_check'))
+            .width(20).height(20).fillColor($r('app.color.action_primary'))
+            .accessibilityLevel('no')
+        }
         Button({ type: ButtonType.Normal }) {
-          Image($r('app.media.action_more'))
-            .width(24).height(24).fillColor($r('app.color.content_secondary'))
+          if (profile.id === this.busyProfileId) {
+            LoadingProgress().width(24).height(24).color($r('app.color.content_primary'))
+          } else {
+            Image($r('app.media.action_more'))
+              .width(24).height(24).fillColor($r('app.color.content_secondary'))
+          }
         }
         .width(CONTROL_HEIGHT)
         .height(CONTROL_HEIGHT)
@@ -465,8 +474,15 @@ export struct ConfigurationPage {
           .layoutWeight(1)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(formatProfileRelativeTime(profile.lastUpdateAt))
-          .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
+        if (profile.type === ProfileType.SUBSCRIPTION || profile.id === this.busyProfileId) {
+          Text(profile.id === this.busyProfileId ? (this.getStageLabel() || '处理中…') :
+            formatProfileRelativeTime(profile.lastUpdateAt))
+            .fontSize(CAPTION_FONT_SIZE)
+            .fontWeight(profile.id === this.busyProfileId ? FontWeight.Medium : FontWeight.Regular)
+            .fontColor(profile.id === this.busyProfileId ? $r('app.color.content_primary') :
+              $r('app.color.content_secondary'))
+            .maxLines(1)
+        }
       }
       .width('100%')
     }
@@ -474,10 +490,13 @@ export struct ConfigurationPage {
     .width('100%')
     .padding({ left: 12, right: 8, top: 4, bottom: 8 })
     .borderRadius(CARD_RADIUS)
+    .border({ width: 2, color: profile.id === this.activeProfileId ?
+      $r('app.color.action_primary') : Color.Transparent })
     .backgroundColor(profile.id === this.activeProfileId ?
-      $r('app.color.nav_selected_background') : $r('app.color.card_background'))
+      $r('app.color.selection_background') : $r('app.color.card_background'))
     .animation(this.selectionAnimationOptions)
-    .accessibilityText(`${profile.name}，${profile.id === this.activeProfileId ? '当前使用' : '点击设为活动配置'}`)
+    .accessibilityText(`${profile.name}，${profile.id === this.activeProfileId ? '当前使用' : '点击设为活动配置'}` +
+      (profile.id === this.busyProfileId ? `，${this.getStageLabel() || '正在处理配置'}` : ''))
     .accessibilitySelected(profile.id === this.activeProfileId)
     .onClick((): void => { this.selectProfile(profile.id); })
   }
@@ -531,8 +550,6 @@ export struct ConfigurationPage {
           .enabled(this.busyProfileId.length === 0)
           .accessibilityText('自动更新间隔，分钟')
           .onChange((value: string): void => { this.editIntervalMinutes = value; this.editorDirty = true; })
-      } else {
-        Text('本地 YAML 支持修改名称。').fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
       }
       this.statusBanner()
       if (this.formError.length > 0) {
@@ -601,12 +618,13 @@ export struct ConfigurationPage {
         title: $r('app.string.nav_configuration'), contentPadding: this.metrics.pagePadding,
         actions: (): void => { this.headerActions(); }
       })
-      this.statusBanner(this.metrics.pagePadding)
+      if (this.busyProfileId === 'import') {
+        this.statusBanner(this.metrics.pagePadding)
+      }
       if (this.profiles.length === 0) {
         Stack() {
           EmptyStateBackground({
-            icon: $r('app.media.nav_configuration'), title: '从一份配置开始',
-            description: '点击右上角添加订阅或导入本地 YAML，校验通过后即可使用。'
+            icon: $r('app.media.nav_configuration'), title: '暂无配置'
           })
         }
         .width('100%').layoutWeight(1)
@@ -615,7 +633,7 @@ export struct ConfigurationPage {
         List({ space: this.metrics.cardGap }) {
           ForEach(this.profiles, (profile: Profile) => {
             ListItem() { this.profileCard(profile) }
-          }, (profile: Profile): string => profile.id)
+          }, (profile: Profile): string => `${profile.id}:${profile.updatedAt}`)
             .onMove(this.busyProfileId.length === 0 ? (from: number, to: number): void => {
               const profile = this.profiles[from];
               if (profile !== undefined) { this.moveProfile(profile.id, to); }
@@ -653,8 +671,6 @@ export struct ConfigurationPage {
         .enabled(!this.isAddingSubscription())
         .accessibilityText('订阅 URL')
         .onChange((value: string): void => { this.addUrl = value; })
-      Text('名称留空时自动读取订阅标题。完整地址仅保存在应用沙箱，不显示在配置列表或写入日志。')
-        .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
       if (this.formError.length > 0) {
         Text(this.formError).fontSize(14).fontColor($r('app.color.status_error')).width('100%')
       }
@@ -671,7 +687,6 @@ export struct ConfigurationPage {
   private addSourceSheet() {
     Column({ space: 16 }) {
       Text('添加配置').fontSize(24).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary')).width('100%')
-      Text('选择配置来源').fontSize(BODY_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
       Button('添加订阅')
         .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
         .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.action_primary'))

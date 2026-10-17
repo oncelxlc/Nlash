@@ -4,6 +4,7 @@ import { CAPTION_FONT_SIZE, HEADER_CONTENT_HEIGHT, PAGE_TITLE_SIZE } from '../co
 export struct PageHeader {
   @Prop title: ResourceStr = '';
   @Prop subtitle: ResourceStr = '';
+  @Prop subtitleColor: ResourceColor = $r('app.color.content_secondary');
   @Prop contentPadding: number = 16;
   @BuilderParam actions: () => void = this.emptyActions;
 
@@ -22,8 +23,10 @@ export struct PageHeader {
         if (this.subtitle !== '') {
           Text(this.subtitle)
             .fontSize(CAPTION_FONT_SIZE)
-            .fontColor($r('app.color.content_secondary'))
+            .fontColor(this.subtitleColor)
             .width('100%')
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
         }
       }
       .alignItems(HorizontalAlign.Start)

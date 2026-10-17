@@ -13,7 +13,8 @@ export function orderProfiles(profiles: Profile[], ids: string[]): Profile[] {
     }
   });
   return profiles.slice().sort((left: Profile, right: Profile): number =>
-    (positions.get(left.id) ?? ids.length) - (positions.get(right.id) ?? ids.length));
+    (positions.get(left.id) ?? ids.length) - (positions.get(right.id) ?? ids.length) ||
+    right.createdAt - left.createdAt || left.id.localeCompare(right.id));
 }
 
 export function moveProfile(profiles: Profile[], from: number, to: number): Profile[] {

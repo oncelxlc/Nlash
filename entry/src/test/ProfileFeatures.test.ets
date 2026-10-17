@@ -154,6 +154,30 @@ export default function profileFeaturesTest() {
         .assertEqual('a,b,c');
     });
 
+    it('keepsProfileOrderWhenSubscriptionsAreUpdated', 0, () => {
+      const profiles: Profile[] = ['a', 'b', 'c'].map((id: string, index: number): Profile => ({
+        id: id, name: id, type: ProfileType.SUBSCRIPTION, sourceUrl: 'https://example.com/sub',
+        localPath: `/${id}.yaml`, createdAt: index, updatedAt: index,
+        autoUpdateEnabled: false, updateIntervalMinutes: 15
+      }));
+      const initial = orderProfiles(profiles, []).map((profile: Profile): string => profile.id).join(',');
+      profiles[0].updatedAt = 100;
+      const reloaded = [profiles[0], profiles[2], profiles[1]];
+      expect(orderProfiles(reloaded, []).map((profile: Profile): string => profile.id).join(','))
+        .assertEqual(initial);
+      expect(orderProfiles(reloaded, ['b']).map((profile: Profile): string => profile.id).join(','))
+        .assertEqual('b,c,a');
+      expect(orderProfiles(reloaded, ['a', 'c', 'b']).map((profile: Profile): string => profile.id).join(','))
+        .assertEqual('a,c,b');
+      profiles.forEach((profile: Profile, index: number): void => { profile.updatedAt = 100 + index; });
+      expect(orderProfiles(reloaded.slice().reverse(), []).map((profile: Profile): string => profile.id).join(','))
+        .assertEqual(initial);
+      profiles[1].createdAt = profiles[2].createdAt;
+      expect(orderProfiles(reloaded, []).map((profile: Profile): string => profile.id).join(','))
+        .assertEqual('b,c,a');
+      expect(profiles.map((profile: Profile): string => profile.id).join(',')).assertEqual('a,b,c');
+    });
+
     it('usesAdaptiveProfileColumns', 0, () => {
       expect(resolveResponsiveMetrics(639).profileColumns).assertEqual('1fr');
       expect(resolveResponsiveMetrics(640).profileColumns).assertEqual('1fr 1fr');
