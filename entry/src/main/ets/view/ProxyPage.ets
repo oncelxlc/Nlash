@@ -38,10 +38,23 @@ export struct ProxyPage {
   @State fontScale: number = 1;
   private scrollers: ListScroller[] = [new ListScroller(), new ListScroller()];
   private proxyGroups: ProxyGroupSnapshot[] = [];
+  private restoreSelectionPending: boolean = true;
+  private entryGroup: string = '';
+  private readonly restoreSelectionAfterLayout = (): void => {
+    if (!this.restoreSelectionPending || this.contentWidth <= 0 || this.entryGroup.length === 0) { return; }
+    const index = this.groups.findIndex((group: ProxyGroupSnapshot): boolean => group.name === this.entryGroup);
+    if (index < 0 || !this.isExpanded(this.entryGroup)) { return; }
+    this.restoreSelectionPending = false;
+    this.getUIContext().getUIObserver().off('didLayout', this.restoreSelectionAfterLayout);
+    this.locateSelected(this.groups[index], index % this.columnCount());
+  };
   private unsubscribeRuntime: (() => void) | undefined = undefined;
   private unsubscribeSettings: (() => void) | undefined = undefined;
 
   aboutToAppear(): void {
+    this.restoreSelectionPending = true;
+    this.entryGroup = '';
+    this.getUIContext().getUIObserver().on('didLayout', this.restoreSelectionAfterLayout);
     this.fontScale = this.getUIContext().fp2px(1) / this.getUIContext().vp2px(1);
     this.unsubscribeRuntime = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
       this.coreAvailable = snapshot.coreAvailable;
@@ -66,6 +79,12 @@ export struct ProxyPage {
           operation.pendingProxies.join('\n') !== this.delayOperations[index]?.pendingProxies.join('\n'))) {
         this.delayOperations = snapshot.delayOperations;
       }
+      // 等待配置和偏好加载完成；仅在本次进入时恢复，不跟随定时快照反复滚动。
+      if (this.restoreSelectionPending && !this.previewLoading && this.entryGroup.length === 0 &&
+        groups.some((group: ProxyGroupSnapshot): boolean => group.name === snapshot.selectedProxyGroup)) {
+        this.entryGroup = snapshot.selectedProxyGroup;
+        this.expandedGroups = [this.entryGroup];
+      }
     });
     this.unsubscribeSettings = settingsStore.subscribe((snapshot: SettingsStoreSnapshot): void => {
       this.settings = snapshot.settings;
@@ -74,6 +93,7 @@ export struct ProxyPage {
   }
 
   aboutToDisappear(): void {
+    this.getUIContext().getUIObserver().off('didLayout', this.restoreSelectionAfterLayout);
     this.unsubscribeRuntime?.();
     this.unsubscribeRuntime = undefined;
     this.unsubscribeSettings?.();
@@ -128,6 +148,7 @@ export struct ProxyPage {
     this.selecting = true;
     try {
       await runtimeStore.selectProxy(group.name, node.name);
+      await runtimeStore.selectProxyGroup(group.name);
       feedbackService.success(`已选择 ${node.name}`);
     } catch (error) {
       feedbackService.error(this.errorMessage(error));
