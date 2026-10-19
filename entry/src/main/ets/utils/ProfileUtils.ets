@@ -56,6 +56,30 @@ export function profileUsageRatio(profile: Profile): number {
   return Math.min(1, used / total);
 }
 
+export function formatProfileBytes(value: number): string {
+  if (value < 1024) {
+    return `${value}B`;
+  }
+  const units: string[] = ['KB', 'MB', 'GB', 'TB'];
+  let converted = value / 1024;
+  let unitIndex = 0;
+  while (converted >= 1024 && unitIndex < units.length - 1) {
+    converted /= 1024;
+    unitIndex += 1;
+  }
+  return `${Number(converted.toFixed(1))}${units[unitIndex]}`;
+}
+
+/** 使用本地日期，避免 UTC 转换使到期日偏移一天。 */
+export function formatProfileExpiry(timestamp: number): string {
+  const date = new Date(timestamp);
+  if (timestamp <= 0 || !Number.isFinite(date.getTime())) {
+    return '';
+  }
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-` +
+    String(date.getDate()).padStart(2, '0');
+}
+
 export function formatProfileRelativeTime(timestamp: number | undefined, now: number = Date.now()): string {
   if (timestamp === undefined || timestamp <= 0) {
     return '尚未更新';

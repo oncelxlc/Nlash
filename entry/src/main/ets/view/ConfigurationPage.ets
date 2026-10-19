@@ -3,7 +3,9 @@ import {
   MAX_PROFILE_UPDATE_INTERVAL_MINUTES,
   MIN_PROFILE_UPDATE_INTERVAL_MINUTES
 } from '../constants/ProfileConstants';
-import { formatProfileRelativeTime, getSubscriptionHost, profileUsageRatio } from '../utils/ProfileUtils';
+import {
+  formatProfileBytes, formatProfileExpiry, formatProfileRelativeTime, getSubscriptionHost
+} from '../utils/ProfileUtils';
 import {
   Profile,
   ProfileEditDraft,
@@ -17,18 +19,16 @@ import { profileStore } from '../stores/ProfileStore';
 import { ResponsiveMetrics } from '../model/ResponsiveModels';
 import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
 import {
-  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE,
+  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, BODY_FONT_SIZE, CAPTION_FONT_SIZE,
   HEADER_ACTION_SIZE, HEADER_ACTION_ICON_SIZE, HEADER_CONTENT_HEIGHT, PAGE_TITLE_SIZE
 } from '../constants/UiConstants';
 
 import { PageHeader } from '../components/PageHeader';
-import { selectionAnimation } from '../utils/AnimationUtils';
 import { EmptyStateBackground } from '../components/EmptyStateBackground';
 
 /** 配置管理页面，编辑草稿独立于 Store，下载、保存与活动配置切换统一交给 ProfileStore。 */
 @Component
 export struct ConfigurationPage {
-  private selectionAnimationOptions: AnimateParam = selectionAnimation();
   @Prop forceExpanded: boolean = false;
   @State profiles: Profile[] = [];
   @State activeProfileId: string = '';
@@ -45,6 +45,7 @@ export struct ConfigurationPage {
   @State editAutoUpdateEnabled: boolean = false;
   @State editIntervalMinutes: string = `${DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES}`;
   @State editorDirty: boolean = false;
+  @State managingProfiles: boolean = false;
   @State formError: string = '';
   @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
   private unsubscribe: (() => void) | undefined = undefined;
@@ -349,50 +350,52 @@ export struct ConfigurationPage {
     }
   }
 
-  private formatBytes(value: number): string {
-    if (value < 1024) {
-      return `${value}B`;
-    }
-    const units: string[] = ['KB', 'MB', 'GB', 'TB'];
-    let converted = value / 1024;
-    let unitIndex = 0;
-    while (converted >= 1024 && unitIndex < units.length - 1) {
-      converted /= 1024;
-      unitIndex += 1;
-    }
-    const digits = converted >= 10 ? 0 : 1;
-    return `${converted.toFixed(digits)}${units[unitIndex]}`;
-  }
-
   private usedBytes(profile: Profile): number {
     return Math.max(0, (profile.uploadBytes ?? 0) + (profile.downloadBytes ?? 0));
   }
 
   @Builder
   private headerActions() {
-    Row({ space: 16 }) {
-      Button({ type: ButtonType.Normal }) {
-        Image($r('app.media.action_refresh')).width(HEADER_ACTION_ICON_SIZE).height(HEADER_ACTION_ICON_SIZE)
-          .fillColor($r('app.color.content_primary'))
+    Row({ space: 8 }) {
+      Row({ space: 8 }) {
+        Button({ type: ButtonType.Circle }) {
+          Image($r('app.media.action_add_circle')).width(24).height(24)
+            .fillColor($r('app.color.content_primary'))
+            .accessibilityLevel('no')
+        }
+        .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).padding(0)
+        .backgroundColor(Color.Transparent)
+        .enabled(this.busyProfileId.length === 0)
+        .accessibilityText('添加订阅或导入配置')
+        .onClick((): void => { this.showAddOptions(); })
+        Button({ type: ButtonType.Circle }) {
+          if (this.busyProfileId.length > 0 && this.hasSubscription()) {
+            LoadingProgress().width(24).height(24).color($r('app.color.content_primary'))
+          } else {
+            Image($r('app.media.action_refresh')).width(24).height(24)
+              .fillColor($r('app.color.content_primary'))
+              .accessibilityLevel('no')
+          }
+        }
+        .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).padding(0)
+        .backgroundColor(Color.Transparent)
+        .enabled(this.busyProfileId.length === 0 && this.hasSubscription())
+        .accessibilityText('更新全部订阅')
+        .onClick((): void => { this.updateAll(); })
       }
-      .width(HEADER_ACTION_SIZE).height(HEADER_ACTION_SIZE)
-      .responseRegion({ x: -8, y: -8, width: CONTROL_HEIGHT, height: CONTROL_HEIGHT })
-      .padding(0).borderRadius(8)
-      .backgroundColor($r('app.color.surface_muted'))
-      .enabled(this.busyProfileId.length === 0 && this.hasSubscription())
-      .accessibilityText('更新全部订阅')
-      .onClick((): void => { this.updateAll(); })
-      Button({ type: ButtonType.Normal }) {
-        Image($r('app.media.action_add')).width(HEADER_ACTION_ICON_SIZE).height(HEADER_ACTION_ICON_SIZE)
-          .fillColor($r('app.color.accent_foreground'))
+      .borderRadius(CONTROL_HEIGHT / 2)
+      .backgroundColor($r('app.color.card_background'))
+      Button({ type: ButtonType.Circle }) {
+        Image($r('app.media.action_sort')).width(24).height(24)
+          .fillColor(this.managingProfiles ? $r('app.color.action_primary') : $r('app.color.content_primary'))
+          .accessibilityLevel('no')
       }
-      .width(HEADER_ACTION_SIZE).height(HEADER_ACTION_SIZE)
-      .responseRegion({ x: -8, y: -8, width: CONTROL_HEIGHT, height: CONTROL_HEIGHT })
-      .padding(0).borderRadius(8)
-      .backgroundColor($r('app.color.action_primary'))
-      .enabled(this.busyProfileId.length === 0)
-      .accessibilityText('添加订阅或导入配置')
-      .onClick((): void => { this.showAddOptions(); })
+      .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).padding(0)
+      .backgroundColor(this.managingProfiles ? $r('app.color.selection_background') : $r('app.color.card_background'))
+      .enabled(this.busyProfileId.length === 0 && this.profiles.length > 0)
+      .accessibilityText(this.managingProfiles ? '完成配置管理与排序' : '管理配置与排序')
+      .accessibilitySelected(this.managingProfiles)
+      .onClick((): void => { this.managingProfiles = !this.managingProfiles; })
     }
   }
 
@@ -416,93 +419,87 @@ export struct ConfigurationPage {
 
   @Builder
   private profileCard(profile: Profile) {
-    Column({ space: 4 }) {
-      Row({ space: 8 }) {
-        Text(profile.name)
-          .fontSize(BODY_FONT_SIZE)
-          .fontWeight(profile.id === this.activeProfileId ? FontWeight.Bold : FontWeight.Medium)
-          .fontColor($r('app.color.content_primary'))
-          .layoutWeight(1)
-          .maxLines(2)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-        if (profile.id === this.activeProfileId) {
-          Image($r('app.media.action_check'))
-            .width(20).height(20).fillColor($r('app.color.action_primary'))
-            .accessibilityLevel('no')
-        }
-        Button({ type: ButtonType.Normal }) {
-          if (profile.id === this.busyProfileId) {
-            LoadingProgress().width(24).height(24).color($r('app.color.content_primary'))
-          } else {
-            Image($r('app.media.action_more'))
-              .width(24).height(24).fillColor($r('app.color.content_secondary'))
-          }
-        }
-        .width(CONTROL_HEIGHT)
-        .height(CONTROL_HEIGHT)
-        .borderRadius(BUTTON_RADIUS)
-        .backgroundColor(Color.Transparent)
-        .enabled(this.busyProfileId.length === 0)
-        .accessibilityText(`${profile.name} 的更多操作`)
-        .bindMenu(this.profileActions(profile))
-        .onTouch((event: TouchEvent): void => { event.stopPropagation(); })
-      }
-      .width('100%')
-      if ((profile.totalBytes ?? 0) > 0 || (profile.expireAt ?? 0) > 0) {
+    Row({ space: 8 }) {
+      Button({ type: ButtonType.Normal }) {
         Row({ space: 8 }) {
-          if ((profile.totalBytes ?? 0) > 0) {
-            Text(`已用 ${this.formatBytes(this.usedBytes(profile))} / ${this.formatBytes(profile.totalBytes ?? 0)}`)
+          Column({ space: 4 }) {
+            Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.Center }) {
+              Text(profile.name)
+                .fontSize(BODY_FONT_SIZE)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.content_primary'))
+                .maxLines(2)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .margin({ right: 8 })
+              if (formatProfileExpiry(profile.expireAt ?? 0).length > 0) {
+                Text(formatProfileExpiry(profile.expireAt ?? 0))
+                  .fontSize(12).fontWeight(FontWeight.Medium)
+                  .fontColor($r('app.color.profile_badge_text'))
+                  .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+                  .borderRadius(16)
+                  .backgroundColor($r('app.color.selection_background'))
+                  .maxLines(1)
+              }
+            }
+            .width('100%')
+            Text((profile.totalBytes ?? 0) > 0 ?
+              `${formatProfileBytes(this.usedBytes(profile))} / ${formatProfileBytes(profile.totalBytes ?? 0)}` :
+              (profile.type === ProfileType.LOCAL ? '本地 YAML' : getSubscriptionHost(profile.sourceUrl)))
               .fontSize(CAPTION_FONT_SIZE)
               .fontColor($r('app.color.content_secondary'))
-              .layoutWeight(1)
-          } else {
-            Blank()
+              .maxLines(2)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .width('100%')
           }
-          if (profile.expireAt !== undefined && profile.expireAt > 0) {
-            Text(`到期 ${new Date(profile.expireAt).toLocaleDateString()}`)
-              .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+          if (profile.type === ProfileType.SUBSCRIPTION || profile.id === this.busyProfileId) {
+            Text(profile.id === this.busyProfileId ? (this.getStageLabel() || '处理中…') :
+              formatProfileRelativeTime(profile.lastUpdateAt))
+              .fontSize(CAPTION_FONT_SIZE)
+              .fontColor($r('app.color.content_secondary'))
+              .constraintSize({ maxWidth: 88 })
+              .textAlign(TextAlign.End)
+          }
+          if (profile.id === this.busyProfileId) {
+            LoadingProgress().width(28).height(28).color($r('app.color.action_primary'))
+          } else if (profile.id === this.activeProfileId) {
+            Image($r('app.media.action_check'))
+              .width(28).height(28).padding(5)
+              .fillColor($r('app.color.accent_foreground'))
+              .borderRadius(14)
+              .backgroundColor($r('app.color.action_primary'))
+              .accessibilityLevel('no')
           }
         }
         .width('100%')
+        .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+        .constraintSize({ minHeight: 76 })
       }
-      if ((profile.totalBytes ?? 0) > 0) {
-        Progress({ value: profileUsageRatio(profile) * 100, total: 100, type: ProgressType.Linear })
-          .width('100%')
-          .color($r('app.color.nav_selected'))
-          .backgroundColor($r('app.color.skeleton_background'))
-      }
-      Row({ space: 8 }) {
-        Text(profile.type === ProfileType.LOCAL ? '本地 YAML' : getSubscriptionHost(profile.sourceUrl))
-          .fontSize(CAPTION_FONT_SIZE)
-          .fontColor($r('app.color.content_secondary'))
-          .layoutWeight(1)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-        if (profile.type === ProfileType.SUBSCRIPTION || profile.id === this.busyProfileId) {
-          Text(profile.id === this.busyProfileId ? (this.getStageLabel() || '处理中…') :
-            formatProfileRelativeTime(profile.lastUpdateAt))
-            .fontSize(CAPTION_FONT_SIZE)
-            .fontWeight(profile.id === this.busyProfileId ? FontWeight.Medium : FontWeight.Regular)
-            .fontColor(profile.id === this.busyProfileId ? $r('app.color.content_primary') :
-              $r('app.color.content_secondary'))
-            .maxLines(1)
+      .layoutWeight(1).padding(0).borderRadius(32)
+      .backgroundColor($r('app.color.card_background'))
+      .enabled(this.busyProfileId.length === 0)
+      .accessibilityText(`${profile.name}，${profile.id === this.activeProfileId ? '当前使用' : '点击设为活动配置'}` +
+        (profile.id === this.busyProfileId ? `，${this.getStageLabel() || '正在处理配置'}` : ''))
+      .accessibilitySelected(profile.id === this.activeProfileId)
+      .onClick((): void => { this.selectProfile(profile.id); })
+      if (this.managingProfiles) {
+        Button({ type: ButtonType.Circle }) {
+          Image($r('app.media.action_more'))
+            .width(24).height(24).fillColor($r('app.color.content_secondary'))
+            .accessibilityLevel('no')
         }
+        .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT)
+        .backgroundColor(Color.Transparent)
+        .margin({ right: 8 })
+        .enabled(this.busyProfileId.length === 0)
+        .accessibilityText(`${profile.name} 的更多操作`)
+        .bindMenu(this.profileActions(profile))
       }
-      .width('100%')
     }
-    .alignItems(HorizontalAlign.Start)
     .width('100%')
-    .padding({ left: 12, right: 8, top: 4, bottom: 8 })
-    .borderRadius(CARD_RADIUS)
-    .border({ width: 2, color: profile.id === this.activeProfileId ?
-      $r('app.color.action_primary') : Color.Transparent })
-    .backgroundColor(profile.id === this.activeProfileId ?
-      $r('app.color.selection_background') : $r('app.color.card_background'))
-    .animation(this.selectionAnimationOptions)
-    .accessibilityText(`${profile.name}，${profile.id === this.activeProfileId ? '当前使用' : '点击设为活动配置'}` +
-      (profile.id === this.busyProfileId ? `，${this.getStageLabel() || '正在处理配置'}` : ''))
-    .accessibilitySelected(profile.id === this.activeProfileId)
-    .onClick((): void => { this.selectProfile(profile.id); })
+    .borderRadius(32)
+    .backgroundColor($r('app.color.card_background'))
   }
 
   @Builder

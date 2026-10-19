@@ -1,5 +1,7 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
+  formatProfileBytes,
+  formatProfileExpiry,
   formatProfileRelativeTime,
   isProfileUpdateDue,
   normalizeProfileUpdateInterval,
@@ -178,11 +180,24 @@ export default function profileFeaturesTest() {
       expect(profiles.map((profile: Profile): string => profile.id).join(',')).assertEqual('a,b,c');
     });
 
+    it('formatsCompactProfileMetadata', 0, () => {
+      expect(formatProfileBytes(0)).assertEqual('0B');
+      expect(formatProfileBytes(1024)).assertEqual('1KB');
+      expect(formatProfileBytes(71.9 * 1024 * 1024 * 1024)).assertEqual('71.9GB');
+      expect(formatProfileBytes(150 * 1024 * 1024 * 1024)).assertEqual('150GB');
+      expect(formatProfileBytes(30.6 * 1024 * 1024)).assertEqual('30.6MB');
+      expect(formatProfileExpiry(new Date(2027, 5, 22).getTime())).assertEqual('2027-06-22');
+      expect(formatProfileExpiry(new Date(2026, 0, 9).getTime())).assertEqual('2026-01-09');
+      expect(formatProfileExpiry(0)).assertEqual('');
+      expect(formatProfileExpiry(Number.NaN)).assertEqual('');
+    });
+
     it('usesAdaptiveProfileColumns', 0, () => {
       expect(resolveResponsiveMetrics(639).profileColumns).assertEqual('1fr');
       expect(resolveResponsiveMetrics(640).profileColumns).assertEqual('1fr 1fr');
       expect(resolveResponsiveMetrics(899).profileColumns).assertEqual('1fr 1fr');
-      expect(resolveResponsiveMetrics(900).profileColumns).assertEqual('1fr 1fr 1fr');
+      expect(resolveResponsiveMetrics(900).profileColumns).assertEqual('1fr 1fr');
+      expect(resolveResponsiveMetrics(1200).profileColumns).assertEqual('1fr 1fr');
       expect(resolveResponsiveMetrics(639).profileCardWidth).assertEqual('100%');
       expect(resolveResponsiveMetrics(640).profileCardWidth).assertEqual('48%');
       expect(resolveResponsiveMetrics(899).profileCardWidth).assertEqual('48%');

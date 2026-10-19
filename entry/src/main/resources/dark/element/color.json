@@ -25,6 +25,10 @@
       "value": "#172C4D"
     },
     {
+      "name": "profile_badge_text",
+      "value": "#8AB4FF"
+    },
+    {
       "name": "nav_selected",
       "value": "#F4F4F5"
     },

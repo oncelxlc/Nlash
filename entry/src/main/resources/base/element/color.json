@@ -25,6 +25,10 @@
       "value": "#DBEAFE"
     },
     {
+      "name": "profile_badge_text",
+      "value": "#1D4ED8"
+    },
+    {
       "name": "nav_selected",
       "value": "#18181B"
     },
