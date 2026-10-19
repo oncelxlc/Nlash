@@ -220,16 +220,19 @@ export function appendTrafficSample(history: TrafficSample[], sample: TrafficSam
 }
 
 /** 固定映射最近一分钟，按本窗口峰值缩放纵轴，并限制切线避免平滑曲线越过真实峰谷。 */
-export function buildTrafficChartPoints(history: TrafficSample[], width: number, height: number): TrafficChartPoint[] {
+export function buildTrafficChartPoints(history: TrafficSample[], width: number, height: number,
+  direction: 'total' | 'upload' | 'download' = 'total'): TrafficChartPoint[] {
   if (history.length === 0 || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
     return [];
   }
   const earliestTimestamp = history[history.length - 1].timestamp - 60000;
+  const speed = (sample: TrafficSample): number => direction === 'upload' ? sample.uploadSpeed :
+    (direction === 'download' ? sample.downloadSpeed : sample.uploadSpeed + sample.downloadSpeed);
   const maximum = history.reduce((peak: number, sample: TrafficSample): number =>
-    Math.max(peak, sample.uploadSpeed + sample.downloadSpeed), 1);
+    Math.max(peak, speed(sample)), 1);
   const points = history.map((sample: TrafficSample): TrafficChartPoint => ({
     x: Math.min(width, Math.max(0, sample.timestamp - earliestTimestamp) * width / 60000),
-    y: height - (sample.uploadSpeed + sample.downloadSpeed) / maximum * Math.max(0, height - 12),
+    y: height - speed(sample) / maximum * Math.max(0, height - 12),
     slope: 0
   }));
   points.forEach((point: TrafficChartPoint, index: number): void => {

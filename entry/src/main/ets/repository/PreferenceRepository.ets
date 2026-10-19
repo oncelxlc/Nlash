@@ -170,7 +170,8 @@ class PreferenceRepository {
     const ids = Array.isArray(value) ?
       (value as string[]).filter((id: string): boolean => typeof id === 'string') : [];
     const cards = normalizeDashboardCardOrder(ids);
-    return cards.some((card: DashboardCard): boolean => ids.includes(card)) ? cards : undefined;
+    return cards.some((card: DashboardCard): boolean => ids.includes(card)) ||
+      ids.includes(DashboardCard.TRAFFIC) || ids.includes(DashboardCard.DURATION) ? cards : undefined;
   }
 
   async setDashboardCardOrder(cards: DashboardCard[]): Promise<void> {
@@ -181,7 +182,7 @@ class PreferenceRepository {
       await store.flush();
     } catch (error) {
       await store.put(DASHBOARD_CARD_ORDER, previous);
-      throw new Error('保存概览布局失败，请重试');
+      throw new Error('保存仪表盘布局失败，请重试');
     }
   }
 

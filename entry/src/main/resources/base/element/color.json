@@ -155,6 +155,50 @@
     {
       "name": "action_primary",
       "value": "#2563EB"
+    },
+    {
+      "name": "dashboard_background",
+      "value": "#EFEDF0"
+    },
+    {
+      "name": "dashboard_surface",
+      "value": "#FFFCFD"
+    },
+    {
+      "name": "dashboard_inset",
+      "value": "#EFEDF0"
+    },
+    {
+      "name": "dashboard_accent",
+      "value": "#0070EB"
+    },
+    {
+      "name": "dashboard_on_accent",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "dashboard_accent_surface",
+      "value": "#E4EBFC"
+    },
+    {
+      "name": "dashboard_upload",
+      "value": "#397BC5"
+    },
+    {
+      "name": "dashboard_download",
+      "value": "#0075F5"
+    },
+    {
+      "name": "dashboard_success_surface",
+      "value": "#A0F5A3"
+    },
+    {
+      "name": "dashboard_success_text",
+      "value": "#135C29"
+    },
+    {
+      "name": "dashboard_shadow",
+      "value": "#14000000"
     }
   ]
 }

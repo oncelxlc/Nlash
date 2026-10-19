@@ -110,6 +110,20 @@ export default function runtimeModelsTest() {
       expect(history[1].uploadSpeed).assertEqual(80);
     });
 
+    it('plotsUploadAndDownloadSeparatelyWithoutCrossContaminatingPeaks', 0, () => {
+      const history: TrafficSample[] = [
+        { timestamp: 0, uploadSpeed: 100, downloadSpeed: 0 },
+        { timestamp: 60000, uploadSpeed: 0, downloadSpeed: 200 }
+      ];
+      const upload = buildTrafficChartPoints(history, 300, 120, 'upload');
+      const download = buildTrafficChartPoints(history, 300, 120, 'download');
+      expect(upload[0].y).assertEqual(12);
+      expect(upload[1].y).assertEqual(120);
+      expect(download[0].y).assertEqual(120);
+      expect(download[1].y).assertEqual(12);
+      expect(history[1].downloadSpeed).assertEqual(200);
+    });
+
     it('handlesEmptyIdleAndSingleSampleCharts', 0, () => {
       const idle: TrafficSample[] = [{ timestamp: 1000, uploadSpeed: 0, downloadSpeed: 0 }];
       expect(buildTrafficChartPoints([], 300, 120).length).assertEqual(0);

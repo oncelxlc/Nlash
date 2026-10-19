@@ -1,4 +1,4 @@
-/** 持久化的概览卡片标识；布局顺序使用这些稳定字符串保存。 */
+/** 持久化的仪表盘卡片标识；旧标识在恢复布局时合并到对应卡片。 */
 export enum DashboardCard {
   MODE = 'mode',
   CONFIGURATION = 'configuration',
@@ -7,5 +7,8 @@ export enum DashboardCard {
   TRAFFIC = 'traffic',
   DURATION = 'duration',
   CONNECTIONS = 'connections',
-  MEMORY = 'memory'
+  MEMORY = 'memory',
+  VPN = 'vpn',
+  SERVICES = 'services',
+  GROUPS = 'groups'
 }

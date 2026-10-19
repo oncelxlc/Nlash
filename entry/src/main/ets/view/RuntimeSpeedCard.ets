@@ -1,26 +1,18 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { common } from '@kit.AbilityKit';
-import { LengthMetrics } from '@kit.ArkUI';
-import { EmptyStateBackground } from '../components/EmptyStateBackground';
 import { DashboardSnapshot, TrafficSample } from '../model/RuntimeModels';
-import { buildTrafficChartPoints, formatSpeed } from '../utils/RuntimeUtils';
-import { CoreServiceState, ProxyState } from '../model/VpnModels';
-import {
-  CARD_RADIUS, CAPTION_FONT_SIZE
-} from '../constants/UiConstants';
+import { buildTrafficChartPoints, formatSpeed, formatBytes, formatBytesParts } from '../utils/RuntimeUtils';
+import { ProxyState } from '../model/VpnModels';
+import { DASHBOARD_CARD_RADIUS } from '../constants/DashboardConstants';
 
-interface SpeedValueParams {
-  label: string;
-  speed: number | undefined;
-}
-
-/** 展示最近一分钟上传与下载合计速度；Canvas 绘制失败时回退为空态，不影响数值展示。 */
+/** 按方向绘制最近一分钟速度；曲线不可用时仍保留实时数值。 */
 @Component
 export struct RuntimeSpeedCard {
   @Prop runtime: DashboardSnapshot | undefined = undefined;
   @Prop @Watch('onHistoryChange') history: TrafficSample[] = [];
   @Prop proxyState: ProxyState = ProxyState.DISABLED;
-  @Prop coreState: CoreServiceState = CoreServiceState.STOPPED;
+  @Prop upload: boolean = true;
+  @Prop compact: boolean = true;
   @Prop cardWidth: Length = '100%';
   @Prop cardHeight: number = 176;
   @State chartUnavailable: boolean = false;
@@ -82,7 +74,7 @@ export struct RuntimeSpeedCard {
 
   private hasTrafficData(): boolean {
     return this.history.some((sample: TrafficSample): boolean =>
-      sample.uploadSpeed > 0 || sample.downloadSpeed > 0);
+      (this.upload ? sample.uploadSpeed : sample.downloadSpeed) > 0);
   }
 
   private drawTrafficChart(): void {
@@ -90,11 +82,11 @@ export struct RuntimeSpeedCard {
     try {
       const resources = this.getUIContext().getHostContext()?.resourceManager;
       if (resources === undefined) { throw new Error('Chart UI context is unavailable'); }
-      const color = resources.getColorByNameSync('chart_line');
+      const color = resources.getColorByNameSync(this.upload ? 'dashboard_upload' : 'dashboard_download');
       const channels = `${(color >>> 16) & 255}, ${(color >>> 8) & 255}, ${color & 255}`;
       const context = this.chartContext;
       context.clearRect(0, 0, this.chartWidth, this.chartHeight);
-      const points = buildTrafficChartPoints(this.history, this.chartWidth, this.chartHeight);
+      const points = buildTrafficChartPoints(this.history, this.chartWidth, this.chartHeight, this.upload ? 'upload' : 'download');
       if (points.length > 0) {
         const first = points[0];
         const last = points[points.length - 1];
@@ -137,46 +129,41 @@ export struct RuntimeSpeedCard {
     }
   }
 
-  @Builder
-  private speedValue($$: SpeedValueParams) {
-    Text(`${$$.label} ${$$.speed === undefined ? '—' : formatSpeed($$.speed)}`)
-      .fontSize(CAPTION_FONT_SIZE)
-      .fontColor($r('app.color.content_secondary'))
-      .maxLines(1)
-      .flexShrink(0)
-      .accessibilityText(`${$$.label === '↑' ? '上传' : '下载'} ${$$.speed === undefined ? '数据暂不可用' : formatSpeed($$.speed)}`)
+  private speed(): number {
+    return (this.upload ? this.runtime?.uploadSpeed : this.runtime?.downloadSpeed) ?? 0;
+  }
+
+  private peak(): number {
+    return this.history.reduce((peak: number, sample: TrafficSample): number =>
+      Math.max(peak, this.upload ? sample.uploadSpeed : sample.downloadSpeed), 0);
   }
 
   build() {
     Column({ space: 8 }) {
-      Row({ space: 8 }) {
-        Image($r('app.media.network_speed'))
-          .width(16).height(16).fillColor($r('app.color.content_secondary'))
+      Row({ space: 6 }) {
+        Image($r('app.media.action_arrow_up')).width(18).height(18).rotate({ angle: this.upload ? 0 : 180 })
+          .fillColor(this.upload ? $r('app.color.content_secondary') : $r('app.color.dashboard_download'))
           .accessibilityLevel('no')
-        Text('网络速度').fontSize(CAPTION_FONT_SIZE).fontWeight(FontWeight.Medium)
+        Text(this.upload ? '上传' : '下载').fontSize(14).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.content_secondary'))
-      }
-      .width('100%')
-      .constraintSize({ minHeight: 20 })
-      Flex({
-        wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Start, alignItems: ItemAlign.Center,
-        space: { main: LengthMetrics.vp(16), cross: LengthMetrics.vp(8) }
-      }) {
-        this.speedValue({ label: '↑', speed: this.runtime?.uploadSpeed })
-        this.speedValue({ label: '↓', speed: this.runtime?.downloadSpeed })
-      }
-      .width('100%')
-      Stack({ alignContent: Alignment.Center }) {
-        if (this.proxyState !== ProxyState.ENABLED || this.chartUnavailable || !this.hasTrafficData()) {
-          EmptyStateBackground({
-            compact: true,
-            title: this.proxyState !== ProxyState.ENABLED ? '未连接，统计暂停' :
-              (this.chartUnavailable ? '图表暂不可用' : '等待流量')
-          })
+        if (!this.compact) {
+          Blank()
+          Text(`峰值 ${formatSpeed(this.peak())}`).fontSize(12).fontColor($r('app.color.content_secondary'))
         }
+      }
+      .width('100%')
+      Text() {
+        Span(this.runtime === undefined ? '—' : formatBytesParts(this.speed()).value)
+          .fontSize(this.compact ? 28 : 36).fontWeight(FontWeight.Bold)
+        Span(this.runtime === undefined ? '' : ` ${formatBytesParts(this.speed()).unit}/s`).fontSize(12)
+      }
+      .fontColor($r('app.color.content_primary')).width('100%').maxLines(2)
+      Text(`累计 ${this.runtime === undefined ? '—' :
+        formatBytes(this.upload ? this.runtime.uploadTotal : this.runtime.downloadTotal)}`)
+        .fontSize(12).fontColor($r('app.color.content_secondary')).width('100%')
+      Stack({ alignContent: Alignment.BottomStart }) {
         Canvas(this.chartContext)
-          .width('100%')
-          .height('100%')
+          .width('100%').height('100%')
           .onReady((): void => this.drawTrafficChart())
           .onAreaChange((_old: Area, area: Area): void => {
             const width = Number(area.width);
@@ -187,18 +174,19 @@ export struct RuntimeSpeedCard {
           })
           .accessibilityLevel('no')
           .opacity(this.proxyState !== ProxyState.ENABLED || this.chartUnavailable || !this.hasTrafficData() ? 0 : 1)
+        if (this.chartUnavailable || !this.hasTrafficData() || this.proxyState !== ProxyState.ENABLED) {
+          Text(this.chartUnavailable ? '曲线暂不可用' :
+            (this.proxyState !== ProxyState.ENABLED ? '未连接' : '等待流量'))
+            .fontSize(12).fontColor($r('app.color.content_secondary'))
+        }
       }
-      .width('100%')
-      .height(Math.max(72, this.cardHeight - 76))
+      .width('100%').height(this.compact ? 56 : 80)
     }
-    .alignItems(HorizontalAlign.Start)
-    .width(this.cardWidth)
-    .constraintSize({ minHeight: this.cardHeight })
-    .padding(12)
-    .borderRadius(CARD_RADIUS)
-    .backgroundColor($r('app.color.card_background'))
-    .clip(true)
-    .accessibilityGroup(true)
-    .accessibilityDescription('曲线展示最近 60 秒的上传与下载合计速度')
+    .alignItems(HorizontalAlign.Start).width(this.cardWidth)
+    .constraintSize({ minHeight: this.cardHeight }).padding(this.compact ? 14 : 20)
+    .borderRadius(this.compact ? 24 : DASHBOARD_CARD_RADIUS)
+    .backgroundColor(this.compact ? $r('app.color.dashboard_inset') : $r('app.color.dashboard_surface'))
+    .clip(true).accessibilityGroup(true)
+    .accessibilityDescription(`最近 60 秒${this.upload ? '上传' : '下载'}速度，峰值 ${formatSpeed(this.peak())}`)
   }
 }

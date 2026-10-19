@@ -9,9 +9,9 @@ export default function dashboardLayoutTest() {
   describe('dashboardLayout', () => {
     it('adaptsOnlyTheDefaultLayoutToTheAvailableColumns', 0, () => {
       const compact = resolveDashboardCardOrder(undefined, true);
-      expect(compact.slice(0, 4).join(',')).assertEqual('mode,configuration,publicNetwork,speed');
+      expect(compact.slice(0, 4).join(',')).assertEqual('publicNetwork,speed,mode,vpn');
       expect(resolveDashboardCardOrder(undefined, false).join(','))
-        .assertEqual(DEFAULT_DASHBOARD_CARD_ORDER.join(','));
+        .assertEqual('publicNetwork,speed,mode,vpn,services,configuration,memory,groups,connections');
       const saved = DEFAULT_DASHBOARD_CARD_ORDER.slice().reverse();
       expect(resolveDashboardCardOrder(saved, true).join(',')).assertEqual(saved.join(','));
       expect(resolveDashboardCardOrder(saved, false).join(',')).assertEqual(saved.join(','));
@@ -31,7 +31,7 @@ export default function dashboardLayoutTest() {
       expect(new Set(cards).size).assertEqual(cards.length);
       expect(cards[0]).assertEqual(DashboardCard.MEMORY);
       expect(cards[1]).assertEqual(DashboardCard.MODE);
-      expect(cards[2]).assertEqual(DashboardCard.CONFIGURATION);
+      expect(cards[2]).assertEqual(DashboardCard.PUBLIC_NETWORK);
       expect(normalizeDashboardCardOrder(DEFAULT_DASHBOARD_CARD_ORDER.slice().reverse()).join(','))
         .assertEqual(DEFAULT_DASHBOARD_CARD_ORDER.slice().reverse().join(','));
     });
@@ -55,13 +55,24 @@ export default function dashboardLayoutTest() {
     it('keepsCardDimensionsAfterReordering', 0, () => {
       const cards = moveDashboardCard(DEFAULT_DASHBOARD_CARD_ORDER, 0, 7);
       expect(dashboardCardSpan(cards[7]).join(',')).assertEqual('2,1');
-      expect(dashboardCardSpan(DashboardCard.SPEED).join(',')).assertEqual('2,2');
-      expect(dashboardCardSpan(DashboardCard.TRAFFIC).join(',')).assertEqual('2,1');
+      expect(dashboardCardSpan(DashboardCard.SPEED).join(',')).assertEqual('2,1');
+      expect(dashboardCardSpan(DashboardCard.VPN).join(',')).assertEqual('2,1');
       expect(dashboardCardSpan(DashboardCard.CONFIGURATION).join(',')).assertEqual('1,1');
-      expect(dashboardCardSpan(DashboardCard.PUBLIC_NETWORK).join(',')).assertEqual('1,1');
+      expect(dashboardCardSpan(DashboardCard.PUBLIC_NETWORK).join(',')).assertEqual('2,1');
       expect(dashboardCardSpan(DashboardCard.DURATION).join(',')).assertEqual('1,1');
-      expect(dashboardCardSpan(DashboardCard.CONNECTIONS).join(',')).assertEqual('1,1');
+      expect(dashboardCardSpan(DashboardCard.CONNECTIONS).join(',')).assertEqual('2,1');
       expect(dashboardCardSpan(DashboardCard.MEMORY).join(',')).assertEqual('1,1');
+      DEFAULT_DASHBOARD_CARD_ORDER.forEach((card: DashboardCard): void => {
+        expect(dashboardCardSpan(card, true).join(',')).assertEqual('2,1');
+      });
+    });
+
+    it('mergesLegacyTrafficAndDurationCardsWithoutLosingSavedOrder', 0, () => {
+      const restored = normalizeDashboardCardOrder(['traffic', 'memory', 'speed', 'duration', 'publicNetwork', 'mode']);
+      expect(restored.slice(0, 4).join(',')).assertEqual('speed,memory,publicNetwork,mode');
+      expect(new Set(restored).size).assertEqual(DEFAULT_DASHBOARD_CARD_ORDER.length);
+      expect(restored.includes(DashboardCard.TRAFFIC)).assertFalse();
+      expect(restored.includes(DashboardCard.DURATION)).assertFalse();
     });
   });
 }

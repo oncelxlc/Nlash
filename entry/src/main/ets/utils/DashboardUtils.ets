@@ -1,22 +1,24 @@
 import { DEFAULT_DASHBOARD_CARD_ORDER } from '../constants/DashboardConstants';
 import { DashboardCard } from '../model/DashboardModels';
 
-/** 用户保存顺序优先；仅未自定义布局的窄屏将公网出口卡片前移。 */
+/** 用户保存顺序优先；展开屏将信息卡片配成两列。 */
 export function resolveDashboardCardOrder(cards: DashboardCard[] | undefined, compact: boolean): DashboardCard[] {
   if (cards !== undefined) {
-    return cards.slice();
+    return normalizeDashboardCardOrder(cards);
   }
   const defaults = DEFAULT_DASHBOARD_CARD_ORDER.slice();
-  return compact ? moveDashboardCard(defaults, defaults.indexOf(DashboardCard.PUBLIC_NETWORK),
-    defaults.indexOf(DashboardCard.SPEED)) : defaults;
+  return compact ? defaults : moveDashboardCard(defaults, defaults.indexOf(DashboardCard.MEMORY),
+    defaults.indexOf(DashboardCard.GROUPS));
 }
 
 /** 丢弃未知 ID，保留已保存卡片的相对顺序，并在末尾补上新增默认卡片。 */
 export function normalizeDashboardCardOrder(ids: string[]): DashboardCard[] {
+  const merged = ids.map((id: string): string => id === DashboardCard.TRAFFIC ? DashboardCard.SPEED :
+    (id === DashboardCard.DURATION ? DashboardCard.PUBLIC_NETWORK : id));
   return DEFAULT_DASHBOARD_CARD_ORDER.slice().sort((left: DashboardCard, right: DashboardCard): number => {
-    const leftIndex = ids.indexOf(left);
-    const rightIndex = ids.indexOf(right);
-    return (leftIndex < 0 ? ids.length : leftIndex) - (rightIndex < 0 ? ids.length : rightIndex);
+    const leftIndex = merged.indexOf(left);
+    const rightIndex = merged.indexOf(right);
+    return (leftIndex < 0 ? merged.length : leftIndex) - (rightIndex < 0 ? merged.length : rightIndex);
   });
 }
 
@@ -31,10 +33,11 @@ export function moveDashboardCard(cards: DashboardCard[], from: number, to: numb
   return result;
 }
 
-/** 返回逻辑网格中的 [列跨度, 行跨度]，实际尺寸由页面按网格单位换算。 */
-export function dashboardCardSpan(card: DashboardCard): [number, number] {
-  if (card === DashboardCard.MODE || card === DashboardCard.SPEED || card === DashboardCard.TRAFFIC) {
-    return [2, card === DashboardCard.SPEED ? 2 : 1];
+/** 两列栅格的列跨度；卡片高度随内容和系统字号增长。 */
+export function dashboardCardSpan(card: DashboardCard, compact: boolean = false): [number, number] {
+  if (compact || card === DashboardCard.PUBLIC_NETWORK || card === DashboardCard.SPEED ||
+    card === DashboardCard.MODE || card === DashboardCard.VPN || card === DashboardCard.CONNECTIONS) {
+    return [2, 1];
   }
   return [1, 1];
 }
@@ -44,10 +47,13 @@ export function dashboardCardLabel(card: DashboardCard): string {
     case DashboardCard.MODE: return '出站模式';
     case DashboardCard.CONFIGURATION: return '配置';
     case DashboardCard.SPEED: return '网络速度';
-    case DashboardCard.PUBLIC_NETWORK: return '公网出口';
+    case DashboardCard.PUBLIC_NETWORK: return '状态';
     case DashboardCard.TRAFFIC: return '流量统计';
     case DashboardCard.DURATION: return '运行时长';
-    case DashboardCard.CONNECTIONS: return '活动连接';
-    case DashboardCard.MEMORY: return 'Core 内存';
+    case DashboardCard.CONNECTIONS: return '活动统计';
+    case DashboardCard.MEMORY: return '内存信息';
+    case DashboardCard.VPN: return 'VPN';
+    case DashboardCard.SERVICES: return '服务状态';
+    case DashboardCard.GROUPS: return '策略组';
   }
 }
