@@ -14,7 +14,6 @@ export struct RuntimeSpeedCard {
   @Prop upload: boolean = true;
   @Prop compact: boolean = true;
   @Prop cardWidth: Length = '100%';
-  @Prop cardHeight: number = 176;
   @State chartUnavailable: boolean = false;
   private chartSettings: RenderingContextSettings = new RenderingContextSettings(true);
   private chartContext: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.chartSettings);
@@ -139,7 +138,7 @@ export struct RuntimeSpeedCard {
   }
 
   build() {
-    Column({ space: 8 }) {
+    Column({ space: this.compact ? 4 : 8 }) {
       Row({ space: 6 }) {
         Image($r('app.media.action_arrow_up')).width(18).height(18).rotate({ angle: this.upload ? 0 : 180 })
           .fillColor(this.upload ? $r('app.color.content_secondary') : $r('app.color.dashboard_download'))
@@ -180,10 +179,10 @@ export struct RuntimeSpeedCard {
             .fontSize(12).fontColor($r('app.color.content_secondary'))
         }
       }
-      .width('100%').height(this.compact ? 56 : 80)
+      .width('100%').height(this.compact ? 32 : 80)
     }
     .alignItems(HorizontalAlign.Start).width(this.cardWidth)
-    .constraintSize({ minHeight: this.cardHeight }).padding(this.compact ? 14 : 20)
+    .constraintSize({ minHeight: this.compact ? 132 : 176 }).padding(this.compact ? 12 : 20)
     .borderRadius(this.compact ? 24 : DASHBOARD_CARD_RADIUS)
     .backgroundColor(this.compact ? $r('app.color.dashboard_inset') : $r('app.color.dashboard_surface'))
     .clip(true).accessibilityGroup(true)

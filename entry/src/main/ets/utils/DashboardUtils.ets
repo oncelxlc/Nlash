@@ -1,59 +1,50 @@
 import { DEFAULT_DASHBOARD_CARD_ORDER } from '../constants/DashboardConstants';
-import { DashboardCard } from '../model/DashboardModels';
+import { DashboardCard, DashboardMemoryUsage } from '../model/DashboardModels';
 
-/** 用户保存顺序优先；展开屏将信息卡片配成两列。 */
-export function resolveDashboardCardOrder(cards: DashboardCard[] | undefined, compact: boolean): DashboardCard[] {
-  if (cards !== undefined) {
-    return normalizeDashboardCardOrder(cards);
+/** 固定默认排序，展开屏将内存信息与策略组配成一行。 */
+export function resolveDashboardCardOrder(compact: boolean): DashboardCard[] {
+  const cards = DEFAULT_DASHBOARD_CARD_ORDER.slice();
+  if (!compact) {
+    cards.splice(cards.indexOf(DashboardCard.MEMORY), 1);
+    cards.splice(cards.indexOf(DashboardCard.GROUPS), 0, DashboardCard.MEMORY);
   }
-  const defaults = DEFAULT_DASHBOARD_CARD_ORDER.slice();
-  return compact ? defaults : moveDashboardCard(defaults, defaults.indexOf(DashboardCard.MEMORY),
-    defaults.indexOf(DashboardCard.GROUPS));
-}
-
-/** 丢弃未知 ID，保留已保存卡片的相对顺序，并在末尾补上新增默认卡片。 */
-export function normalizeDashboardCardOrder(ids: string[]): DashboardCard[] {
-  const merged = ids.map((id: string): string => id === DashboardCard.TRAFFIC ? DashboardCard.SPEED :
-    (id === DashboardCard.DURATION ? DashboardCard.PUBLIC_NETWORK : id));
-  return DEFAULT_DASHBOARD_CARD_ORDER.slice().sort((left: DashboardCard, right: DashboardCard): number => {
-    const leftIndex = merged.indexOf(left);
-    const rightIndex = merged.indexOf(right);
-    return (leftIndex < 0 ? merged.length : leftIndex) - (rightIndex < 0 ? merged.length : rightIndex);
-  });
-}
-
-export function moveDashboardCard(cards: DashboardCard[], from: number, to: number): DashboardCard[] {
-  const result = cards.slice();
-  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || from >= result.length ||
-    to < 0 || to >= result.length || from === to) {
-    return result;
-  }
-  const moved = result.splice(from, 1)[0];
-  result.splice(to, 0, moved);
-  return result;
+  return cards;
 }
 
 /** 两列栅格的列跨度；卡片高度随内容和系统字号增长。 */
-export function dashboardCardSpan(card: DashboardCard, compact: boolean = false): [number, number] {
-  if (compact || card === DashboardCard.PUBLIC_NETWORK || card === DashboardCard.SPEED ||
-    card === DashboardCard.MODE || card === DashboardCard.VPN || card === DashboardCard.CONNECTIONS) {
-    return [2, 1];
-  }
-  return [1, 1];
+export function dashboardCardSpan(card: DashboardCard, compact: boolean): number {
+  return compact || card === DashboardCard.PUBLIC_NETWORK || card === DashboardCard.SPEED ||
+    card === DashboardCard.MODE || card === DashboardCard.VPN || card === DashboardCard.CONNECTIONS ? 2 : 1;
 }
 
-export function dashboardCardLabel(card: DashboardCard): string {
-  switch (card) {
-    case DashboardCard.MODE: return '出站模式';
-    case DashboardCard.CONFIGURATION: return '配置';
-    case DashboardCard.SPEED: return '网络速度';
-    case DashboardCard.PUBLIC_NETWORK: return '状态';
-    case DashboardCard.TRAFFIC: return '流量统计';
-    case DashboardCard.DURATION: return '运行时长';
-    case DashboardCard.CONNECTIONS: return '活动统计';
-    case DashboardCard.MEMORY: return '内存信息';
-    case DashboardCard.VPN: return 'VPN';
-    case DashboardCard.SERVICES: return '服务状态';
-    case DashboardCard.GROUPS: return '策略组';
+export function dashboardMemoryUsage(appBytes?: number, coreBytes?: number): DashboardMemoryUsage {
+  const app = appBytes !== undefined && Number.isFinite(appBytes) && appBytes >= 0 ? appBytes : undefined;
+  const core = coreBytes !== undefined && Number.isFinite(coreBytes) && coreBytes >= 0 ? coreBytes : undefined;
+  const sum = app !== undefined && core !== undefined ? app + core : undefined;
+  const total = sum !== undefined && Number.isFinite(sum) ? sum : undefined;
+  return { appBytes: app, coreBytes: core, totalBytes: total,
+    appRatio: total !== undefined && total > 0 ? (app ?? 0) / total : 0 };
+}
+
+export function formatMemoryMegabytes(bytes: number | undefined): string {
+  return bytes === undefined || !Number.isFinite(bytes) || bytes < 0 ? '—' : (bytes / 1048576).toFixed(1);
+}
+
+/** 波浪仅表示订阅已用比例，不构造流量趋势；尺寸为 Path 使用的像素。 */
+export function buildSubscriptionUsageWave(width: number, height: number, ratio: number): string {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || !Number.isFinite(ratio) ||
+    width <= 0 || height <= 0 || ratio <= 0) {
+    return '';
   }
+  const usedWidth = width * Math.min(1, ratio);
+  const center = height / 2;
+  const step = height / 2;
+  let path = `M 0 ${center}`;
+  let direction = 1;
+  for (let x = 0; x < usedWidth; x += step) {
+    const end = Math.min(x + step, usedWidth);
+    path += ` Q ${(x + end) / 2} ${center + direction * height * 0.6} ${end} ${center}`;
+    direction *= -1;
+  }
+  return path;
 }

@@ -1,24 +1,24 @@
 import { RuntimeStatusCard } from './RuntimeStatusCard';
 import { RuntimeSpeedCard } from './RuntimeSpeedCard';
 import { RuntimeMemoryCard } from './RuntimeMemoryCard';
+import { SubscriptionUsageBar } from '../components/SubscriptionUsageBar';
+import { LengthMetrics } from '@kit.ArkUI';
 import { systemDateTime } from '@kit.BasicServicesKit';
 import { Profile, ProfileStoreSnapshot, ProfileType } from '../model/ProfileModels';
 import { DashboardSnapshot, PublicNetworkSnapshot, RuntimeMode, TrafficSample, ProxyGroupSnapshot } from '../model/RuntimeModels';
 import { DEFAULT_RUNTIME_MODE } from '../constants/RuntimeConstants';
 import { CoreServiceState, ProxyState, RuntimeLifecycleSnapshot } from '../model/VpnModels';
 import { proxySessionElapsedSeconds, formatVpnRunDuration } from '../utils/VpnUtils';
-import { profileUsageRatio, formatProfileBytes, formatProfileExpiry, formatProfileRelativeTime } from '../utils/ProfileUtils';
+import { profileUsageRatio, formatProfileBytes, formatProfileRemainingDays, formatProfileRelativeTime } from '../utils/ProfileUtils';
 import { DashboardCard } from '../model/DashboardModels';
-import { SettingsStoreSnapshot } from '../model/SettingsModels';
 import {
-  dashboardCardLabel, dashboardCardSpan, moveDashboardCard, resolveDashboardCardOrder
+  dashboardCardSpan, resolveDashboardCardOrder
 } from '../utils/DashboardUtils';
 import { feedbackService } from '../services/FeedbackService';
 import { publicNetworkService } from '../services/LocalNetworkService';
 import { vpnService } from '../services/VpnService';
 import { profileStore } from '../stores/ProfileStore';
 import { runtimeStore } from '../stores/RuntimeStore';
-import { settingsStore } from '../stores/SettingsStore';
 import { ResponsiveMetrics } from '../model/ResponsiveModels';
 import {
   resolveResponsiveMetrics,
@@ -37,13 +37,15 @@ import { visibleProxyGroups } from '../utils/RuntimeUtils';
 const MODES: RuntimeMode[] = [RuntimeMode.RULE, RuntimeMode.GLOBAL, RuntimeMode.DIRECT];
 const VIEW_SYNC_INTERVAL_MS = 1000;
 
-/** 仪表盘聚合运行状态和可排序卡片；用户操作交给 Store 与服务完成。 */
+/** 仪表盘按默认顺序聚合运行状态；用户操作交给 Store 与服务完成。 */
 @Component
 export struct DashboardPage {
   @State coreState: CoreServiceState = vpnService.getCoreState();
   @State proxyState: ProxyState = vpnService.getProxyState();
   @State message: string = vpnService.getLastMessage();
   @State activeProfile: Profile | undefined = undefined;
+  @State profiles: Profile[] = [];
+  @State profileOperation: boolean = false;
   @State runtime: DashboardSnapshot | undefined = undefined;
   @State history: TrafficSample[] = [];
   @State publicIpv4: string = '未知';
@@ -65,26 +67,18 @@ export struct DashboardPage {
   @State proxyOperation: boolean = false;
   @State elapsedSeconds: number = 0;
   @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
-  @State cardOrder: DashboardCard[] = resolveDashboardCardOrder(settingsStore.getDashboardCardOrder(), true);
-  @State editingLayout: boolean = false;
-  @State savingLayout: boolean = false;
-  @State draggingCard: DashboardCard | undefined = undefined;
+  @State cardOrder: DashboardCard[] = resolveDashboardCardOrder(true);
   private unsubscribeNetwork: (() => void) | undefined = undefined;
   private unsubscribeLifecycle: (() => void) | undefined = undefined;
-  private unsubscribeSettings: (() => void) | undefined = undefined;
   private unsubscribeProfile: (() => void) | undefined = undefined;
   private viewSyncTimer: number | undefined = undefined;
   private lastTrafficSampleTimestamp: number = 0;
 
   aboutToAppear(): void {
     this.unsubscribeProfile = profileStore.subscribe((snapshot: ProfileStoreSnapshot): void => {
+      this.profiles = snapshot.profiles;
       this.activeProfile = snapshot.profiles.find((profile: Profile): boolean => profile.id === snapshot.activeProfileId);
       this.profileBusy = snapshot.busyProfileId.length > 0;
-    });
-    this.unsubscribeSettings = settingsStore.subscribe((_snapshot: SettingsStoreSnapshot): void => {
-      if (!this.editingLayout && !this.savingLayout) {
-        this.syncSavedCardOrder();
-      }
     });
     this.unsubscribeLifecycle = vpnService.subscribeLifecycle((snapshot: RuntimeLifecycleSnapshot): void => {
       this.applyLifecycle(snapshot);
@@ -100,8 +94,6 @@ export struct DashboardPage {
   aboutToDisappear(): void {
     this.unsubscribeProfile?.();
     this.unsubscribeProfile = undefined;
-    this.unsubscribeSettings?.();
-    this.unsubscribeSettings = undefined;
     this.unsubscribeLifecycle?.();
     this.unsubscribeLifecycle = undefined;
     this.unsubscribeNetwork?.();
@@ -173,8 +165,8 @@ export struct DashboardPage {
     this.contentWidth = resolveContentWidth(width);
     this.metrics = resolveResponsiveMetrics(this.contentWidth);
     this.fontScale = this.getUIContext().fp2px(1) / this.getUIContext().vp2px(1);
-    if (wasCompact !== this.isCompact() && !this.editingLayout && !this.savingLayout) {
-      this.syncSavedCardOrder();
+    if (wasCompact !== this.isCompact()) {
+      this.cardOrder = resolveDashboardCardOrder(this.isCompact());
     }
   }
 
@@ -268,51 +260,41 @@ export struct DashboardPage {
       (this.coreState === CoreServiceState.ERROR ? $r('app.color.status_error') : $r('app.color.content_secondary'));
   }
 
-  private moveCard(card: DashboardCard, to: number): void {
-    if (this.editingLayout && !this.savingLayout) {
-      this.cardOrder = moveDashboardCard(this.cardOrder, this.cardOrder.indexOf(card), to);
-    }
-  }
-
-  private syncSavedCardOrder(): void {
-    this.cardOrder = resolveDashboardCardOrder(settingsStore.getDashboardCardOrder(),
-      this.isCompact());
-  }
-
-  private cardMoveActions(card: DashboardCard): MenuElement[] {
-    const index = this.cardOrder.indexOf(card);
-    return [
-      { value: '前移', enabled: index > 0, action: (): void => { this.moveCard(card, index - 1); } },
-      { value: '后移', enabled: index < this.cardOrder.length - 1,
-        action: (): void => { this.moveCard(card, index + 1); } }
-    ];
-  }
-
-  /** 进入编辑前加载保存顺序，退出时保存；失败则保留编辑状态供用户重试。 */
-  private async toggleLayoutEditing(): Promise<void> {
-    if (this.savingLayout || this.draggingCard !== undefined) {
+  private async updateActiveProfile(): Promise<void> {
+    const profile = this.activeProfile;
+    if (profile === undefined || profile.type !== ProfileType.SUBSCRIPTION || this.profileBusy || this.profileOperation) {
       return;
     }
-    this.savingLayout = true;
+    this.profileOperation = true;
     try {
-      if (!this.editingLayout) {
-        const context = this.getUIContext().getHostContext()?.getApplicationContext();
-        if (context === undefined) {
-          throw new Error('页面尚未就绪，请重试');
-        }
-        await settingsStore.initialize(context);
-        this.syncSavedCardOrder();
-        this.editingLayout = true;
-      } else {
-        await settingsStore.saveDashboardCardOrder(this.cardOrder);
-        this.editingLayout = false;
-        feedbackService.success('仪表盘布局已保存');
-      }
+      await profileStore.update(profile.id);
+      feedbackService.success('订阅已更新并通过校验');
     } catch (error) {
       feedbackService.error(this.errorMessage(error));
     } finally {
-      this.savingLayout = false;
+      this.profileOperation = false;
     }
+  }
+
+  private async selectProfile(id: string): Promise<void> {
+    if (id === this.activeProfile?.id || this.profileBusy || this.profileOperation) { return; }
+    this.profileOperation = true;
+    try {
+      await profileStore.select(id);
+      feedbackService.success('已切换活动配置');
+    } catch (error) {
+      feedbackService.error(this.errorMessage(error));
+    } finally {
+      this.profileOperation = false;
+    }
+  }
+
+  private profileChoices(): MenuElement[] {
+    return this.profiles.map((profile: Profile): MenuElement => ({
+      value: `${profile.name}${profile.id === this.activeProfile?.id ? '（当前）' : ''}`,
+      enabled: !this.profileBusy && !this.profileOperation && profile.id !== this.activeProfile?.id,
+      action: (): void => { this.selectProfile(profile.id); }
+    }));
   }
 
   private async setMode(mode: RuntimeMode): Promise<void> {
@@ -429,23 +411,7 @@ export struct DashboardPage {
       .enabled(!this.isCoreBusy() && !this.isProxyBusy() && !this.profileBusy)
       .accessibilityText(`${this.coreStatus()}，点击重启 Core`)
       .onClick((): void => { this.confirmCoreRestart(); })
-      Button({ type: ButtonType.Normal }) {
-        if (this.savingLayout) {
-          LoadingProgress().width(HEADER_ACTION_ICON_SIZE).height(HEADER_ACTION_ICON_SIZE)
-            .color($r('app.color.content_primary'))
-        } else {
-          Image(this.editingLayout ? $r('app.media.action_check') : $r('app.media.action_edit'))
-            .width(HEADER_ACTION_ICON_SIZE).height(HEADER_ACTION_ICON_SIZE)
-            .fillColor($r('app.color.content_primary')).accessibilityLevel('no')
-        }
-      }
-      .id('dashboard-layout-edit')
-      .width(HEADER_ACTION_SIZE).height(HEADER_ACTION_SIZE).padding(0).borderRadius(16)
-      .responseRegion({ x: -8, y: -8, width: CONTROL_HEIGHT, height: CONTROL_HEIGHT })
-      .backgroundColor($r('app.color.surface_muted'))
-      .enabled(!this.savingLayout && this.draggingCard === undefined)
-      .accessibilityText(this.editingLayout ? '保存仪表盘布局' : '编辑仪表盘布局')
-      .onClick((): void => { this.toggleLayoutEditing(); })
+
     }
   }
 
@@ -647,7 +613,7 @@ export struct DashboardPage {
   @Builder
   private speedCard() {
     if (this.isCompact()) {
-      Column({ space: 16 }) {
+      Column({ space: 12 }) {
         this.cardTitle($r('app.media.network_speed'), '网络速度')
         this.speedTiles()
       }
@@ -660,51 +626,90 @@ export struct DashboardPage {
 
   @Builder
   private configurationCard() {
-    Button({ type: ButtonType.Normal }) {
-      Column({ space: 18 }) {
-        Row() {
-          this.cardTitle($r('app.media.nav_configuration'), '配置')
-          Blank()
-          this.chevron()
+    Column({ space: 12 }) {
+      Row({ space: 8 }) {
+        this.cardTitle($r('app.media.nav_configuration'), '配置')
+        Blank()
+        if (this.activeProfile?.type === ProfileType.SUBSCRIPTION) {
+          Button({ type: ButtonType.Circle }) {
+            if (this.profileBusy || this.profileOperation) {
+              LoadingProgress().width(18).height(18).color($r('app.color.dashboard_accent'))
+            } else {
+              Image($r('app.media.action_refresh')).width(18).height(18)
+                .fillColor($r('app.color.content_secondary')).accessibilityLevel('no')
+            }
+          }
+          .id('dashboard-profile-refresh').width(44).height(44).padding(12).backgroundColor(Color.Transparent)
+          .enabled(!this.profileBusy && !this.profileOperation).accessibilityText('更新当前订阅')
+          .onClick((): void => { this.updateActiveProfile(); })
         }
-        .width('100%')
+        Button({ type: ButtonType.Circle }) { this.chevron() }
+          .id('dashboard-profile-open').width(44).height(44).padding(12).backgroundColor(Color.Transparent)
+          .accessibilityText('打开配置页')
+          .onClick((): void => { navigationIntentService.publish(AppPage.CONFIGURATION); })
+      }
+      .width('100%').margin({ top: -10, bottom: -8, right: -10 })
+      if (this.activeProfile === undefined) {
+        Button('添加配置', { type: ButtonType.Normal })
+          .fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
+          .height(44).padding(0).backgroundColor(Color.Transparent)
+          .onClick((): void => { navigationIntentService.publish(AppPage.CONFIGURATION); })
+      } else {
         Column({ space: 4 }) {
-          Text(this.activeProfile?.name ?? '添加配置').fontSize(18).fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.content_primary')).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
-          if (this.activeProfile !== undefined) {
+          Button({ type: ButtonType.Normal }) {
+            Row({ space: 8 }) {
+              Text(this.activeProfile.name).fontSize(18).fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.content_primary')).maxLines(2)
+                .textOverflow({ overflow: TextOverflow.Ellipsis }).flexShrink(1)
+              Image($r('app.media.action_switch')).width(20).height(20)
+                .fillColor($r('app.color.content_secondary')).accessibilityLevel('no')
+            }
+            .constraintSize({ minHeight: 44 }).justifyContent(FlexAlign.Start)
+          }
+          .id('dashboard-profile-switch').constraintSize({ maxWidth: '100%' }).padding(0)
+          .backgroundColor(Color.Transparent).borderRadius(8).align(Alignment.Start)
+          .enabled(!this.profileBusy && !this.profileOperation)
+          .accessibilityText(`当前配置 ${this.activeProfile.name}，切换配置`)
+          .bindMenu(this.profileChoices())
+          Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween,
+            space: { main: LengthMetrics.vp(12), cross: LengthMetrics.vp(4) } }) {
             Text(this.activeProfile.type === ProfileType.LOCAL ? '本地配置' :
               `更新于 ${formatProfileRelativeTime(this.activeProfile.lastUpdateAt)}`)
               .fontSize(12).fontColor($r('app.color.content_secondary'))
-            if ((this.activeProfile.expireAt ?? 0) > 0) {
-              Text(`到期 ${formatProfileExpiry(this.activeProfile.expireAt ?? 0)}`)
+            if (this.activeProfile.type === ProfileType.SUBSCRIPTION) {
+              Text(formatProfileRemainingDays(this.activeProfile.expireAt))
                 .fontSize(12).fontColor($r('app.color.content_secondary'))
             }
           }
+          .width('100%')
         }
         .width('100%').alignItems(HorizontalAlign.Start)
-        if (this.activeProfile !== undefined && (this.activeProfile.totalBytes ?? 0) > 0) {
+        if ((this.activeProfile.totalBytes ?? 0) > 0) {
           Column({ space: 8 }) {
-            Text(`${Math.round(profileUsageRatio(this.activeProfile) * 100)}% 已用`).fontSize(18)
-              .fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
-            Text(`${formatProfileBytes((this.activeProfile.uploadBytes ?? 0) + (this.activeProfile.downloadBytes ?? 0))}` +
-              ` / ${formatProfileBytes(this.activeProfile.totalBytes ?? 0)}`)
-              .fontSize(12).fontColor($r('app.color.content_secondary'))
-            Progress({ value: profileUsageRatio(this.activeProfile) * 100, total: 100, type: ProgressType.Linear })
-              .width('100%').color($r('app.color.dashboard_accent')).backgroundColor($r('app.color.dashboard_inset'))
-              .style({ strokeWidth: 6 }).accessibilityLevel('no')
+            Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween, alignItems: ItemAlign.Center,
+              space: { main: LengthMetrics.vp(12), cross: LengthMetrics.vp(4) } }) {
+              Text() {
+                Span(`${Math.round(profileUsageRatio(this.activeProfile) * 100)}%`).fontSize(20).fontWeight(FontWeight.Bold)
+                Span(' 已用').fontSize(13)
+              }
+              .fontColor($r('app.color.content_primary'))
+              Text(`${formatProfileBytes((this.activeProfile.uploadBytes ?? 0) + (this.activeProfile.downloadBytes ?? 0)).replace(/([KMGT]?B)$/, ' $1')}` +
+                ` / ${formatProfileBytes(this.activeProfile.totalBytes ?? 0).replace(/([KMGT]?B)$/, ' $1')}`)
+                .fontSize(12).fontColor($r('app.color.content_secondary'))
+            }
+            .width('100%')
+            SubscriptionUsageBar({ ratio: profileUsageRatio(this.activeProfile) })
           }
-          .width('100%').alignItems(HorizontalAlign.Start)
+          .width('100%').alignItems(HorizontalAlign.Start).margin({ top: 8 })
+        } else if (this.activeProfile.type === ProfileType.SUBSCRIPTION) {
+          Text('未提供流量信息').fontSize(12).fontColor($r('app.color.content_secondary'))
         }
       }
-      .width('100%').alignItems(HorizontalAlign.Start).justifyContent(FlexAlign.SpaceBetween)
-      .constraintSize({ minHeight: this.isCompact() ? 60 : 156 })
     }
-    .width('100%').padding(DASHBOARD_CARD_PADDING).borderRadius(DASHBOARD_CARD_RADIUS)
+    .width('100%').alignItems(HorizontalAlign.Start).justifyContent(FlexAlign.SpaceBetween)
+    .constraintSize({ minHeight: this.isCompact() ? 0 : 196 })
+    .padding(DASHBOARD_CARD_PADDING).borderRadius(DASHBOARD_CARD_RADIUS)
     .backgroundColor($r('app.color.dashboard_surface'))
-    .accessibilityText(`当前配置：${this.activeProfile?.name ?? '未选择'}，打开配置页`)
-    .accessibilityDescription(this.activeProfile !== undefined && (this.activeProfile.totalBytes ?? 0) > 0 ?
-      `订阅流量已用 ${Math.round(profileUsageRatio(this.activeProfile) * 100)}%` : '')
-    .onClick((): void => { navigationIntentService.publish(AppPage.CONFIGURATION); })
   }
 
   @Builder
@@ -826,62 +831,20 @@ export struct DashboardPage {
     }
   }
 
-  // 编辑时屏蔽卡片内部操作与其无障碍子节点，保留独立的移动菜单。
-  @Builder
-  private editableCard(card: DashboardCard) {
-    Stack({ alignContent: Alignment.TopEnd }) {
-      Column() { this.cardContent(card) }
-        .width('100%')
-        .hitTestBehavior(this.editingLayout ? HitTestMode.None : HitTestMode.Default)
-        .accessibilityLevel(this.editingLayout ? 'no-hide-descendants' : 'auto')
-      if (this.editingLayout) {
-        Button({ type: ButtonType.Normal }) {
-          Image($r('app.media.action_drag')).width(18).height(18)
-            .fillColor($r('app.color.content_secondary')).accessibilityLevel('no')
-        }
-        .id(`dashboard-card-menu-${card}`)
-        .width(44).height(44).padding(12).borderRadius(22).margin(8)
-        .backgroundColor($r('app.color.surface_muted'))
-        .enabled(!this.savingLayout && this.draggingCard === undefined)
-        .accessibilityText(`移动${dashboardCardLabel(card)}，当前位置 ${this.cardOrder.indexOf(card) + 1}`)
-        .bindMenu(this.cardMoveActions(card))
-      }
-    }
-    .width('100%').borderRadius(DASHBOARD_CARD_RADIUS)
-    .shadow({ radius: 12, color: $r('app.color.dashboard_shadow'), offsetY: 4 })
-    .opacity(this.draggingCard === card ? 0.45 : 1)
-    .accessibilityDescription(this.editingLayout ? '长按拖动卡片，或点击移动菜单调整顺序' : '')
-  }
-
   build() {
     Column({ space: 20 }) {
       PageHeader({
         title: $r('app.string.nav_dashboard'), contentPadding: this.metrics.pagePadding,
-        subtitle: this.editingLayout ? '长按拖动卡片，点击右上角保存' : '',
         actions: (): void => { this.headerActions(); }
       })
       Scroll() {
         GridRow({ columns: 2, gutter: { x: 16, y: 12 } }) {
           ForEach(this.cardOrder, (card: DashboardCard) => {
-            GridCol({ span: dashboardCardSpan(card, this.isCompact())[0] }) {
-              this.editableCard(card)
+            GridCol({ span: dashboardCardSpan(card, this.isCompact()) }) {
+              this.cardContent(card)
             }
-            .id(`dashboard-card-${card}`)
-            .draggable(this.editingLayout && !this.savingLayout)
-            .onDragStart((event: DragEvent): DragItemInfo => {
-              if (!this.editingLayout || this.savingLayout) {
-                event.setResult(DragResult.DRAG_CANCELED);
-                return {};
-              }
-              this.draggingCard = card;
-              return {};
-            })
-            .onDrop((): void => {
-              if (this.draggingCard !== undefined) {
-                this.moveCard(this.draggingCard, this.cardOrder.indexOf(card));
-              }
-            })
-            .onDragEnd((): void => { this.draggingCard = undefined; })
+            .id(`dashboard-card-${card}`).borderRadius(DASHBOARD_CARD_RADIUS)
+            .shadow({ radius: 12, color: $r('app.color.dashboard_shadow'), offsetY: 4 })
           }, (card: DashboardCard): string => card)
         }
         .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding,

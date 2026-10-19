@@ -102,6 +102,13 @@ export function formatProfileRelativeTime(timestamp: number | undefined, now: nu
   return new Date(timestamp).toLocaleDateString();
 }
 
+export function formatProfileRemainingDays(expireAt: number | undefined, now: number = Date.now()): string {
+  if (expireAt === undefined || !Number.isFinite(expireAt) || expireAt <= 0) {
+    return '未提供到期时间';
+  }
+  return expireAt <= now ? '已到期' : `剩余 ${Math.ceil((expireAt - now) / 86400000)} 天`;
+}
+
 /** 只展示主机与端口，去掉用户凭据、路径、查询参数及片段中的潜在订阅令牌。 */
 export function getSubscriptionHost(sourceUrl: string): string {
   const schemeSeparator = sourceUrl.indexOf('://');

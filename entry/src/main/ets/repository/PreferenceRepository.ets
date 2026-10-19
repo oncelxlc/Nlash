@@ -4,14 +4,11 @@ import { ProxySelection, RuntimeMode } from '../model/RuntimeModels';
 import { AppSettings, AppThemeMode } from '../model/SettingsModels';
 import { DEFAULT_APP_SETTINGS } from '../constants/SettingsConstants';
 import { resolveNavigationTransition } from '../utils/SettingsUtils';
-import { DashboardCard } from '../model/DashboardModels';
-import { normalizeDashboardCardOrder } from '../utils/DashboardUtils';
 
 const PREFERENCES_NAME = 'nlash_settings';
 const ACTIVE_PROFILE_ID = 'activeProfileId';
 const ACTIVE_PROFILE_PATH = 'activeProfilePath';
 const PROFILE_ORDER = 'profileOrder';
-const DASHBOARD_CARD_ORDER = 'dashboardCardOrder';
 const THEME_MODE = 'themeMode';
 const NAVIGATION_TRANSITION = 'navigationTransition';
 const VPN_MTU = 'vpnMtu';
@@ -162,27 +159,6 @@ class PreferenceRepository {
     } catch (error) {
       await store.put(PROFILE_ORDER, previous);
       throw new Error('保存配置顺序失败，请重试');
-    }
-  }
-
-  async getDashboardCardOrder(): Promise<DashboardCard[] | undefined> {
-    const value = await this.requireStore().get(DASHBOARD_CARD_ORDER, []);
-    const ids = Array.isArray(value) ?
-      (value as string[]).filter((id: string): boolean => typeof id === 'string') : [];
-    const cards = normalizeDashboardCardOrder(ids);
-    return cards.some((card: DashboardCard): boolean => ids.includes(card)) ||
-      ids.includes(DashboardCard.TRAFFIC) || ids.includes(DashboardCard.DURATION) ? cards : undefined;
-  }
-
-  async setDashboardCardOrder(cards: DashboardCard[]): Promise<void> {
-    const store = this.requireStore();
-    const previous = await store.get(DASHBOARD_CARD_ORDER, []);
-    try {
-      await store.put(DASHBOARD_CARD_ORDER, cards);
-      await store.flush();
-    } catch (error) {
-      await store.put(DASHBOARD_CARD_ORDER, previous);
-      throw new Error('保存仪表盘布局失败，请重试');
     }
   }
 

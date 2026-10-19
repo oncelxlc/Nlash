@@ -3,6 +3,7 @@ import {
   formatProfileBytes,
   formatProfileExpiry,
   formatProfileRelativeTime,
+  formatProfileRemainingDays,
   isProfileUpdateDue,
   normalizeProfileUpdateInterval,
   moveProfile,
@@ -37,6 +38,17 @@ import { resolveDashboardSpeedCardHeight, resolveResponsiveMetrics } from '../ma
 
 export default function profileFeaturesTest() {
   describe('profileFeatures', () => {
+    it('formatsRemainingSubscriptionDays', 0, () => {
+      const now = 1800000000000;
+      expect(formatProfileRemainingDays(now + 246 * 86400000, now)).assertEqual('剩余 246 天');
+      expect(formatProfileRemainingDays(now + 1, now)).assertEqual('剩余 1 天');
+      expect(formatProfileRemainingDays(now, now)).assertEqual('已到期');
+      expect(formatProfileRemainingDays(now - 86400000, now)).assertEqual('已到期');
+      expect(formatProfileRemainingDays(undefined, now)).assertEqual('未提供到期时间');
+      expect(formatProfileRemainingDays(0, now)).assertEqual('未提供到期时间');
+      expect(formatProfileRemainingDays(Number.NaN, now)).assertEqual('未提供到期时间');
+    });
+
     it('buildsStrictDownloadImportPath', 0, () => {
       expect(buildDefaultImportPath('/storage/Users/currentUser/Download'))
         .assertEqual('/storage/Users/currentUser/Download/BygCloud.ymal');

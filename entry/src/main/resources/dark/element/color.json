@@ -199,6 +199,14 @@
     {
       "name": "dashboard_shadow",
       "value": "#28000000"
+    },
+    {
+      "name": "dashboard_core_memory",
+      "value": "#547CB8"
+    },
+    {
+      "name": "dashboard_track",
+      "value": "#3F3F46"
     }
   ]
 }
