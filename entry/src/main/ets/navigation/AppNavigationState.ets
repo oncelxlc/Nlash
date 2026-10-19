@@ -4,6 +4,7 @@ import { ActivityTab, AppPage } from '../model/NavigationModels';
 @Observed
 export class AppNavigationState {
   selectedPage: AppPage = AppPage.DASHBOARD;
+  activityOpen: boolean = false;
   activityTab: ActivityTab = ActivityTab.CONNECTIONS;
 
   /** 兼容卡片或通知发出的旧页面目标，集中转换为现有导航结构。 */
@@ -11,12 +12,13 @@ export class AppNavigationState {
     if (page === AppPage.REQUESTS || page === AppPage.CONNECTIONS) {
       this.selectActivityTab(page === AppPage.REQUESTS ? ActivityTab.REQUESTS : ActivityTab.CONNECTIONS);
     } else {
-      this.selectedPage = page;
+      this.activityOpen = page === AppPage.ACTIVITY;
+      this.selectedPage = this.activityOpen ? AppPage.SETTINGS : page;
     }
   }
 
   selectActivityTab(tab: ActivityTab): void {
     this.activityTab = tab;
-    this.selectedPage = AppPage.ACTIVITY;
+    this.selectPage(AppPage.ACTIVITY);
   }
 }

@@ -51,8 +51,12 @@ struct Index {
     this.unsubscribeSettings = undefined;
   }
 
-  /** 返回优先级：编辑器关闭确认 → 回到仪表盘 → 将 Ability 移到后台。 */
+  /** 返回优先级：活动页返回设置 → 编辑器关闭确认 → 仪表盘 → 后台。 */
   onBackPress(): boolean {
+    if (this.navigationState.activityOpen) {
+      this.selectPage(AppPage.SETTINGS);
+      return true;
+    }
     if (this.navigationState.selectedPage === AppPage.CONFIGURATION && configurationEditorService.handleBack()) {
       return true;
     }
@@ -65,7 +69,8 @@ struct Index {
 
   private selectTab(index: number): void {
     const page = NAVIGATION_PAGES[index];
-    if (page !== undefined) {
+    // 程序切到设置时的标签回调不能关闭刚打开的活动页。
+    if (page !== undefined && page !== this.navigationState.selectedPage) {
       this.selectPage(page);
     }
   }
@@ -146,49 +151,64 @@ struct Index {
     } else if (page === AppPage.ACTIVITY) {
       ActivityPage({
         selectedTab: this.navigationState.activityTab,
-        onTabChange: (tab: ActivityTab): void => { this.navigationState.selectActivityTab(tab); }
+        onTabChange: (tab: ActivityTab): void => { this.navigationState.selectActivityTab(tab); },
+        onBack: (): void => { this.selectPage(AppPage.SETTINGS); }
       })
     } else if (page === AppPage.SETTINGS) {
-      SettingsPage()
+      SettingsPage({ onOpenActivity: (): void => { this.selectPage(AppPage.ACTIVITY); } })
     }
   }
 
   build() {
-    HdsTabs({
-      barPosition: BarPosition.End,
-      index: NAVIGATION_PAGES.indexOf(this.navigationState.selectedPage)
-    }) {
-      ForEach(NAVIGATION_PAGES, (page: AppPage) => {
-        TabContent() {
-          PageEntrance({
-            effect: this.navigationTransition, initialOffset: this.entranceOffset,
-            content: (): void => { this.pageContent(page); }
-          })
-        }
-        .tabBar(this.getTabBarStyle(page))
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-      }, (page: AppPage): string => page.toString())
-    }
-    .vertical(false)
-    .scrollable(false)
-    .animationDuration(0)
-    .onContentWillChange((from: number, to: number): boolean => {
-      this.entranceOffset = to > from ? 24 : -24;
-      return true;
-    })
-    .barOverlap(true)
-    .cachedMaxCount(0, TabsCacheMode.CACHE_LATEST_SWITCHED)
-    .barFloatingStyle({
-      adaptToHandedness: true,
-      thermoCtrl: true,
-      systemMaterialEffect: {
-        materialType: hdsMaterial.MaterialType.ADAPTIVE,
-        materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+    Stack() {
+      HdsTabs({
+        barPosition: BarPosition.End,
+        index: NAVIGATION_PAGES.indexOf(this.navigationState.selectedPage)
+      }) {
+        ForEach(NAVIGATION_PAGES, (page: AppPage) => {
+          TabContent() {
+            PageEntrance({
+              effect: this.navigationTransition, initialOffset: this.entranceOffset,
+              content: (): void => { this.pageContent(page); }
+            })
+          }
+          .tabBar(this.getTabBarStyle(page))
+          .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+        }, (page: AppPage): string => page.toString())
       }
-    })
-    .onChange((index: number): void => {
-      this.selectTab(index);
-    })
+      .vertical(false)
+      .scrollable(false)
+      .animationDuration(0)
+      .onContentWillChange((from: number, to: number): boolean => {
+        this.entranceOffset = to > from ? 24 : -24;
+        return true;
+      })
+      .barOverlap(true)
+      .cachedMaxCount(0, TabsCacheMode.CACHE_LATEST_SWITCHED)
+      .barFloatingStyle({
+        adaptToHandedness: true,
+        thermoCtrl: true,
+        systemMaterialEffect: {
+          materialType: hdsMaterial.MaterialType.ADAPTIVE,
+          materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+        }
+      })
+      .onChange((index: number): void => {
+        this.selectTab(index);
+      })
+      .width('100%')
+      .height('100%')
+      // 保留设置页的输入草稿与滚动位置，同时隐藏一级导航。
+      .visibility(this.navigationState.activityOpen ? Visibility.Hidden : Visibility.Visible)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+
+      if (this.navigationState.activityOpen) {
+        PageEntrance({
+          effect: this.navigationTransition,
+          content: (): void => { this.pageContent(AppPage.ACTIVITY); }
+        })
+      }
+    }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.app_background'))

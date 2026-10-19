@@ -14,6 +14,7 @@ const ACTIVITY_TABS: ActivityTab[] = [ActivityTab.CONNECTIONS, ActivityTab.REQUE
 export struct ActivityPage {
   @Prop selectedTab: ActivityTab = ActivityTab.CONNECTIONS;
   onTabChange: (tab: ActivityTab) => void = (): void => {};
+  onBack: () => void = (): void => {};
   @State connectionQuery: string = '';
   @State requestQuery: string = '';
   @State requestFilter: RequestFilter = RequestFilter.ALL;
@@ -21,7 +22,19 @@ export struct ActivityPage {
 
   build() {
     Column({ space: 8 }) {
-      PageHeader({ title: $r('app.string.nav_activity'), contentPadding: this.metrics.pagePadding })
+      Row({ space: 12 }) {
+        Button({ type: ButtonType.Circle }) {
+          Image($r('app.media.action_back')).width(24).height(24)
+            .fillColor($r('app.color.content_primary'))
+        }
+        .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).padding(0)
+        .backgroundColor($r('app.color.card_background'))
+        .accessibilityText('返回设置')
+        .onClick((): void => { this.onBack(); })
+        PageHeader({ title: $r('app.string.nav_activity'), contentPadding: 0 }).layoutWeight(1)
+      }
+      .width('100%')
+      .padding({ top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding })
       Tabs({ index: ACTIVITY_TABS.indexOf(this.selectedTab) }) {
         TabContent() {
           Column() { ConnectionsPage({ query: this.connectionQuery, contentPadding: this.metrics.pagePadding }) }

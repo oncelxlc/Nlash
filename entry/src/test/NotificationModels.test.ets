@@ -127,6 +127,7 @@ export default function notificationModelsTest() {
         navigationState.selectPage(target);
       }
       expect(navigationState.selectedPage).assertEqual(AppPage.DASHBOARD);
+      expect(navigationState.activityOpen).assertFalse();
       expect(navigationState.activityTab).assertEqual(ActivityTab.REQUESTS);
       expect(resolveNotificationNavigationTarget('proxy')).assertUndefined();
       expect(resolveNotificationNavigationTarget(undefined)).assertUndefined();

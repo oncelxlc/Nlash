@@ -19,6 +19,7 @@ const THEMES: AppThemeMode[] = [AppThemeMode.SYSTEM, AppThemeMode.LIGHT, AppThem
 /** 设置表单维护输入草稿，SettingsStore 校验并保存，运行数据清理由 RuntimeStore 执行。 */
 @Component
 export struct SettingsPage {
+  onOpenActivity: () => void = (): void => {};
   @State settings: AppSettings = settingsStore.getSnapshot().settings;
   @State saving: boolean = false;
   @State networkError: string = '';
@@ -79,9 +80,10 @@ export struct SettingsPage {
     return (this.pageWidth - this.metrics.pagePadding * 2 - (columns - 1) * 12) / columns;
   }
 
-  // 前三张设置卡按窗口档位排列，关于区域独占一行，保持与 FlowItem 顺序一致。
+  // 活动入口和关于区域独占一行，三张设置卡按窗口档位排列。
   private updateSections(): void {
     this.sections.splice(0, this.sections.length(), [
+      { itemsCount: 1, crossCount: 1, margin: { bottom: 12 } },
       { itemsCount: 3, crossCount: this.metrics.sizeClass === ResponsiveSizeClass.COMPACT ? 1 : 2,
         columnsGap: 12, rowsGap: 12 },
       { itemsCount: 1, crossCount: 1, margin: { top: 16 } }
@@ -250,6 +252,28 @@ export struct SettingsPage {
     Column({ space: 16 }) {
       PageHeader({ title: $r('app.string.nav_settings'), contentPadding: this.metrics.pagePadding })
       WaterFlow({ sections: this.sections }) {
+        FlowItem() {
+          Button({ type: ButtonType.Normal }) {
+            Row({ space: 12 }) {
+              Image($r('app.media.nav_activity')).width(24).height(24)
+                .fillColor($r('app.color.content_primary'))
+              Column({ space: 6 }) {
+                Text($r('app.string.nav_activity')).fontSize(18).fontWeight(FontWeight.Medium)
+                  .fontColor($r('app.color.content_primary'))
+                Text('实时连接与请求记录').fontSize(CAPTION_FONT_SIZE)
+                  .fontColor($r('app.color.content_secondary'))
+              }
+              .alignItems(HorizontalAlign.Start).layoutWeight(1)
+              Image($r('app.media.action_chevron_down')).width(20).height(20)
+                .fillColor($r('app.color.content_secondary')).rotate({ angle: -90 })
+            }
+            .width('100%')
+          }
+          .width('100%').constraintSize({ minHeight: CONTROL_HEIGHT }).padding(16)
+          .borderRadius(CARD_RADIUS).backgroundColor($r('app.color.card_background'))
+          .accessibilityText('活动，实时连接与请求记录')
+          .onClick((): void => { this.onOpenActivity(); })
+        }
         FlowItem() { this.themeCard() }
         FlowItem() { this.networkCard() }
         FlowItem() { this.cleanupCard() }

@@ -8,39 +8,59 @@ import { configurationEditorService } from '../main/ets/services/ConfigurationEd
 export default function navigationModelsTest() {
   describe('navigationModels', () => {
     it('exposesExpectedNavigationItems', 0, () => {
-      expect(NAVIGATION_PAGES.length).assertEqual(5);
+      expect(NAVIGATION_PAGES.length).assertEqual(4);
       expect(NAVIGATION_PAGES[0]).assertEqual(AppPage.DASHBOARD);
       expect(NAVIGATION_PAGES[1]).assertEqual(AppPage.PROXY);
       expect(NAVIGATION_PAGES[2]).assertEqual(AppPage.CONFIGURATION);
-      expect(NAVIGATION_PAGES[3]).assertEqual(AppPage.ACTIVITY);
-      expect(NAVIGATION_PAGES[4]).assertEqual(AppPage.SETTINGS);
+      expect(NAVIGATION_PAGES[3]).assertEqual(AppPage.SETTINGS);
     });
 
     it('selectsPagesWithoutCreatingRoutes', 0, () => {
       const navigationState = new AppNavigationState();
       expect(navigationState.selectedPage).assertEqual(AppPage.DASHBOARD);
+      expect(navigationState.activityOpen).assertFalse();
 
       navigationState.selectPage(AppPage.CONNECTIONS);
-      expect(navigationState.selectedPage).assertEqual(AppPage.ACTIVITY);
+      expect(navigationState.selectedPage).assertEqual(AppPage.SETTINGS);
+      expect(navigationState.activityOpen).assertTrue();
       expect(navigationState.activityTab).assertEqual(ActivityTab.CONNECTIONS);
 
       navigationState.selectPage(AppPage.DASHBOARD);
       expect(navigationState.selectedPage).assertEqual(AppPage.DASHBOARD);
+      expect(navigationState.activityOpen).assertFalse();
     });
 
     it('mapsLegacyActivityTargetsAndRemembersTheLastTab', 0, () => {
       const navigationState = new AppNavigationState();
       expect(navigationState.activityTab).assertEqual(ActivityTab.CONNECTIONS);
       navigationState.selectPage(AppPage.REQUESTS);
-      expect(navigationState.selectedPage).assertEqual(AppPage.ACTIVITY);
+      expect(navigationState.selectedPage).assertEqual(AppPage.SETTINGS);
+      expect(navigationState.activityOpen).assertTrue();
       expect(navigationState.activityTab).assertEqual(ActivityTab.REQUESTS);
       navigationState.selectPage(AppPage.SETTINGS);
       navigationState.selectPage(AppPage.ACTIVITY);
       expect(navigationState.activityTab).assertEqual(ActivityTab.REQUESTS);
       navigationState.selectActivityTab(ActivityTab.CONNECTIONS);
-      expect(navigationState.selectedPage).assertEqual(AppPage.ACTIVITY);
+      expect(navigationState.selectedPage).assertEqual(AppPage.SETTINGS);
+      expect(navigationState.activityOpen).assertTrue();
       expect(navigationState.activityTab).assertEqual(ActivityTab.CONNECTIONS);
       expect(NAVIGATION_PAGES.indexOf(navigationState.selectedPage)).assertEqual(3);
+    });
+
+    it('returnsFromActivityToSettingsAndReopensTheLastTab', 0, () => {
+      const navigationState = new AppNavigationState();
+      navigationState.selectPage(AppPage.SETTINGS);
+      navigationState.selectPage(AppPage.ACTIVITY);
+      expect(navigationState.selectedPage).assertEqual(AppPage.SETTINGS);
+      expect(navigationState.activityOpen).assertTrue();
+      navigationState.selectActivityTab(ActivityTab.REQUESTS);
+
+      navigationState.selectPage(AppPage.SETTINGS);
+      expect(navigationState.selectedPage).assertEqual(AppPage.SETTINGS);
+      expect(navigationState.activityOpen).assertFalse();
+      navigationState.selectPage(AppPage.ACTIVITY);
+      expect(navigationState.activityOpen).assertTrue();
+      expect(navigationState.activityTab).assertEqual(ActivityTab.REQUESTS);
     });
 
     it('keepsEditorBackHandlingUntilTheCloseIsConfirmed', 0, () => {
