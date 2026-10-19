@@ -1,6 +1,14 @@
 {
   "color": [
     {
+      "name": "proxy_delay_success",
+      "value": "#087A32"
+    },
+    {
+      "name": "proxy_node_background",
+      "value": "#EFEDF0"
+    },
+    {
       "name": "start_window_background",
       "value": "#F5F5F5"
     },

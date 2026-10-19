@@ -295,14 +295,14 @@ export default function runtimeModelsTest() {
         ]
       }];
       const reset = resetGroupDelay(groups, 'Auto');
-      expect(proxyDelayLabel(reset[0].nodes[0], true)).assertEqual('…');
-      expect(proxyDelayLabel(reset[0].nodes[0], false)).assertEqual('⚡');
+      expect(proxyDelayLabel(reset[0].nodes[0], true)).assertEqual('测速中');
+      expect(proxyDelayLabel(reset[0].nodes[0], false)).assertEqual('未测速');
       const partial = mergeGroupDelay(reset, 'Auto', [{ proxy: 'B', delay: 88, alive: true }]);
-      expect(proxyDelayLabel(partial[0].nodes[1], false)).assertEqual('88ms');
+      expect(proxyDelayLabel(partial[0].nodes[1], false)).assertEqual('88 ms');
       expect(proxyNodeRenderKey(partial[0].nodes[1])).assertEqual(proxyNodeRenderKey(reset[0].nodes[1]));
       const failed = failPendingGroupDelay(partial, 'Auto');
-      expect(proxyDelayLabel(failed[0].nodes[0], false)).assertEqual('Error');
-      expect(proxyDelayLabel(failed[0].nodes[1], false)).assertEqual('88ms');
+      expect(proxyDelayLabel(failed[0].nodes[0], false)).assertEqual('超时');
+      expect(proxyDelayLabel(failed[0].nodes[1], false)).assertEqual('88 ms');
       const refreshed: ProxyGroupSnapshot[] = [{
         name: 'Auto', type: 'Selector', selected: 'A', selectable: true, hidden: false,
         nodes: [
@@ -311,8 +311,8 @@ export default function runtimeModelsTest() {
         ]
       }];
       const preserved = preserveTestedProxyDelays(refreshed, failed);
-      expect(proxyDelayLabel(preserved[0].nodes[0], false)).assertEqual('Error');
-      expect(proxyDelayLabel(preserved[0].nodes[1], false)).assertEqual('88ms');
+      expect(proxyDelayLabel(preserved[0].nodes[0], false)).assertEqual('超时');
+      expect(proxyDelayLabel(preserved[0].nodes[1], false)).assertEqual('88 ms');
       expect(preserved === failed).assertTrue();
       expect(mergeGroupDelay(failed, 'Auto', [{ proxy: 'B', delay: 88, alive: true }]) === failed).assertTrue();
     });

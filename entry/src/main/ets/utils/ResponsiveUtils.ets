@@ -24,3 +24,12 @@ export function resolveDashboardSpeedCardHeight(metrics: ResponsiveMetrics): num
 export function resolveDashboardTrafficCardHeight(metrics: ResponsiveMetrics): number {
   return metrics.dashboardInfoCardHeight * 2 + metrics.cardGap;
 }
+
+/** 宽屏分为两列，较大字号时优先保证组头与操作可读。 */
+export function proxyGroupColumnCount(contentWidth: number, fontScale: number = 1): number {
+  return contentWidth >= 640 * Math.max(1, fontScale) ? 2 : 1;
+}
+
+export function proxyNodeColumnCount(groupWidth: number, fontScale: number = 1): number {
+  return groupWidth >= 280 * Math.max(1, fontScale) ? 2 : 1;
+}

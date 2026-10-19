@@ -5,23 +5,21 @@ import {
   ProxySelection,
   RuntimeStoreSnapshot
 } from '../model/RuntimeModels';
-import { proxyNodeRenderKey, visibleProxyGroups } from '../utils/RuntimeUtils';
+import { filterProxyNodes, proxyNodeRenderKey, visibleProxyGroups } from '../utils/RuntimeUtils';
 import { AppSettings, SettingsStoreSnapshot } from '../model/SettingsModels';
 import { feedbackService } from '../services/FeedbackService';
 import { runtimeStore } from '../stores/RuntimeStore';
 import { settingsStore } from '../stores/SettingsStore';
 import { ResponsiveMetrics } from '../model/ResponsiveModels';
-import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
 import {
-  CONTROL_HEIGHT, HEADER_ACTION_SIZE, HEADER_ACTION_ICON_SIZE, FLOATING_NAVIGATION_INSET,
-  CAPTION_FONT_SIZE
-} from '../constants/UiConstants';
+  resolveResponsiveMetrics, resolveContentWidth, proxyGroupColumnCount, proxyNodeColumnCount
+} from '../utils/ResponsiveUtils';
+import { CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CAPTION_FONT_SIZE } from '../constants/UiConstants';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyStateBackground } from '../components/EmptyStateBackground';
-import { textTabBar } from '../components/TextTabBar';
 import { ProxyNodeCard } from '../components/ProxyNodeCard';
 
-/** 展示运行或预览策略组，节点选择、分组偏好和并发测速统一由 RuntimeStore 管理。 */
+/** 策略组可独立展开；节点选择、分组偏好和并发测速仍由 RuntimeStore 管理。 */
 @Component
 export struct ProxyPage {
   @Prop forceExpanded: boolean = false;
@@ -30,32 +28,38 @@ export struct ProxyPage {
   @State previewLoading: boolean = false;
   @State groups: ProxyGroupSnapshot[] = [];
   @State selections: ProxySelection[] = [];
-  @State selectedGroup: string = '';
+  @State expandedGroups: string[] = [];
+  @State searchVisible: boolean = false;
+  @State query: string = '';
   @State delayOperations: ProxyDelayOperationSnapshot[] = [];
   @State settings: AppSettings = settingsStore.getSnapshot().settings;
   @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
-  private nodeScroller: Scroller = new Scroller();
+  @State contentWidth: number = 0;
+  @State fontScale: number = 1;
+  private scrollers: ListScroller[] = [new ListScroller(), new ListScroller()];
   private proxyGroups: ProxyGroupSnapshot[] = [];
   private unsubscribeRuntime: (() => void) | undefined = undefined;
   private unsubscribeSettings: (() => void) | undefined = undefined;
 
   aboutToAppear(): void {
+    this.fontScale = this.getUIContext().fp2px(1) / this.getUIContext().vp2px(1);
     this.unsubscribeRuntime = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
       this.coreAvailable = snapshot.coreAvailable;
       this.previewLoading = snapshot.previewLoading;
-      // 快照未变化时保留列表引用，避免定时刷新重建网格、打断当前滚动位置。
+      // 保留未变化的引用，避免定时刷新打断列表滚动。
       const groups = visibleProxyGroups(snapshot.proxies, snapshot.proxyMode);
       if (groups.length !== this.proxyGroups.length || groups.some((group: ProxyGroupSnapshot, index: number): boolean =>
         group !== this.proxyGroups[index])) {
         this.proxyGroups = groups;
         this.groups = groups;
+        this.expandedGroups = this.expandedGroups.filter((name: string): boolean =>
+          groups.some((group: ProxyGroupSnapshot): boolean => group.name === name));
       }
       if (snapshot.proxySelections.length !== this.selections.length ||
         snapshot.proxySelections.some((selection: ProxySelection, index: number): boolean =>
           selection.group !== this.selections[index]?.group || selection.proxy !== this.selections[index]?.proxy)) {
         this.selections = snapshot.proxySelections;
       }
-      this.selectedGroup = snapshot.selectedProxyGroup;
       if (snapshot.delayOperations.length !== this.delayOperations.length ||
         snapshot.delayOperations.some((operation: ProxyDelayOperationSnapshot, index: number): boolean =>
           operation.operationId !== this.delayOperations[index]?.operationId ||
@@ -77,78 +81,84 @@ export struct ProxyPage {
   }
 
   private updateWidth(width: Length): void {
-    this.metrics = resolveResponsiveMetrics(resolveContentWidth(width), this.forceExpanded);
+    this.contentWidth = resolveContentWidth(width);
+    this.metrics = resolveResponsiveMetrics(this.contentWidth, this.forceExpanded);
+    this.fontScale = this.getUIContext().fp2px(1) / this.getUIContext().vp2px(1);
   }
 
-  private currentGroup(): ProxyGroupSnapshot | undefined {
-    return this.groups.find((group: ProxyGroupSnapshot): boolean => group.name === this.selectedGroup);
+  private columnCount(): number {
+    return proxyGroupColumnCount(this.contentWidth, this.fontScale);
   }
 
-  private preselectedNode(group: string): string {
-    return this.selections.find((selection: ProxySelection): boolean => selection.group === group)?.proxy ?? '';
+  private nodeColumnCount(): number {
+    const width = (this.contentWidth - this.metrics.pagePadding * 2 -
+      (this.columnCount() - 1) * this.metrics.cardGap) / this.columnCount();
+    return proxyNodeColumnCount(width, this.fontScale);
   }
 
-  // 运行时展示 Core 的实际选择；离线预览优先展示用户尚未应用的预选值。
-  private isNodeSelected(node: ProxyNodeSnapshot): boolean {
-    const group = this.currentGroup();
-    if (this.coreAvailable) {
-      return group?.selected === node.name;
-    }
-    const preselected = this.preselectedNode(group?.name ?? '');
-    return (preselected.length > 0 ? preselected : (group?.selected ?? '')) === node.name;
+  private groupIndexes(column: number): number[] {
+    return this.groups.map((_group: ProxyGroupSnapshot, index: number): number => index)
+      .filter((index: number): boolean => this.query.trim().length === 0 ||
+        this.groups[index].name.toLocaleLowerCase().includes(this.query.trim().toLocaleLowerCase()) ||
+        filterProxyNodes(this.groups[index], this.query).length > 0)
+      .filter((_index: number, visibleIndex: number): boolean => visibleIndex % this.columnCount() === column);
   }
 
-  private isNodeTesting(node: ProxyNodeSnapshot): boolean {
-    const groupName = this.currentGroup()?.name ?? '';
+  private isExpanded(group: string): boolean {
+    return this.query.trim().length > 0 || this.expandedGroups.includes(group);
+  }
+
+  private selectedNode(group: ProxyGroupSnapshot): string {
+    const preselected = this.selections.find((selection: ProxySelection): boolean => selection.group === group.name)?.proxy;
+    return this.coreAvailable ? group.selected : (preselected || group.selected);
+  }
+
+  private isNodeTesting(group: string, node: string): boolean {
     return this.delayOperations.some((operation: ProxyDelayOperationSnapshot): boolean =>
-      operation.group === groupName && operation.pendingProxies.includes(node.name));
+      operation.group === group && operation.pendingProxies.includes(node));
   }
 
-  private isGroupTesting(): boolean {
-    const groupName = this.currentGroup()?.name ?? '';
+  private isGroupTesting(group: string): boolean {
     return this.delayOperations.some((operation: ProxyDelayOperationSnapshot): boolean =>
-      operation.group === groupName && operation.proxy.length === 0);
+      operation.group === group && operation.proxy.length === 0);
   }
 
-  private async selectNode(node: ProxyNodeSnapshot): Promise<void> {
-    const group = this.currentGroup();
-    if (group !== undefined && group.selectable && !this.selecting) {
-      this.selecting = true;
-      try {
-        await runtimeStore.selectProxy(group.name, node.name);
-        feedbackService.success(`已选择 ${node.name}`);
-      } catch (error) {
-        feedbackService.error(this.errorMessage(error));
-      } finally {
-        this.selecting = false;
-      }
-    }
-  }
-
-  private async testNode(node: ProxyNodeSnapshot): Promise<void> {
-    const group = this.currentGroup();
-    if (group !== undefined) {
-      try {
-        await runtimeStore.testDelay(group.name, node.name, this.settings.delayTestUrl);
-      } catch (error) {
-        feedbackService.error(this.errorMessage(error));
-      }
-    }
-  }
-
-  private async testCurrentGroup(): Promise<void> {
-    const group = this.currentGroup();
-    if (group === undefined) {
-      return;
-    }
+  private async selectNode(group: ProxyGroupSnapshot, node: ProxyNodeSnapshot): Promise<void> {
+    if (!group.selectable || this.selecting) { return; }
+    this.selecting = true;
     try {
-      await runtimeStore.testGroupDelay(group.name, this.settings.delayTestUrl);
+      await runtimeStore.selectProxy(group.name, node.name);
+      feedbackService.success(`已选择 ${node.name}`);
+    } catch (error) {
+      feedbackService.error(this.errorMessage(error));
+    } finally {
+      this.selecting = false;
+    }
+  }
+
+  private async testNode(group: string, node: string): Promise<void> {
+    try {
+      await runtimeStore.testDelay(group, node, this.settings.delayTestUrl);
     } catch (error) {
       feedbackService.error(this.errorMessage(error));
     }
   }
 
-  private async selectGroup(group: string): Promise<void> {
+  private async testGroup(group: string): Promise<void> {
+    try {
+      await runtimeStore.testGroupDelay(group, this.settings.delayTestUrl);
+    } catch (error) {
+      feedbackService.error(this.errorMessage(error));
+    }
+  }
+
+  private async toggleGroup(group: string): Promise<void> {
+    if (this.isExpanded(group)) {
+      this.query = '';
+      this.expandedGroups = this.expandedGroups.filter((name: string): boolean => name !== group);
+      return;
+    }
+    this.expandedGroups = this.expandedGroups.concat(group);
     try {
       await runtimeStore.selectProxyGroup(group);
     } catch (error) {
@@ -156,132 +166,217 @@ export struct ProxyPage {
     }
   }
 
+  private locateSelected(group: ProxyGroupSnapshot, column: number): void {
+    const nodeIndex = filterProxyNodes(group, this.query)
+      .findIndex((node: ProxyNodeSnapshot): boolean => node.name === this.selectedNode(group));
+    const groupIndex = this.groupIndexes(column).findIndex((index: number): boolean => this.groups[index].name === group.name);
+    if (nodeIndex >= 0 && groupIndex >= 0) {
+      try {
+        this.scrollers[column].scrollToItemInGroup(groupIndex, Math.floor(nodeIndex / this.nodeColumnCount()), false,
+          ScrollAlign.CENTER);
+      } catch (error) {
+        feedbackService.error(this.errorMessage(error));
+      }
+    }
+  }
+
   private errorMessage(error: Object): string {
     const exception = error as Error;
-    return typeof exception.message === 'string' && exception.message.length > 0 ?
-      exception.message : '代理操作失败';
+    return typeof exception.message === 'string' && exception.message.length > 0 ? exception.message : '代理操作失败';
   }
 
   @Builder
-  private testGroupButton() {
-    Button({ type: ButtonType.Normal }) {
-      if (this.isGroupTesting()) {
-        LoadingProgress().width(HEADER_ACTION_ICON_SIZE).height(HEADER_ACTION_ICON_SIZE).color($r('app.color.nav_selected'))
-      } else {
-        Image($r('app.media.action_refresh')).width(HEADER_ACTION_ICON_SIZE).height(HEADER_ACTION_ICON_SIZE)
-          .fillColor($r('app.color.nav_selected'))
+  private headerActions() {
+    Row({ space: 8 }) {
+      Button({ type: ButtonType.Circle }) {
+        Image($r('app.media.action_search')).width(24).height(24)
+          .fillColor($r('app.color.content_primary')).accessibilityLevel('no')
       }
+      .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).backgroundColor($r('app.color.card_background'))
+      .accessibilityText(this.searchVisible ? '关闭代理搜索' : '搜索代理组和节点')
+      .onClick((): void => { this.searchVisible = !this.searchVisible; this.query = ''; })
+      Button({ type: ButtonType.Circle }) {
+        Image($r('app.media.action_more')).width(24).height(24).rotate({ angle: 90 })
+          .fillColor($r('app.color.content_primary')).accessibilityLevel('no')
+      }
+      .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).backgroundColor($r('app.color.card_background'))
+      .accessibilityText('代理页面更多操作')
+      .bindMenu([
+        { value: '展开全部', action: (): void => {
+          this.expandedGroups = this.groups.map((group: ProxyGroupSnapshot): string => group.name);
+        } },
+        { value: '收起全部', action: (): void => { this.query = ''; this.expandedGroups = []; } }
+      ])
     }
-    .width(HEADER_ACTION_SIZE).height(HEADER_ACTION_SIZE)
-    .responseRegion({ x: -8, y: -8, width: CONTROL_HEIGHT, height: CONTROL_HEIGHT })
-    .padding(0).borderRadius(8)
-    .backgroundColor($r('app.color.nav_selected_background'))
-    .enabled(!this.isGroupTesting() && !this.previewLoading && this.currentGroup() !== undefined)
-    .accessibilityText(this.isGroupTesting() ? '当前代理组正在测速' : `测试代理组 ${this.selectedGroup} 的节点延迟`)
-    .onClick((): void => { this.testCurrentGroup(); })
   }
 
   @Builder
-  private groupContent() {
-    Column({ space: 16 }) {
-      Text(`${this.selectedGroup} · ${this.currentGroup()?.nodes.length ?? 0} 个节点`)
-        .fontSize(CAPTION_FONT_SIZE)
-        .fontColor($r('app.color.content_secondary'))
-        .width('100%')
-        .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
-      Stack() {
-        if ((this.currentGroup()?.nodes.length ?? 0) === 0) {
-          EmptyStateBackground({
-            icon: $r('app.media.nav_proxy'), title: '当前代理组暂无节点', description: '尝试其他代理组，或更新活动配置。'
-          })
+  private groupActions(group: ProxyGroupSnapshot, column: number) {
+    Row({ space: 4 }) {
+      Button({ type: ButtonType.Circle }) {
+        Image($r('app.media.action_locate')).width(20).height(20)
+          .fillColor($r('app.color.content_primary')).accessibilityLevel('no')
+      }
+      .width(44).height(44).backgroundColor(Color.Transparent)
+      .enabled(filterProxyNodes(group, this.query).some((node: ProxyNodeSnapshot): boolean =>
+        node.name === this.selectedNode(group)))
+      .accessibilityText(`定位 ${group.name} 当前节点`)
+      .onClick((): void => { this.locateSelected(group, column); })
+      Button({ type: ButtonType.Circle }) {
+        if (this.isGroupTesting(group.name)) {
+          LoadingProgress().width(20).height(20).color($r('app.color.action_primary'))
+        } else {
+          Image($r('app.media.action_bolt')).width(20).height(20)
+            .fillColor($r('app.color.content_primary')).accessibilityLevel('no')
         }
-        Grid(this.nodeScroller) {
-          ForEach(this.currentGroup()?.nodes ?? [], (node: ProxyNodeSnapshot, index: number) => {
-            GridItem() {
-              ProxyNodeCard({
-                // Resolve from state so a stable key does not retain the original node.
-                node: this.currentGroup()?.nodes[index] ?? node,
-                selected: this.isNodeSelected(node),
-                canSelect: this.currentGroup()?.selectable === true,
-                testing: this.isNodeTesting(node),
-                canTest: !this.previewLoading,
-                onSelect: (): void => { this.selectNode(node); },
-                onTest: (): void => { this.testNode(node); }
-              })
+      }
+      .width(44).height(44).backgroundColor(Color.Transparent)
+      .enabled(!this.isGroupTesting(group.name) && !this.previewLoading && group.nodes.length > 0)
+      .accessibilityText(this.isGroupTesting(group.name) ? `${group.name} 正在测速` : `测试 ${group.name} 全部节点延迟`)
+      .onClick((): void => { this.testGroup(group.name); })
+    }
+    .borderRadius(24).backgroundColor($r('app.color.proxy_node_background'))
+  }
+
+  @Builder
+  private groupHeader(group: ProxyGroupSnapshot, column: number) {
+    Column({ space: 8 }) {
+      Row({ space: 8 }) {
+        Button({ type: ButtonType.Normal }) {
+          Row({ space: 12 }) {
+            Text(Array.from(group.name)[0]?.toLocaleUpperCase() ?? '')
+              .width(36).height(40).textAlign(TextAlign.Center).fontSize(18).fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.content_secondary')).borderRadius(14)
+              .backgroundColor($r('app.color.proxy_node_background')).accessibilityLevel('no')
+            Column({ space: 4 }) {
+              Text(group.name).fontSize(16).fontWeight(FontWeight.Bold)
+                .fontColor($r('app.color.content_primary')).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+                .width('100%')
+              Text(this.selectedNode(group) || '暂无选择').fontSize(CAPTION_FONT_SIZE)
+                .fontColor($r('app.color.content_secondary')).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+                .width('100%')
             }
-          }, (node: ProxyNodeSnapshot): string => `${this.selectedGroup.length}:${this.selectedGroup}:${proxyNodeRenderKey(node)}`)
-        }
-        .columnsTemplate(this.metrics.proxyColumns)
-        .columnsGap(this.metrics.cardGap)
-        .rowsGap(this.metrics.cardGap)
-        .width('100%').height('100%')
-        .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
-        .scrollBar(BarState.Off)
-        .onAppear((): void => {
-          const index = this.currentGroup()?.nodes.findIndex((node: ProxyNodeSnapshot): boolean =>
-            this.isNodeSelected(node)) ?? -1;
-          if (index >= 0) {
-            this.nodeScroller.scrollToIndex(index, false, ScrollAlign.CENTER);
+            .layoutWeight(1).alignItems(HorizontalAlign.Start)
           }
-        })
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+          .width('100%').constraintSize({ minHeight: CONTROL_HEIGHT })
+        }
+        .layoutWeight(1).padding(0).borderRadius(16).backgroundColor(Color.Transparent)
+        .accessibilityText(`${group.name}，${group.type}，当前 ${this.selectedNode(group) || '暂无选择'}，` +
+          (this.isExpanded(group.name) ? '已展开，点击收起' : '已收起，点击展开'))
+        .onClick((): void => { this.toggleGroup(group.name); })
+        if (this.isExpanded(group.name) && this.fontScale <= 1.2) {
+          this.groupActions(group, column)
+        } else if (!this.isExpanded(group.name)) {
+          Text(group.type).fontSize(CAPTION_FONT_SIZE).fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.content_secondary')).constraintSize({ maxWidth: 80 })
+            .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        Button({ type: ButtonType.Circle }) {
+          Image($r('app.media.action_chevron_down')).width(24).height(24)
+            .rotate({ angle: this.isExpanded(group.name) ? 180 : 0 })
+            .fillColor($r('app.color.content_primary')).accessibilityLevel('no')
+        }
+        .width(44).height(44).backgroundColor($r('app.color.proxy_node_background'))
+        .accessibilityText(`${this.isExpanded(group.name) ? '收起' : '展开'} ${group.name}`)
+        .onClick((): void => { this.toggleGroup(group.name); })
       }
-      .width('100%').layoutWeight(1)
-      .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
-      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+      .width('100%')
+      if (this.isExpanded(group.name) && this.fontScale > 1.2) {
+        Row() { this.groupActions(group, column) }.width('100%').justifyContent(FlexAlign.End)
+      }
     }
-    .width('100%').height('100%').padding({ top: 8 })
+    .width('100%').padding(12).borderRadius(28).backgroundColor($r('app.color.card_background'))
   }
 
   @Builder
-  private mainContent() {
-    Column({ space: 16 }) {
-      PageHeader({
-        title: $r('app.string.nav_proxy'), contentPadding: this.metrics.pagePadding,
-        actions: (): void => { this.testGroupButton(); }
-      })
-      if (this.groups.length === 0) {
-        Stack() {
-          EmptyStateBackground({
-            icon: $r('app.media.nav_proxy'),
-            title: this.previewLoading ? '正在解析活动配置…' : '暂无可用代理组',
-            description: this.previewLoading ? '解析完成后会显示节点。' : '在配置页添加并选择一份有效配置后，即可查看节点。'
-          })
+  private groupColumn(column: number) {
+    List({ space: this.metrics.cardGap, scroller: this.scrollers[column] }) {
+      ForEach(this.groupIndexes(column), (groupIndex: number) => {
+        ListItemGroup({ header: this.groupHeader(this.groups[groupIndex], column) }) {
+          if (this.isExpanded(this.groups[groupIndex].name)) {
+            ForEach(filterProxyNodes(this.groups[groupIndex], this.query)
+              .filter((_node: ProxyNodeSnapshot, index: number): boolean => index % this.nodeColumnCount() === 0),
+              (_node: ProxyNodeSnapshot, row: number) => {
+                ListItem() {
+                  Row({ space: 8 }) {
+                    ForEach(filterProxyNodes(this.groups[groupIndex], this.query)
+                      .slice(row * this.nodeColumnCount(), (row + 1) * this.nodeColumnCount()),
+                      (node: ProxyNodeSnapshot, offset: number) => {
+                        Column() {
+                          // 从当前快照取值，使测速/选中变化无需更换列表 key。
+                          ProxyNodeCard({
+                            node: filterProxyNodes(this.groups[groupIndex], this.query)[row * this.nodeColumnCount() + offset],
+                            selected: this.selectedNode(this.groups[groupIndex]) === node.name,
+                            canSelect: this.groups[groupIndex].selectable,
+                            testing: this.isNodeTesting(this.groups[groupIndex].name, node.name),
+                            canTest: !this.previewLoading,
+                            onSelect: (): void => { this.selectNode(this.groups[groupIndex], node); },
+                            onTest: (): void => { this.testNode(this.groups[groupIndex].name, node.name); }
+                          })
+                        }.layoutWeight(1)
+                      }, (node: ProxyNodeSnapshot): string => proxyNodeRenderKey(node))
+                    if (this.nodeColumnCount() === 2 &&
+                      row * 2 + 1 >= filterProxyNodes(this.groups[groupIndex], this.query).length) {
+                      Blank().layoutWeight(1)
+                    }
+                  }
+                  .width('100%').alignItems(VerticalAlign.Top).padding({ left: 12, right: 12, bottom: 8 })
+                }
+              }, (node: ProxyNodeSnapshot, row: number): string => `${row}:${proxyNodeRenderKey(node)}`)
+            if (this.groups[groupIndex].nodes.length === 0) {
+              ListItem() {
+                Text('当前代理组暂无节点').fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
+                  .padding(16).width('100%')
+              }
+            }
+          }
         }
-        .width('100%').layoutWeight(1)
-        .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
-      } else {
-        Tabs({ index: this.groups.findIndex((group: ProxyGroupSnapshot): boolean => group.name === this.selectedGroup) }) {
-          ForEach(this.groups, (group: ProxyGroupSnapshot) => {
-            TabContent() { this.groupContent() }
-              .tabBar(textTabBar(group.name))
-          }, (group: ProxyGroupSnapshot): string => group.name)
-        }
-        .barMode(BarMode.Scrollable, { margin: this.metrics.pagePadding })
-        .barHeight(CONTROL_HEIGHT)
-        .barBackgroundColor(Color.Transparent)
-        .divider(null)
-        .scrollable(false)
-        .animationDuration(0)
-        .cachedMaxCount(0, TabsCacheMode.CACHE_LATEST_SWITCHED)
-        .onChange((index: number): void => {
-          const group = this.groups[index];
-          if (group !== undefined && group.name !== this.selectedGroup) { this.selectGroup(group.name); }
-        })
-        .width('100%').layoutWeight(1)
-      }
+        .borderRadius(28).backgroundColor($r('app.color.card_background'))
+      }, (groupIndex: number): string => `${groupIndex}:${this.groups[groupIndex].name}:${this.nodeColumnCount()}`)
     }
-    .alignItems(HorizontalAlign.Start)
-    .width('100%')
-    .height('100%')
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .sticky(StickyStyle.Header).scrollBar(BarState.Off)
+    .borderRadius(28).clip(true)
+    .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
+    .layoutWeight(1).height('100%')
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
 
   build() {
-    Column() {
-      this.mainContent()
+    Column({ space: this.metrics.sectionGap }) {
+      PageHeader({
+        title: $r('app.string.nav_proxy'), contentPadding: this.metrics.pagePadding,
+        actions: (): void => { this.headerActions(); }
+      })
+      if (this.searchVisible) {
+        Search({ value: this.query, placeholder: '搜索代理组、节点或协议' })
+          .height(CONTROL_HEIGHT).fontColor($r('app.color.content_primary'))
+          .backgroundColor($r('app.color.card_background')).borderRadius(24)
+          .margin({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
+          .accessibilityText('搜索代理组、节点或协议')
+          .onChange((value: string): void => { this.query = value; })
+      }
+      if (this.groups.length === 0 || this.groupIndexes(0).length === 0) {
+        Stack() {
+          EmptyStateBackground({
+            icon: $r('app.media.nav_proxy'),
+            title: this.previewLoading ? '正在解析活动配置…' :
+              (this.groups.length === 0 ? '暂无可用代理组' : '没有匹配的代理'),
+            description: this.previewLoading ? '解析完成后会显示节点。' : (this.groups.length === 0 ?
+              '在配置页添加并选择一份有效配置后，即可查看节点。' : '尝试其他关键词，或清空搜索。')
+          })
+        }
+        .width('100%').layoutWeight(1).padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
+      } else {
+        Row({ space: this.metrics.cardGap }) {
+          this.groupColumn(0)
+          if (this.columnCount() === 2) { this.groupColumn(1) }
+        }
+        .width('100%').layoutWeight(1).alignItems(VerticalAlign.Top)
+        .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+      }
     }
-    .width('100%').height('100%')
+    .alignItems(HorizontalAlign.Start).width('100%').height('100%')
     .backgroundColor($r('app.color.app_background'))
     .onAreaChange((_old: Area, area: Area): void => { this.updateWidth(area.width); })
   }

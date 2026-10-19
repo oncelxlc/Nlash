@@ -382,12 +382,22 @@ export function failPendingGroupDelay(groups: ProxyGroupSnapshot[], groupName: s
 
 export function proxyDelayLabel(node: ProxyNodeSnapshot, testing: boolean): string {
   if (testing) {
-    return '…';
+    return '测速中';
   }
   if (!node.tested) {
-    return '⚡';
+    return '未测速';
   }
-  return node.alive && node.delay > 0 ? `${node.delay}ms` : 'Error';
+  return node.alive && node.delay > 0 ? `${node.delay} ms` : '超时';
+}
+
+/** 匹配组名时展示整组，否则只展示名称或协议匹配的节点。 */
+export function filterProxyNodes(group: ProxyGroupSnapshot, query: string): ProxyNodeSnapshot[] {
+  const keyword = query.trim().toLocaleLowerCase();
+  if (keyword.length === 0 || group.name.toLocaleLowerCase().includes(keyword)) {
+    return group.nodes;
+  }
+  return group.nodes.filter((node: ProxyNodeSnapshot): boolean =>
+    node.name.toLocaleLowerCase().includes(keyword) || node.type.toLocaleLowerCase().includes(keyword));
 }
 
 export function proxyNodeRenderKey(node: ProxyNodeSnapshot): string {

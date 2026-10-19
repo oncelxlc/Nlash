@@ -13,6 +13,7 @@ import settingsModelsTest from './SettingsModels.test';
 import notificationModelsTest from './NotificationModels.test';
 import uiUtilsTest from './UiUtils.test';
 import dashboardLayoutTest from './DashboardLayout.test';
+import proxyPresentationTest from './ProxyPresentation.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -30,4 +31,5 @@ export default function testsuite() {
   notificationModelsTest();
   uiUtilsTest();
   dashboardLayoutTest();
+  proxyPresentationTest();
 }
