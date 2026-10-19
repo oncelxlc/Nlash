@@ -195,6 +195,12 @@ func (runtime *coreRuntime) executeCommand(raw string) string {
 	if command.Type == "testDelay" || command.Type == "testGroupDelay" {
 		return marshalCommandResponse(runtime.executeDelayCommand(command))
 	}
+	if command.Type == "updateGeoResources" {
+		return marshalCommandResponse(runtime.updateGeoResources(0))
+	}
+	if command.Type == "saveGeoSettings" {
+		return marshalCommandResponse(runtime.saveGeoSettings(command.Payload))
+	}
 	runtime.mu.RLock()
 	defer runtime.mu.RUnlock()
 	if command.Type == "previewProxySnapshot" {
@@ -220,6 +226,15 @@ func (runtime *coreRuntime) executeCommand(raw string) string {
 		response = commandSuccess(runtime.proxySnapshot())
 	case "connectionSnapshot":
 		response = commandSuccess(runtime.connectionsSnapshot())
+	case "dnsSnapshot":
+		response = commandSuccess(dnsHistory.snapshot())
+	case "resourceSnapshot":
+		snapshot, err := runtime.resourceSnapshot()
+		if err != nil {
+			response = commandFailure("READ_FAILED", "读取资源状态失败")
+		} else {
+			response = commandSuccess(snapshot)
+		}
 	case "selectProxy":
 		var payload selectProxyPayload
 		if !decodeCommandPayload(command.Payload, &payload) {

@@ -16,12 +16,14 @@ import {
 } from '../utils/ResponsiveUtils';
 import { CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CAPTION_FONT_SIZE } from '../constants/UiConstants';
 import { PageHeader } from '../components/PageHeader';
+import { FadingScrollLayout } from '../components/FadingScrollLayout';
 import { EmptyStateBackground } from '../components/EmptyStateBackground';
 import { ProxyNodeCard } from '../components/ProxyNodeCard';
 
 /** 策略组可独立展开；节点选择、分组偏好和并发测速仍由 RuntimeStore 管理。 */
 @Component
 export struct ProxyPage {
+  @State headerInset: number = 0;
   @Prop forceExpanded: boolean = false;
   @State coreAvailable: boolean = false;
   private selecting: boolean = false;
@@ -357,12 +359,14 @@ export struct ProxyPage {
     }
     .sticky(StickyStyle.Header).scrollBar(BarState.Off)
     .borderRadius(28).clip(true)
+    .contentStartOffset(this.headerInset)
     .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
     .layoutWeight(1).height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
 
-  build() {
+  @Builder
+  private pageHeader() {
     Column({ space: this.metrics.sectionGap }) {
       PageHeader({
         title: $r('app.string.nav_proxy'), contentPadding: this.metrics.pagePadding,
@@ -376,29 +380,42 @@ export struct ProxyPage {
           .accessibilityText('搜索代理组、节点或协议')
           .onChange((value: string): void => { this.query = value; })
       }
-      if (this.groups.length === 0 || this.groupIndexes(0).length === 0) {
-        Stack() {
-          EmptyStateBackground({
-            icon: $r('app.media.nav_proxy'),
-            title: this.previewLoading ? '正在解析活动配置…' :
-              (this.groups.length === 0 ? '暂无可用代理组' : '没有匹配的代理'),
-            description: this.previewLoading ? '解析完成后会显示节点。' : (this.groups.length === 0 ?
-              '在配置页添加并选择一份有效配置后，即可查看节点。' : '尝试其他关键词，或清空搜索。')
-          })
-        }
-        .width('100%').layoutWeight(1).padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
-      } else {
-        Row({ space: this.metrics.cardGap }) {
-          this.groupColumn(0)
-          if (this.columnCount() === 2) { this.groupColumn(1) }
-        }
-        .width('100%').layoutWeight(1).alignItems(VerticalAlign.Top)
-        .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-      }
     }
-    .alignItems(HorizontalAlign.Start).width('100%').height('100%')
-    .backgroundColor($r('app.color.app_background'))
+    .width('100%')
+  }
+
+  @Builder
+  private scrollContent() {
+    if (this.groups.length === 0 || this.groupIndexes(0).length === 0) {
+      Stack() {
+        EmptyStateBackground({
+          icon: $r('app.media.nav_proxy'),
+          title: this.previewLoading ? '正在解析活动配置…' :
+            (this.groups.length === 0 ? '暂无可用代理组' : '没有匹配的代理'),
+          description: this.previewLoading ? '解析完成后会显示节点。' : (this.groups.length === 0 ?
+            '在配置页添加并选择一份有效配置后，即可查看节点。' : '尝试其他关键词，或清空搜索。')
+        })
+      }
+      .width('100%').height('100%')
+      .padding({ top: this.headerInset, left: this.metrics.pagePadding, right: this.metrics.pagePadding })
+    } else {
+      Row({ space: this.metrics.cardGap }) {
+        this.groupColumn(0)
+        if (this.columnCount() === 2) { this.groupColumn(1) }
+      }
+      .width('100%').height('100%').alignItems(VerticalAlign.Top)
+      .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+    }
+  }
+
+  build() {
+    FadingScrollLayout({
+      topInset: $headerInset,
+      gap: this.metrics.sectionGap,
+      header: (): void => { this.pageHeader(); },
+      content: (): void => { this.scrollContent(); }
+    })
     .onAreaChange((_old: Area, area: Area): void => { this.updateWidth(area.width); })
   }
 }

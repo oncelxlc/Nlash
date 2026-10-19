@@ -102,7 +102,9 @@ export default function profileFeaturesTest() {
     it('refreshesPublicNetworkOnlyForRelevantProxyChanges', 0, () => {
       expect(shouldRefreshPublicNetworkAfterProxyStateChange(ProxyState.ENABLING, ProxyState.ENABLED)).assertTrue();
       expect(shouldRefreshPublicNetworkAfterProxyStateChange(ProxyState.ENABLED, ProxyState.ENABLED)).assertFalse();
-      expect(shouldRefreshPublicNetworkAfterProxyStateChange(ProxyState.ENABLED, ProxyState.DISABLED)).assertFalse();
+      expect(shouldRefreshPublicNetworkAfterProxyStateChange(ProxyState.ENABLED, ProxyState.DISABLED)).assertTrue();
+      expect(shouldRefreshPublicNetworkAfterProxyStateChange(ProxyState.DISABLING, ProxyState.DISABLED)).assertTrue();
+      expect(shouldRefreshPublicNetworkAfterProxyStateChange(ProxyState.DISABLED, ProxyState.DISABLED)).assertFalse();
       expect(shouldRefreshPublicNetworkAfterProxySelection('Node A', 'Node B', true, true)).assertTrue();
       expect(shouldRefreshPublicNetworkAfterProxySelection('Node A', 'Node A', true, true)).assertFalse();
       expect(shouldRefreshPublicNetworkAfterProxySelection('Node A', 'Node B', true, false)).assertFalse();

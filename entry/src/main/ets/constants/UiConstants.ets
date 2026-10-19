@@ -1,5 +1,6 @@
 export const BUTTON_RADIUS: number = 12;
 export const CARD_RADIUS: number = 16;
+export const DETAIL_CARD_RADIUS: number = 24;
 export const CONTROL_HEIGHT: number = 48;
 export const HEADER_CONTENT_HEIGHT: number = 36;
 export const HEADER_ACTION_SIZE: number = 32;

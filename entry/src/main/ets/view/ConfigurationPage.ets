@@ -24,11 +24,13 @@ import {
 } from '../constants/UiConstants';
 
 import { PageHeader } from '../components/PageHeader';
+import { FadingScrollLayout } from '../components/FadingScrollLayout';
 import { EmptyStateBackground } from '../components/EmptyStateBackground';
 
 /** 配置管理页面，编辑草稿独立于 Store，下载、保存与活动配置切换统一交给 ProfileStore。 */
 @Component
 export struct ConfigurationPage {
+  @State headerInset: number = 0;
   @Prop forceExpanded: boolean = false;
   @State profiles: Profile[] = [];
   @State activeProfileId: string = '';
@@ -563,57 +565,65 @@ export struct ConfigurationPage {
   }
 
   @Builder
-  private editorContent() {
-    Column({ space: 16 }) {
-      Row({ space: 12 }) {
-        Button({ type: ButtonType.Normal }) {
-          Image($r('app.media.action_back')).width(HEADER_ACTION_ICON_SIZE).height(HEADER_ACTION_ICON_SIZE)
-            .fillColor($r('app.color.content_primary'))
-        }
-        .width(HEADER_ACTION_SIZE).height(HEADER_ACTION_SIZE).padding(0).borderRadius(8)
-        .responseRegion({ x: -8, y: -8, width: CONTROL_HEIGHT, height: CONTROL_HEIGHT })
-        .backgroundColor($r('app.color.surface_muted'))
-        .accessibilityText('返回配置列表')
-        .onClick((): void => { this.requestCloseEditor(); })
-        Text('编辑配置').fontSize(PAGE_TITLE_SIZE).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary'))
-          .constraintSize({ minHeight: HEADER_CONTENT_HEIGHT })
-          .layoutWeight(1)
+  private editorHeader() {
+    Row({ space: 12 }) {
+      Button({ type: ButtonType.Normal }) {
+        Image($r('app.media.action_back')).width(HEADER_ACTION_ICON_SIZE).height(HEADER_ACTION_ICON_SIZE)
+          .fillColor($r('app.color.content_primary'))
       }
-      .width('100%')
-      .constraintSize({ maxWidth: 720 })
-      .padding({
-        top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding
-      })
-      Scroll() {
-        Column({ space: 16 }) {
-          this.editorFields()
-          Button(this.busyProfileId.length > 0 ? '保存中…' :
-            (this.editingProfile()?.type === ProfileType.SUBSCRIPTION ? '保存并更新' : '保存名称'))
-            .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
-            .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.action_primary'))
-            .enabled(this.busyProfileId.length === 0)
-            .onClick((): void => { this.saveEditor(); })
-        }
-        .width('100%')
-        .constraintSize({ maxWidth: 720, minHeight: '100%' })
-        .alignItems(HorizontalAlign.Start)
-        .padding({
-          left: this.metrics.pagePadding, right: this.metrics.pagePadding,
-          bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
-        })
-      }
-      .width('100%').layoutWeight(1)
-      .scrollBar(BarState.Off)
-      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+      .width(HEADER_ACTION_SIZE).height(HEADER_ACTION_SIZE).padding(0).borderRadius(8)
+      .responseRegion({ x: -8, y: -8, width: CONTROL_HEIGHT, height: CONTROL_HEIGHT })
+      .backgroundColor($r('app.color.surface_muted'))
+      .accessibilityText('返回配置列表')
+      .onClick((): void => { this.requestCloseEditor(); })
+      Text('编辑配置').fontSize(PAGE_TITLE_SIZE).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary'))
+        .constraintSize({ minHeight: HEADER_CONTENT_HEIGHT })
+        .layoutWeight(1)
     }
     .width('100%')
-    .height('100%')
-    .backgroundColor($r('app.color.app_background'))
+    .constraintSize({ maxWidth: 720 })
+    .padding({
+      top: this.metrics.pagePadding, left: this.metrics.pagePadding, right: this.metrics.pagePadding
+    })
+  }
+
+  @Builder
+  private editorScrollContent() {
+    Scroll() {
+      Column({ space: 16 }) {
+        this.editorFields()
+        Button(this.busyProfileId.length > 0 ? '保存中…' :
+          (this.editingProfile()?.type === ProfileType.SUBSCRIPTION ? '保存并更新' : '保存名称'))
+          .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
+          .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.action_primary'))
+          .enabled(this.busyProfileId.length === 0)
+          .onClick((): void => { this.saveEditor(); })
+      }
+      .width('100%')
+      .constraintSize({ maxWidth: 720, minHeight: '100%' })
+      .alignItems(HorizontalAlign.Start)
+      .padding({
+        top: this.headerInset, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
+        bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET
+      })
+    }
+    .width('100%').height('100%')
+    .scrollBar(BarState.Off)
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
 
   @Builder
-  private mainContent() {
+  private editorContent() {
+    FadingScrollLayout({
+      topInset: $headerInset,
+      header: (): void => { this.editorHeader(); },
+      content: (): void => { this.editorScrollContent(); }
+    })
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+  }
+
+  @Builder
+  private mainHeader() {
     Column({ space: this.metrics.sectionGap }) {
       PageHeader({
         title: $r('app.string.nav_configuration'), contentPadding: this.metrics.pagePadding,
@@ -622,34 +632,48 @@ export struct ConfigurationPage {
       if (this.busyProfileId === 'import') {
         this.statusBanner(this.metrics.pagePadding)
       }
-      if (this.profiles.length === 0) {
-        Stack() {
-          EmptyStateBackground({
-            icon: $r('app.media.nav_configuration'), title: '暂无配置'
-          })
-        }
-        .width('100%').layoutWeight(1)
-        .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
-      } else {
-        List({ space: this.metrics.cardGap }) {
-          ForEach(this.profiles, (profile: Profile) => {
-            ListItem() { this.profileCard(profile) }
-          }, (profile: Profile): string => `${profile.id}:${profile.updatedAt}`)
-            .onMove(this.busyProfileId.length === 0 ? (from: number, to: number): void => {
-              const profile = this.profiles[from];
-              if (profile !== undefined) { this.moveProfile(profile.id, to); }
-            } : undefined)
-        }
-        .lanes(this.metrics.profileColumns.split(' ').length, this.metrics.cardGap)
-        .width('100%').layoutWeight(1)
-        .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
-        .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
-        .scrollBar(BarState.Off)
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-      }
     }
-    .alignItems(HorizontalAlign.Start)
-    .width('100%').height('100%')
+    .width('100%')
+  }
+
+  @Builder
+  private profileList() {
+    if (this.profiles.length === 0) {
+      Stack() {
+        EmptyStateBackground({
+          icon: $r('app.media.nav_configuration'), title: '暂无配置'
+        })
+      }
+      .width('100%').height('100%')
+      .padding({ top: this.headerInset, left: this.metrics.pagePadding, right: this.metrics.pagePadding })
+    } else {
+      List({ space: this.metrics.cardGap }) {
+        ForEach(this.profiles, (profile: Profile) => {
+          ListItem() { this.profileCard(profile) }
+        }, (profile: Profile): string => `${profile.id}:${profile.updatedAt}`)
+          .onMove(this.busyProfileId.length === 0 ? (from: number, to: number): void => {
+            const profile = this.profiles[from];
+            if (profile !== undefined) { this.moveProfile(profile.id, to); }
+          } : undefined)
+      }
+      .lanes(this.metrics.profileColumns.split(' ').length, this.metrics.cardGap)
+      .width('100%').height('100%')
+      .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
+      .contentStartOffset(this.headerInset)
+      .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
+      .scrollBar(BarState.Off)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+    }
+  }
+
+  @Builder
+  private mainContent() {
+    FadingScrollLayout({
+      topInset: $headerInset,
+      gap: this.metrics.sectionGap,
+      header: (): void => { this.mainHeader(); },
+      content: (): void => { this.profileList(); }
+    })
   }
 
   @Builder

@@ -7,6 +7,21 @@ import { configurationEditorService } from '../main/ets/services/ConfigurationEd
 
 export default function navigationModelsTest() {
   describe('navigationModels', () => {
+    it('opensEverySettingsDetailAndReturnsWithoutLosingThePrimaryPage', 0, () => {
+      const state = new AppNavigationState();
+      [AppPage.REQUESTS, AppPage.CONNECTIONS, AppPage.DNS, AppPage.RESOURCES].forEach((page: AppPage): void => {
+        state.selectPage(page);
+        expect(state.detailPage).assertEqual(page);
+        expect(state.activityOpen).assertTrue();
+        expect(state.selectedPage).assertEqual(AppPage.SETTINGS);
+        state.selectPage(AppPage.SETTINGS);
+        expect(state.activityOpen).assertFalse();
+      });
+      state.selectPage(AppPage.REQUESTS);
+      state.selectPage(AppPage.DNS);
+      state.selectPage(AppPage.ACTIVITY);
+      expect(state.detailPage).assertEqual(AppPage.REQUESTS);
+    });
     it('exposesExpectedNavigationItems', 0, () => {
       expect(NAVIGATION_PAGES.length).assertEqual(4);
       expect(NAVIGATION_PAGES[0]).assertEqual(AppPage.DASHBOARD);

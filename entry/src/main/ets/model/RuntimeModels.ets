@@ -86,11 +86,30 @@ export interface ProxyDelayOperationSnapshot {
   pendingProxies: string[];
 }
 
-/** 保留上次成功出口；checking/errorMessage 表示本轮刷新状态，lastSuccessAt 为 Unix 毫秒。 */
+export enum IpNetworkType {
+  UNKNOWN = 'unknown',
+  HOSTING = 'hosting',
+  MOBILE = 'mobile',
+  NON_HOSTING = 'nonHosting'
+}
+
+export enum IpQuality {
+  UNKNOWN = 'unknown',
+  GOOD = 'good',
+  NORMAL = 'normal',
+  POOR = 'poor'
+}
+
+/** 保留上次成功出口；质量为 IPQuery 风险信息的本地分级，不代表网络速度。 */
 export interface PublicNetworkSnapshot {
   publicIpv4: string;
   country: string;
   countryCode: string;
+  organization?: string;
+  networkType?: IpNetworkType;
+  quality?: IpQuality;
+  riskScore?: number;
+  qualityError?: string;
   checking: boolean;
   lastSuccessAt?: number;
   errorMessage: string;
@@ -108,6 +127,8 @@ export interface ConnectionSnapshot {
   start: number;
   upload: number;
   download: number;
+  uploadSpeed?: number;
+  downloadSpeed?: number;
   chains: string[];
   rule: string;
   rulePayload: string;
@@ -126,6 +147,7 @@ export interface RequestRecord {
   network: string;
   host: string;
   destination: string;
+  source?: string;
   process: string;
   start: number;
   end: number;

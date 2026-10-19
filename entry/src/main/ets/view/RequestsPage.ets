@@ -1,207 +1,160 @@
 import { EmptyStateBackground } from '../components/EmptyStateBackground';
+import { SecondaryPageHeader } from '../components/SecondaryPageHeader';
+import { HeaderIconButton } from '../components/HeaderIconButton';
+import { ConnectionRoute } from '../components/ConnectionRoute';
 import { SingleChoiceControl } from '../components/SingleChoiceControl';
-import { formatLocalTime } from '../utils/DateUtils';
-import { formatBytes } from '../utils/RuntimeUtils';
 import { RequestRecord, RuntimeStoreSnapshot } from '../model/RuntimeModels';
+import { RequestFilter } from '../model/NavigationModels';
 import { feedbackService } from '../services/FeedbackService';
 import { runtimeStore } from '../stores/RuntimeStore';
-import { RequestFilter } from '../model/NavigationModels';
-import { StatusBadge } from '../components/StatusBadge';
-import {
-  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE
-} from '../constants/UiConstants';
+import { formatBytes } from '../utils/RuntimeUtils';
+import { formatRecordTime, requestEndpoint } from '../utils/ActivityUtils';
+import { revealTransition, selectionAnimation } from '../utils/AnimationUtils';
+import { CONTROL_HEIGHT, DETAIL_CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE } from '../constants/UiConstants';
 
 const FILTERS: RequestFilter[] = [RequestFilter.ALL, RequestFilter.ACTIVE, RequestFilter.COMPLETED];
 
-/** 展示会话内请求历史，通过父页状态组合活动/已完成筛选与文本查询。 */
+/** 会话历史按时间倒序展示；搜索展开后保留已有状态筛选与清空操作。 */
+interface RequestCardData { record: RequestRecord; }
+
 @Component
 export struct RequestsPage {
   @Prop contentPadding: number = 16;
-  @State requests: RequestRecord[] = [];
   @Link filter: RequestFilter;
   @Link query: string;
+  onBack: () => void = (): void => {};
+  @State requests: RequestRecord[] = [];
+  @State recordsById: Map<string, RequestRecord> = new Map<string, RequestRecord>();
+  @State searching: boolean = false;
   @State expandedId: string = '';
-  private unsubscribe: (() => void) | undefined = undefined;
+  private unsubscribe: (() => void) | undefined;
 
   aboutToAppear(): void {
+    this.searching = this.query.length > 0 || this.filter !== RequestFilter.ALL;
     this.unsubscribe = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
+      const records = new Map<string, RequestRecord>();
+      snapshot.requests.forEach((item: RequestRecord): void => { records.set(item.id, item); });
+      this.recordsById = records;
       this.requests = snapshot.requests;
     });
   }
 
-  aboutToDisappear(): void {
-    this.unsubscribe?.();
-    this.unsubscribe = undefined;
-  }
-
-  private filterLabel(filter: RequestFilter): string {
-    if (filter === RequestFilter.ACTIVE) {
-      return '进行中';
-    }
-    if (filter === RequestFilter.COMPLETED) {
-      return '已完成';
-    }
-    return '全部';
-  }
+  aboutToDisappear(): void { this.unsubscribe?.(); }
 
   private visibleRequests(): RequestRecord[] {
     const keyword = this.query.trim().toLowerCase();
     return this.requests.filter((record: RequestRecord): boolean => {
-      if (this.filter === RequestFilter.ACTIVE && !record.active) {
-        return false;
-      }
-      if (this.filter === RequestFilter.COMPLETED && record.active) {
-        return false;
-      }
-      if (keyword.length === 0) {
-        return true;
-      }
-      return record.host.toLowerCase().includes(keyword) || record.destination.toLowerCase().includes(keyword) ||
-        record.rule.toLowerCase().includes(keyword) || record.process.toLowerCase().includes(keyword);
+      if (this.filter === RequestFilter.ACTIVE && !record.active) { return false; }
+      if (this.filter === RequestFilter.COMPLETED && record.active) { return false; }
+      return [record.host, record.destination, record.rule, record.rulePayload, record.process, record.chains.join(' ')]
+        .join(' ').toLowerCase().includes(keyword);
     });
   }
 
-  private title(record: RequestRecord): string {
-    return record.host.length > 0 ? record.host : record.destination;
-  }
-
-  @Builder
-  private detailLine(value: string) {
-    Text(value)
-      .fontSize(CAPTION_FONT_SIZE)
-      .fontColor($r('app.color.content_secondary'))
-      .width('100%')
-      .wordBreak(WordBreak.BREAK_ALL)
-  }
-
-  @Builder
-  private requestRow(record: RequestRecord) {
-    Column({ space: 8 }) {
-      Button({ type: ButtonType.Normal }) {
-        Row({ space: 8 }) {
-          Column({ space: 6 }) {
-            Text(this.title(record))
-              .fontSize(BODY_FONT_SIZE)
-              .fontWeight(FontWeight.Medium)
-              .fontColor($r('app.color.content_primary'))
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-              .width('100%')
-            Text(`${record.network.toUpperCase()} · ${formatLocalTime(record.start)}`)
-              .fontSize(CAPTION_FONT_SIZE)
-              .fontColor($r('app.color.content_secondary'))
-              .width('100%')
-            Text(`↑ ${formatBytes(record.upload)}  ↓ ${formatBytes(record.download)}`)
-              .fontSize(CAPTION_FONT_SIZE)
-              .fontColor($r('app.color.content_secondary'))
-              .width('100%')
-          }
-          .alignItems(HorizontalAlign.Start)
-          .layoutWeight(1)
-          StatusBadge({ text: record.active ? '进行中' : '已完成', active: record.active })
-          Image($r('app.media.action_chevron_down'))
-            .width(16)
-            .height(16)
-            .fillColor($r('app.color.content_secondary'))
-            .rotate({ angle: this.expandedId === record.id ? 180 : 0 })
-        }
-        .width('100%')
-      }
-      .width('100%')
-      .constraintSize({ minHeight: 64 })
-      .padding({ top: 12, bottom: 12 })
-      .borderRadius(0)
-      .backgroundColor(Color.Transparent)
-      .accessibilityText(`${this.title(record)}，${this.expandedId === record.id ? '收起' : '展开'}请求详情`)
-      .onClick((): void => { this.expandedId = this.expandedId === record.id ? '' : record.id; })
-      if (this.expandedId === record.id) {
-        Column({ space: 8 }) {
-          this.detailLine(`主机：${this.title(record)}`)
-          this.detailLine(`地址：${record.destination}`)
-          this.detailLine(`规则：${record.rule || '未报告'}${record.rulePayload.length > 0 ? ` / ${record.rulePayload}` : ''}`)
-          this.detailLine(`链路：${record.chains.length > 0 ? record.chains.join(' → ') : '直连或未报告'}`)
-          this.detailLine(`进程：${record.process || '未报告'}`)
-        }
-        .width('100%')
-        .alignItems(HorizontalAlign.Start)
-        .padding({ bottom: 16 })
-      }
-      Divider().color($r('app.color.nav_divider'))
+  private async clearRecords(): Promise<void> {
+    const result = await this.getUIContext().getPromptAction().showDialog({
+      title: '清空最近请求？', message: '仅清空本次会话的记录，不会关闭活动连接。',
+      buttons: [{ text: '取消', color: $r('app.color.content_secondary') },
+        { text: '清空', color: $r('app.color.status_error') }]
+    });
+    if (result.index === 1) {
+      this.getUIContext().animateTo(selectionAnimation(), (): void => {
+        runtimeStore.clearRequests();
+        this.expandedId = '';
+      });
+      feedbackService.success('请求记录已清空');
     }
-    .width('100%')
-    .padding({ left: 16, right: 16 })
+  }
+
+  @Builder
+  private actions() {
+    HeaderIconButton({ label: this.searching ? '收起搜索与筛选' : '搜索与筛选最近请求',
+      onActivate: (): void => { this.searching = !this.searching; } })
+  }
+
+  @Builder
+  private searchControls() {
+    Column({ space: 12 }) {
+      TextInput({ placeholder: '搜索主机、地址、规则、进程或链路', text: this.query })
+        .id('request-search').height(CONTROL_HEIGHT).fontSize(BODY_FONT_SIZE)
+        .fontColor($r('app.color.content_primary')).placeholderColor($r('app.color.content_secondary'))
+        .backgroundColor($r('app.color.card_background')).borderRadius(24)
+        .accessibilityText('搜索最近请求').onChange((value: string): void => { this.query = value; })
+      SingleChoiceControl({ labels: ['全部', '进行中', '已完成'],
+        selectedIndex: FILTERS.indexOf(this.filter), accessibilityLabel: '请求状态筛选',
+        onChange: (index: number): void => { this.filter = FILTERS[index]; } })
+      Row() {
+        Text(`${this.visibleRequests().length} 条记录`).fontSize(CAPTION_FONT_SIZE)
+          .fontColor($r('app.color.content_secondary')).layoutWeight(1)
+        Button('清空记录').height(CONTROL_HEIGHT).fontSize(14)
+          .fontColor($r('app.color.status_error')).backgroundColor(Color.Transparent)
+          .enabled(this.requests.length > 0).onClick((): void => {
+            this.clearRecords().catch((): void => { feedbackService.error('无法完成清空操作，请重试'); });
+          })
+      }.width('100%')
+    }
+    .padding({ left: this.contentPadding, right: this.contentPadding, bottom: 12 })
+    .transition(revealTransition())
+  }
+
+  @Builder
+  private requestCard(data: RequestCardData) {
+    Button({ type: ButtonType.Normal }) {
+      Column({ space: 10 }) {
+        Row({ space: 10 }) {
+          Text(formatRecordTime(data.record.start)).fontSize(CAPTION_FONT_SIZE)
+            .fontColor($r('app.color.content_secondary')).layoutWeight(1)
+          Text(data.record.network.toUpperCase()).fontSize(CAPTION_FONT_SIZE).fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.content_secondary'))
+        }.width('100%')
+        Text(requestEndpoint(data.record.host, data.record.destination)).fontSize(18).fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.content_primary')).width('100%').wordBreak(WordBreak.BREAK_ALL)
+        if (data.record.host.length > 0) {
+          Text(data.record.destination).fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
+            .width('100%').wordBreak(WordBreak.BREAK_ALL)
+        }
+        ConnectionRoute({ rule: data.record.rule, payload: data.record.rulePayload, chains: data.record.chains.slice().reverse() })
+        Text(data.record.process || data.record.source || '来源未报告').fontSize(CAPTION_FONT_SIZE)
+          .fontColor($r('app.color.content_secondary')).width('100%').wordBreak(WordBreak.BREAK_ALL)
+        if (this.expandedId === data.record.id) {
+          Column({ space: 8 }) {
+            Divider().color($r('app.color.nav_divider'))
+            Text(`${data.record.active ? '进行中' : '已完成'} · ↑ ${formatBytes(data.record.upload)}  ↓ ${formatBytes(data.record.download)}`)
+              .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
+            if (data.record.end > 0) {
+              Text(`结束于 ${formatRecordTime(data.record.end)}`).fontSize(CAPTION_FONT_SIZE)
+                .fontColor($r('app.color.content_secondary')).width('100%')
+            }
+          }.width('100%').transition(revealTransition())
+        }
+      }.width('100%').alignItems(HorizontalAlign.Start)
+    }
+    .width('100%').padding(20).borderRadius(DETAIL_CARD_RADIUS)
     .backgroundColor($r('app.color.card_background'))
+    .accessibilityText(`${requestEndpoint(data.record.host, data.record.destination)}，${data.record.active ? '进行中' : '已完成'}，` +
+      `${this.expandedId === data.record.id ? '收起' : '展开'}请求详情`)
+    .onClick((): void => { this.expandedId = this.expandedId === data.record.id ? '' : data.record.id; })
   }
 
   build() {
-    Column({ space: 8 }) {
-      Column({ space: 8 }) {
-        TextInput({ placeholder: '搜索主机、地址、规则或进程', text: this.query })
-          .height(CONTROL_HEIGHT - 8)
-          .fontSize(BODY_FONT_SIZE)
-          .fontColor($r('app.color.content_primary'))
-          .placeholderColor($r('app.color.content_secondary'))
-          .backgroundColor($r('app.color.card_background'))
-          .borderRadius(BUTTON_RADIUS)
-          .accessibilityText('搜索请求记录')
-          .onChange((value: string): void => { this.query = value; })
-        SingleChoiceControl({
-          compact: true,
-          labels: FILTERS.map((filter: RequestFilter): string => this.filterLabel(filter)),
-          selectedIndex: FILTERS.indexOf(this.filter),
-          accessibilityLabel: '请求记录筛选',
-          onChange: (index: number): void => { this.filter = FILTERS[index]; }
-        })
-        Row({ space: 8 }) {
-          Text(`${this.visibleRequests().length} 条记录`)
-            .fontSize(CAPTION_FONT_SIZE)
-            .fontColor($r('app.color.content_secondary'))
-            .layoutWeight(1)
-          Button('清空记录')
-            .type(ButtonType.Normal)
-            .height(CONTROL_HEIGHT - 12)
-            .responseRegion({ x: 0, y: -6, width: '100%', height: CONTROL_HEIGHT })
-            .borderRadius(BUTTON_RADIUS)
-            .fontSize(14)
-            .fontColor($r('app.color.status_error'))
-            .backgroundColor(Color.Transparent)
-            .enabled(this.requests.length > 0)
-            .onClick((): void => {
-              runtimeStore.clearRequests();
-              this.expandedId = '';
-              feedbackService.success('请求记录已清空');
-            })
-        }
-        .width('100%')
-      }
-      .width('100%')
-      .padding({ left: this.contentPadding, right: this.contentPadding })
+    Column() {
+      SecondaryPageHeader({ title: '最近请求', contentPadding: this.contentPadding,
+        onBack: this.onBack, actions: (): void => { this.actions(); } })
+      if (this.searching) { this.searchControls() }
       Stack() {
         if (this.visibleRequests().length === 0) {
-          EmptyStateBackground({
-            icon: $r('app.media.nav_requests'),
+          EmptyStateBackground({ icon: $r('app.media.nav_requests'),
             title: this.requests.length === 0 ? '暂无请求记录' : '没有匹配的请求',
-            description: this.requests.length === 0 ?
-              '产生网络连接后，这里会保留最多 200 条本次会话记录。' : '尝试其他关键词，或切换为全部状态。'
-          })
+            description: this.requests.length === 0 ? '产生网络连接后，这里会保留最近 200 条会话记录。' :
+              '尝试其他关键词，或切换为全部状态。' })
         }
-        List() {
+        List({ space: 12 }) {
           ForEach(this.visibleRequests(), (record: RequestRecord) => {
-            ListItem() { this.requestRow(record) }
+            ListItem() { this.requestCard({ record: this.recordsById.get(record.id) ?? record }) }.transition(revealTransition())
           }, (record: RequestRecord): string => record.id)
         }
-        .width('100%').height('100%')
-        .borderRadius(CARD_RADIUS)
-        .contentEndOffset(FLOATING_NAVIGATION_INSET + 16)
-        .clip(true)
-        .scrollBar(BarState.Off)
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-      }
-      .width('100%').layoutWeight(1)
-      .padding({ left: this.contentPadding, right: this.contentPadding })
-      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-    }
-    .width('100%')
-    .layoutWeight(1)
+        .width('100%').height('100%').contentStartOffset(12).contentEndOffset(32).scrollBar(BarState.Off)
+      }.width('100%').layoutWeight(1).padding({ left: this.contentPadding, right: this.contentPadding })
+    }.width('100%').height('100%').backgroundColor($r('app.color.app_background'))
   }
 }

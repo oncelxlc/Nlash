@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -10,8 +11,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/metacubex/mihomo/component/dialer"
+	"github.com/metacubex/mihomo/component/geodata"
+	"github.com/metacubex/mihomo/component/mmdb"
 	"github.com/metacubex/mihomo/config"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/hub/executor"
@@ -75,6 +79,11 @@ type coreRuntime struct {
 	workDir            string
 	proxyEnabled       bool
 	proxyGroupOrder    []string
+	geoUpdating        atomic.Bool
+	geoGeneration      uint64
+	geoContext         context.Context
+	geoCancel          context.CancelFunc
+	geoTimer           *time.Timer
 }
 
 var runtimeInstance = &coreRuntime{state: coreStopped}
@@ -152,6 +161,7 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 		return runtime.reject(coreInvalidState, errors.New("core is already active"))
 	}
 	runtime.state = coreStarting
+	dnsHistory.clear()
 	runtime.lastError = ""
 	emitCoreEvent(coreEventLifecycle, runtime.state, coreOK, "starting core")
 	if options.configPath == "" || options.workDir == "" {
@@ -168,6 +178,11 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	}()
 	C.SetHomeDir(options.workDir)
 	C.SetConfig(options.configPath)
+	// 上轮停止后重新读取已更新文件，旧映射由 Reader 的 finalizer 回收。
+	mmdb.ReloadIP()
+	mmdb.ReloadASN()
+	geodata.ClearGeoIPCache()
+	geodata.ClearGeoSiteCache()
 	data, err := os.ReadFile(options.configPath)
 	if err != nil {
 		return runtime.setFailure(coreConfigInvalid, err)
@@ -193,6 +208,7 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	runtime.workDir = options.workDir
 	runtime.proxyGroupOrder = proxyGroupOrder
 	runtime.state = coreRunning
+	runtime.scheduleGeoUpdates()
 	emitCoreEvent(coreEventLifecycle, runtime.state, coreOK, "core is running")
 	return coreOK
 }
@@ -249,6 +265,7 @@ func (runtime *coreRuntime) applyConfig(configPath string, rollback bool) coreCo
 	runtime.previousConfigPath, runtime.previousConfigData = runtime.configPath, runtime.configData
 	runtime.configPath, runtime.configData = configPath, data
 	runtime.proxyGroupOrder = order
+	runtime.scheduleGeoUpdates()
 	runtime.lastError = ""
 	return commandSuccess(runtime.proxySnapshot())
 }
@@ -427,6 +444,9 @@ func parseRuntimeConfigData(data []byte, autoHealthChecks bool) (*config.Config,
 	}
 	proxyGroupOrder := rawProxyGroupOrder(raw)
 	applyHarmonyGeoMirrors(raw)
+	if err := applySavedGeoSettings(raw, C.Path.HomeDir()); err != nil {
+		return nil, nil, err
+	}
 	if !autoHealthChecks {
 		disableAutomaticHealthChecks(raw)
 	}
@@ -544,6 +564,7 @@ func (runtime *coreRuntime) stop() (code coreErrorCode) {
 		return coreInvalidState
 	}
 	runtime.state = coreStopping
+	runtime.scheduleGeoUpdates()
 	emitCoreEvent(coreEventLifecycle, runtime.state, coreOK, "stopping core")
 	defer func() {
 		if recovered := recover(); recovered != nil {

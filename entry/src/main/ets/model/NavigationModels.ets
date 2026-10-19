@@ -1,4 +1,4 @@
-/** 保留请求与连接的独立跳转目标，统一进入设置下的活动页。 */
+/** 保留旧活动页跳转目标，诊断与资源页面从设置独立进入。 */
 export enum AppPage {
   DASHBOARD,
   PROXY,
@@ -6,7 +6,9 @@ export enum AppPage {
   REQUESTS,
   CONNECTIONS,
   SETTINGS,
-  ACTIVITY
+  ACTIVITY,
+  DNS,
+  RESOURCES
 }
 
 export enum ActivityTab {

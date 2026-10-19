@@ -6,7 +6,7 @@ import { ActivityPage } from '../view/ActivityPage';
 import { DashboardPage } from '../view/DashboardPage';
 import { ProxyPage } from '../view/ProxyPage';
 import { SettingsPage } from '../view/SettingsPage';
-import { ActivityTab, AppPage } from '../model/NavigationModels';
+import { AppPage } from '../model/NavigationModels';
 import { NAVIGATION_PAGES } from '../constants/NavigationConstants';
 import { AppNavigationState } from '../navigation/AppNavigationState';
 import { feedbackService } from '../services/FeedbackService';
@@ -15,6 +15,7 @@ import { navigationIntentService } from '../services/NavigationIntentService';
 import { NavigationTransition, SettingsStoreSnapshot } from '../model/SettingsModels';
 import { settingsStore } from '../stores/SettingsStore';
 import { PageEntrance } from '../components/PageEntrance';
+import { detailTransition } from '../utils/AnimationUtils';
 
 /** 应用页面容器，统一导航、反馈展示及返回行为，并管理页面级订阅的释放。 */
 @Entry
@@ -51,7 +52,7 @@ struct Index {
     this.unsubscribeSettings = undefined;
   }
 
-  /** 返回优先级：活动页返回设置 → 编辑器关闭确认 → 仪表盘 → 后台。 */
+  /** 返回优先级：二级页返回设置 → 编辑器关闭确认 → 仪表盘 → 后台。 */
   onBackPress(): boolean {
     if (this.navigationState.activityOpen) {
       this.selectPage(AppPage.SETTINGS);
@@ -69,7 +70,7 @@ struct Index {
 
   private selectTab(index: number): void {
     const page = NAVIGATION_PAGES[index];
-    // 程序切到设置时的标签回调不能关闭刚打开的活动页。
+    // 程序切到设置时的标签回调不能关闭刚打开的二级页。
     if (page !== undefined && page !== this.navigationState.selectedPage) {
       this.selectPage(page);
     }
@@ -90,6 +91,8 @@ struct Index {
       case AppPage.SETTINGS:
         return $r('app.string.nav_settings');
       case AppPage.ACTIVITY:
+      case AppPage.DNS:
+      case AppPage.RESOURCES:
         return $r('app.string.nav_activity');
     }
   }
@@ -110,6 +113,10 @@ struct Index {
         return $r('app.media.nav_settings');
       case AppPage.ACTIVITY:
         return $r('app.media.nav_activity');
+      case AppPage.DNS:
+        return $r('app.media.nav_dns');
+      case AppPage.RESOURCES:
+        return $r('app.media.nav_resources');
     }
   }
 
@@ -150,12 +157,12 @@ struct Index {
       ConfigurationPage()
     } else if (page === AppPage.ACTIVITY) {
       ActivityPage({
+        page: this.navigationState.detailPage,
         selectedTab: this.navigationState.activityTab,
-        onTabChange: (tab: ActivityTab): void => { this.navigationState.selectActivityTab(tab); },
         onBack: (): void => { this.selectPage(AppPage.SETTINGS); }
       })
     } else if (page === AppPage.SETTINGS) {
-      SettingsPage({ onOpenActivity: (): void => { this.selectPage(AppPage.ACTIVITY); } })
+      SettingsPage({ onOpenPage: (destination: AppPage): void => { this.selectPage(destination); } })
     }
   }
 
@@ -203,10 +210,9 @@ struct Index {
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
 
       if (this.navigationState.activityOpen) {
-        PageEntrance({
-          effect: this.navigationTransition,
-          content: (): void => { this.pageContent(AppPage.ACTIVITY); }
-        })
+        Column() { this.pageContent(AppPage.ACTIVITY) }
+          .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
+          .transition(detailTransition(this.navigationTransition === NavigationTransition.SLIDE))
       }
     }
     .width('100%')

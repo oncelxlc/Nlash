@@ -5,7 +5,8 @@ import { SubscriptionUsageBar } from '../components/SubscriptionUsageBar';
 import { LengthMetrics } from '@kit.ArkUI';
 import { systemDateTime } from '@kit.BasicServicesKit';
 import { Profile, ProfileStoreSnapshot, ProfileType } from '../model/ProfileModels';
-import { DashboardSnapshot, PublicNetworkSnapshot, RuntimeMode, TrafficSample, ProxyGroupSnapshot } from '../model/RuntimeModels';
+import { DashboardSnapshot, IpNetworkType, IpQuality, PublicNetworkSnapshot, RuntimeMode,
+  TrafficSample, ProxyGroupSnapshot } from '../model/RuntimeModels';
 import { DEFAULT_RUNTIME_MODE } from '../constants/RuntimeConstants';
 import { CoreServiceState, ProxyState, RuntimeLifecycleSnapshot } from '../model/VpnModels';
 import { proxySessionElapsedSeconds, formatVpnRunDuration } from '../utils/VpnUtils';
@@ -28,11 +29,13 @@ import {
   CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, HEADER_ACTION_SIZE, HEADER_ACTION_ICON_SIZE
 } from '../constants/UiConstants';
 import { PageHeader } from '../components/PageHeader';
+import { FadingScrollLayout } from '../components/FadingScrollLayout';
 import { AppPage } from '../model/NavigationModels';
 import { navigationIntentService } from '../services/NavigationIntentService';
 
 import { DASHBOARD_CARD_RADIUS, DASHBOARD_CARD_PADDING } from '../constants/DashboardConstants';
 import { visibleProxyGroups } from '../utils/RuntimeUtils';
+import { selectionAnimation } from '../utils/AnimationUtils';
 
 const MODES: RuntimeMode[] = [RuntimeMode.RULE, RuntimeMode.GLOBAL, RuntimeMode.DIRECT];
 const VIEW_SYNC_INTERVAL_MS = 1000;
@@ -40,6 +43,7 @@ const VIEW_SYNC_INTERVAL_MS = 1000;
 /** 仪表盘按默认顺序聚合运行状态；用户操作交给 Store 与服务完成。 */
 @Component
 export struct DashboardPage {
+  @State headerInset: number = 0;
   @State coreState: CoreServiceState = vpnService.getCoreState();
   @State proxyState: ProxyState = vpnService.getProxyState();
   @State message: string = vpnService.getLastMessage();
@@ -51,11 +55,18 @@ export struct DashboardPage {
   @State publicIpv4: string = '未知';
   @State publicCountry: string = '未知地区';
   @State publicCountryCode: string = '';
+  @State publicOrganization: string = '';
+  @State publicNetworkType: IpNetworkType = IpNetworkType.UNKNOWN;
+  @State publicIpQuality: IpQuality = IpQuality.UNKNOWN;
+  @State publicIpRiskScore: number | undefined = undefined;
+  @State publicIpQualityError: string = '';
   @State groups: ProxyGroupSnapshot[] = [];
   @State requestCount: number = 0;
   @State contentWidth: number = 0;
+  @State statusCardHeight: number = 0;
   @State fontScale: number = 1;
-  @State publicNetworkChecking: boolean = true;
+  @State @Watch('updateCountryRotation') publicNetworkChecking: boolean = true;
+  @State countryRotation: number = 0;
   @State publicNetworkError: string = '';
   @State restarting: boolean = false;
   @State selectedMode: RuntimeMode = DEFAULT_RUNTIME_MODE;
@@ -144,20 +155,57 @@ export struct DashboardPage {
     this.publicIpv4 = snapshot.publicIpv4;
     this.publicCountry = snapshot.country;
     this.publicCountryCode = snapshot.countryCode;
+    this.publicOrganization = snapshot.organization ?? '';
+    this.publicNetworkType = snapshot.networkType ?? IpNetworkType.UNKNOWN;
+    this.publicIpQuality = snapshot.quality ?? IpQuality.UNKNOWN;
+    this.publicIpRiskScore = snapshot.riskScore;
+    this.publicIpQualityError = snapshot.qualityError ?? '';
     this.publicNetworkChecking = snapshot.checking;
     this.publicNetworkError = snapshot.errorMessage;
   }
 
-  private publicNetworkDetail(): string {
-    const location = this.publicCountry;
-    if (this.publicNetworkChecking) {
-      return this.publicIpv4 === '未知' ? '正在查询公网 IPv4…' : `${location} · 正在刷新`;
+  private updateCountryRotation(): void {
+    this.stopCountryRotation();
+    if (this.publicNetworkChecking && selectionAnimation().duration !== 0) {
+      this.getUIContext().animateTo({ duration: 1600, curve: Curve.Linear, iterations: -1 }, (): void => {
+        this.countryRotation = 360;
+      });
     }
-    if (this.publicNetworkError.length > 0) {
-      return this.publicIpv4 === '未知' ? this.publicNetworkError :
-        `${location} · 刷新失败`;
+  }
+
+  private stopCountryRotation(): void {
+    this.getUIContext().animateTo({ duration: 0 }, (): void => {
+      this.countryRotation = 0;
+    });
+  }
+
+  private ipTypeLabel(): string {
+    switch (this.publicNetworkType) {
+      case IpNetworkType.HOSTING: return '机房';
+      case IpNetworkType.MOBILE: return '移动';
+      case IpNetworkType.NON_HOSTING: return '非机房';
+      default: return '类型未知';
     }
-    return location;
+  }
+
+  private ipQualityLabel(): string {
+    if (this.publicNetworkChecking) { return '质量 校验中'; }
+    switch (this.publicIpQuality) {
+      case IpQuality.GOOD: return '质量 优';
+      case IpQuality.NORMAL: return '质量 普通';
+      case IpQuality.POOR: return '质量 较差';
+      default: return '质量 未知';
+    }
+  }
+
+  private ipQualityColor(): ResourceColor {
+    return this.publicIpQuality === IpQuality.GOOD ? $r('app.color.dashboard_success_text') :
+      (this.publicIpQuality === IpQuality.POOR ? $r('app.color.status_error') : $r('app.color.content_secondary'));
+  }
+
+  private ipQualityBackground(): ResourceColor {
+    return this.publicIpQuality === IpQuality.GOOD ? $r('app.color.dashboard_success_surface') :
+      (this.publicIpQuality === IpQuality.POOR ? $r('app.color.status_error_surface') : $r('app.color.dashboard_inset'));
   }
 
   private updateWidth(width: Length): void {
@@ -480,97 +528,150 @@ export struct DashboardPage {
 
   @Builder
   private proxyButton() {
-    Button({ type: ButtonType.Circle }) {
-      if (this.isProxyBusy()) {
-        LoadingProgress().width(28).height(28).color($r('app.color.dashboard_on_accent'))
-      } else {
-        Image(this.isProxyActive() ? $r('app.media.ic_public_pause') : $r('app.media.ic_public_play'))
-          .width(28).height(28).fillColor($r('app.color.dashboard_on_accent')).accessibilityLevel('no')
+    Button({ type: ButtonType.Normal }) {
+      Stack() {
+        Row().width('76%').height('76%').borderRadius(100).backgroundColor($r('app.color.dashboard_status_action'))
+          .shadow({ radius: this.getUIContext().vp2px(10), color: $r('app.color.dashboard_status_glow'), offsetY: 5 })
+          .accessibilityLevel('no')
+        if (this.proxyState === ProxyState.ENABLED || this.proxyState === ProxyState.DISABLING) {
+          Image($r('app.media.dashboard_bloom')).width('100%').height('100%')
+            .fillColor($r('app.color.dashboard_status_action')).accessibilityLevel('no')
+        } else {
+          Row().width('100%').height('100%').borderRadius(100)
+            .backgroundColor($r('app.color.dashboard_status_action')).accessibilityLevel('no')
+        }
+        if (this.isProxyBusy()) {
+          LoadingProgress().width(26).height(26).color(Color.White)
+        } else {
+          Image(this.isProxyActive() ? $r('app.media.ic_public_pause') : $r('app.media.ic_public_play'))
+            .width(this.isCompact() ? 24 : 30).height(this.isCompact() ? 24 : 30)
+            .fillColor(Color.White).accessibilityLevel('no')
+        }
       }
+      .width('100%').height('100%')
     }
     .id('dashboard-proxy-toggle')
-    .width(this.isCompact() ? 72 : 100).height(this.isCompact() ? 72 : 100).padding(0)
-    .backgroundColor($r('app.color.dashboard_accent'))
-    .enabled(this.canToggleProxy())
-    .opacity(this.canToggleProxy() ? 1 : 0.45)
+    .width(this.isCompact() ? 64 : 96).height(this.isCompact() ? 64 : 96).padding(0)
+    .backgroundColor(Color.Transparent).borderRadius(24)
+    .enabled(this.canToggleProxy()).opacity(this.canToggleProxy() ? 1 : 0.45)
     .accessibilityText(this.isProxyBusy() ? '正在切换 VPN 代理' : (this.isProxyActive() ? '关闭 VPN 代理' : '开启 VPN 代理'))
     .onClick((): void => { this.toggleProxy(!this.isProxyActive()); })
   }
 
   @Builder
+  private countryRefreshButton() {
+    Button({ type: ButtonType.Normal }) {
+      Stack() {
+        Image($r('app.media.dashboard_clover')).width('100%').height('100%')
+          .fillColor($r('app.color.dashboard_country_surface')).accessibilityLevel('no')
+          .rotate({ angle: this.countryRotation })
+          .onAppear((): void => { this.updateCountryRotation(); })
+          .onDisAppear((): void => { this.stopCountryRotation(); })
+        Text(this.publicCountryCode || '—').fontSize(14).fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.content_primary')).maxLines(1)
+      }
+      .width('100%').height('100%')
+    }
+    .id('dashboard-ip-refresh').width(this.isCompact() ? 44 : 52).height(this.isCompact() ? 44 : 52)
+    .padding(0).backgroundColor(Color.Transparent).borderRadius(12).enabled(!this.publicNetworkChecking)
+    .accessibilityText(`${this.publicCountry} ${this.publicCountryCode}，${this.publicNetworkChecking ? '正在刷新 IP 信息' : '刷新 IP 信息'}`)
+    .onClick((): void => { publicNetworkService.refresh(); })
+  }
+
+  @Builder
   private publicNetworkCard() {
     Stack({ alignContent: Alignment.End }) {
-      Image($r('app.media.dashboard_bloom')).width(this.isCompact() ? 190 : 260).height(this.isCompact() ? 190 : 260)
-        .fillColor(this.isProxyActive() ? $r('app.color.dashboard_accent_surface') : $r('app.color.dashboard_inset'))
-        .translate({ x: 54, y: -30 }).accessibilityLevel('no').hitTestBehavior(HitTestMode.None)
-      Column({ space: 20 }) {
-        Row({ space: 10 }) {
-          this.cardTitle($r('app.media.nav_dashboard'), '状态')
-          Text(this.isProxyActive() ? this.proxyStatus() : (this.hasStatusError() ? '异常' : '未运行'))
-            .fontSize(12).fontWeight(FontWeight.Medium)
-            .fontColor(this.hasStatusError() ? $r('app.color.status_error') :
-              (this.isProxyActive() ? $r('app.color.dashboard_success_text') : $r('app.color.content_secondary')))
+      // 背景跟随正文实测高度，避免宽屏和大字号下出现上下边带。
+      Image($r('app.media.dashboard_status_wave')).width(this.isCompact() ? '48%' : '40%')
+        .height(this.statusCardHeight)
+        .objectFit(ImageFit.Fill).supportSvg2(true)
+        .fillColor(this.isProxyActive() ? $r('app.color.dashboard_status_surface') : $r('app.color.dashboard_inset'))
+        .accessibilityLevel('no').hitTestBehavior(HitTestMode.None)
+      this.publicNetworkContent()
+    }
+    .width('100%').backgroundColor($r('app.color.dashboard_surface'))
+    .borderRadius(DASHBOARD_CARD_RADIUS).clip(true)
+  }
+
+  @Builder
+  private publicNetworkContent() {
+    Column({ space: 20 }) {
+      Row({ space: 14 }) {
+        Column({ space: 14 }) {
+          Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.Center,
+            space: { main: LengthMetrics.vp(8), cross: LengthMetrics.vp(4) } }) {
+            this.cardTitle($r('app.media.dashboard_status'), '状态')
+            Row({ space: 5 }) {
+              if (this.isProxyActive() && !this.hasStatusError()) {
+                Row().width(5).height(5).borderRadius(3).backgroundColor($r('app.color.dashboard_success_text'))
+                  .accessibilityLevel('no')
+              }
+              Text(this.hasStatusError() ? '异常' : (this.isProxyBusy() ? this.proxyStatus() :
+                (this.isProxyActive() ? '运行中' : '未运行')))
+                .fontSize(12).fontWeight(FontWeight.Medium)
+                .fontColor(this.hasStatusError() ? $r('app.color.status_error') :
+                  (this.isProxyActive() ? $r('app.color.dashboard_success_text') : $r('app.color.content_secondary')))
+            }
+            .padding({ left: 9, right: 9, top: 4, bottom: 4 }).borderRadius(16)
             .backgroundColor(this.hasStatusError() ? $r('app.color.status_error_surface') :
               (this.isProxyActive() ? $r('app.color.dashboard_success_surface') : $r('app.color.dashboard_inset')))
-            .padding({ left: 12, right: 12, top: 6, bottom: 6 }).borderRadius(18)
-        }
-        .width('100%')
-        Row({ space: 12 }) {
-          if (!this.isCompact()) {
-            Stack() {
-              Image($r('app.media.dashboard_bloom')).width(52).height(52)
-                .fillColor($r('app.color.dashboard_inset')).accessibilityLevel('no')
-              Text(this.publicCountryCode || '—').fontSize(14).fontWeight(FontWeight.Medium)
-                .fontColor($r('app.color.content_secondary'))
+          }
+          .width('100%')
+          Row({ space: 10 }) {
+            this.countryRefreshButton()
+            Column({ space: 4 }) {
+              Text(this.publicIpv4 === '未知' ? '—' : this.publicIpv4)
+                .id('dashboard-public-ip').fontSize(this.isCompact() ? 22 : 30).fontWeight(FontWeight.Bold)
+                .fontColor($r('app.color.content_primary')).width('100%')
+                .maxLines(1).minFontSize(14).maxFontSize(this.isCompact() ? 22 : 30)
+                .heightAdaptivePolicy(TextHeightAdaptivePolicy.MIN_FONT_SIZE_FIRST)
+              Flex({ wrap: FlexWrap.Wrap,
+                space: { main: LengthMetrics.vp(5), cross: LengthMetrics.vp(4) } }) {
+                Text(this.ipTypeLabel()).id('dashboard-ip-type').fontSize(12)
+                  .fontColor($r('app.color.content_secondary')).backgroundColor($r('app.color.dashboard_inset'))
+                  .padding({ left: 8, right: 8, top: 3, bottom: 3 }).borderRadius(14)
+                Text(this.ipQualityLabel()).id('dashboard-ip-quality').fontSize(12)
+                  .fontColor(this.ipQualityColor()).backgroundColor(this.ipQualityBackground())
+                  .padding({ left: 8, right: 8, top: 3, bottom: 3 }).borderRadius(14)
+                  .accessibilityDescription(this.publicIpRiskScore === undefined ? '尚无有效的 IP 风险评估' :
+                    `IPQuery 风险分 ${this.publicIpRiskScore}/100，分数越低风险越低；质量为参考评级`)
+              }
+              .width('100%')
             }
+            .layoutWeight(1).alignItems(HorizontalAlign.Start)
           }
-          Column({ space: 8 }) {
-            Text(this.publicIpv4 === '未知' ? '—' : this.publicIpv4)
-              .fontSize(this.isCompact() ? 24 : 32).fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.content_primary')).width('100%')
-              .maxLines(1).minFontSize(16).maxFontSize(this.isCompact() ? 24 : 32)
-              .heightAdaptivePolicy(TextHeightAdaptivePolicy.MIN_FONT_SIZE_FIRST)
-            Text(this.publicNetworkDetail()).fontSize(12)
-              .fontColor(this.publicNetworkError.length > 0 ? $r('app.color.status_error') : $r('app.color.content_secondary'))
-              .width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
-          }
-          .layoutWeight(1).alignItems(HorizontalAlign.Start)
-          this.proxyButton()
+          .width('100%')
         }
-        .width('100%')
-        Row({ space: 24 }) {
-          Column({ space: 4 }) {
-            Text('运行时长').fontSize(12).fontColor($r('app.color.content_secondary'))
-            Text(this.sessionStartedAt > 0 ? formatVpnRunDuration(this.elapsedSeconds) : '—')
-              .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
-          }
-          .alignItems(HorizontalAlign.Start)
-          Column({ space: 4 }) {
-            Text('当前配置').fontSize(12).fontColor($r('app.color.content_secondary'))
-            Text(this.activeProfile?.name ?? '未选择').fontSize(14).fontWeight(FontWeight.Medium)
-              .fontColor($r('app.color.content_primary')).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
-          }
-          .alignItems(HorizontalAlign.Start).layoutWeight(1)
-          Button({ type: ButtonType.Circle }) {
-            if (this.publicNetworkChecking) {
-              LoadingProgress().width(18).height(18).color($r('app.color.content_secondary'))
-            } else {
-              Image($r('app.media.action_refresh')).width(18).height(18)
-                .fillColor($r('app.color.content_secondary')).accessibilityLevel('no')
-            }
-          }
-          .width(44).height(44).padding(12).backgroundColor(Color.Transparent)
-          .enabled(!this.publicNetworkChecking).accessibilityText('刷新公网出口')
-          .onClick((): void => { publicNetworkService.refresh(); })
-        }
-        .width('100%').alignItems(VerticalAlign.Top)
-        if (this.hasStatusError()) {
-          Text(this.headerHint()).fontSize(12).fontColor($r('app.color.status_error')).width('100%')
-        }
+        .layoutWeight(1).alignItems(HorizontalAlign.Start)
+        this.proxyButton()
       }
-      .padding(DASHBOARD_CARD_PADDING).width('100%').alignItems(HorizontalAlign.Start)
+      .width('100%').alignItems(VerticalAlign.Center)
+      Row({ space: 20 }) {
+        Column({ space: 4 }) {
+          Text('运行时长').fontSize(12).fontColor($r('app.color.content_secondary'))
+          Text(this.sessionStartedAt > 0 ? formatVpnRunDuration(this.elapsedSeconds) : '—')
+            .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
+        }
+        .alignItems(HorizontalAlign.Start)
+        Column({ space: 4 }) {
+          Text('组织').fontSize(12).fontColor($r('app.color.content_secondary'))
+          Text(this.publicOrganization || '—').id('dashboard-ip-organization')
+            .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
+            .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .alignItems(HorizontalAlign.Start).layoutWeight(1)
+      }
+      .width('100%').alignItems(VerticalAlign.Top)
+      if (!this.publicNetworkChecking && (this.publicNetworkError || this.publicIpQualityError)) {
+        Text(this.publicNetworkError || this.publicIpQualityError).fontSize(12)
+          .fontColor($r('app.color.content_secondary')).width('100%')
+      }
+      if (this.hasStatusError()) {
+        Text(this.headerHint()).fontSize(12).fontColor($r('app.color.status_error')).width('100%')
+      }
     }
-    .width('100%').borderRadius(DASHBOARD_CARD_RADIUS).backgroundColor($r('app.color.dashboard_surface')).clip(true)
+    .padding(DASHBOARD_CARD_PADDING).width('100%').alignItems(HorizontalAlign.Start)
+    .onAreaChange((_old: Area, area: Area): void => { this.statusCardHeight = Number(area.height); })
   }
 
   @Builder
@@ -831,29 +932,41 @@ export struct DashboardPage {
     }
   }
 
-  build() {
-    Column({ space: 20 }) {
-      PageHeader({
-        title: $r('app.string.nav_dashboard'), contentPadding: this.metrics.pagePadding,
-        actions: (): void => { this.headerActions(); }
-      })
-      Scroll() {
-        GridRow({ columns: 2, gutter: { x: 16, y: 12 } }) {
-          ForEach(this.cardOrder, (card: DashboardCard) => {
-            GridCol({ span: dashboardCardSpan(card, this.isCompact()) }) {
-              this.cardContent(card)
-            }
-            .id(`dashboard-card-${card}`).borderRadius(DASHBOARD_CARD_RADIUS)
-            .shadow({ radius: 12, color: $r('app.color.dashboard_shadow'), offsetY: 4 })
-          }, (card: DashboardCard): string => card)
-        }
-        .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding,
-          bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET })
+  @Builder
+  private scrollContent() {
+    Scroll() {
+      GridRow({ columns: 2, gutter: { x: 16, y: 12 } }) {
+        ForEach(this.cardOrder, (card: DashboardCard) => {
+          GridCol({ span: dashboardCardSpan(card, this.isCompact()) }) {
+            this.cardContent(card)
+          }
+          .id(`dashboard-card-${card}`).borderRadius(DASHBOARD_CARD_RADIUS)
+          .shadow({ radius: 12, color: $r('app.color.dashboard_shadow'), offsetY: 4 })
+        }, (card: DashboardCard): string => card)
       }
-      .id('dashboard-scroll').width('100%').layoutWeight(1).scrollBar(BarState.Off)
-      .align(Alignment.Top).expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+      .padding({ top: this.headerInset, left: this.metrics.pagePadding, right: this.metrics.pagePadding,
+        bottom: this.metrics.pagePadding + FLOATING_NAVIGATION_INSET })
     }
-    .width('100%').height('100%').backgroundColor($r('app.color.dashboard_background'))
+    .id('dashboard-scroll').width('100%').height('100%').scrollBar(BarState.Off)
+    .align(Alignment.Top).expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+  }
+
+  @Builder
+  private pageHeader() {
+    PageHeader({
+      title: $r('app.string.nav_dashboard'), contentPadding: this.metrics.pagePadding,
+      actions: (): void => { this.headerActions(); }
+    })
+  }
+
+  build() {
+    FadingScrollLayout({
+      topInset: $headerInset,
+      surface: $r('app.color.dashboard_background'),
+      transparentSurface: $r('app.color.dashboard_background_transparent'), gap: 20,
+      header: (): void => { this.pageHeader(); },
+      content: (): void => { this.scrollContent(); }
+    })
     .onAreaChange((_old: Area, area: Area): void => { this.updateWidth(area.width); })
   }
 }

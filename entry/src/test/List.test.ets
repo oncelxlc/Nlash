@@ -14,6 +14,8 @@ import notificationModelsTest from './NotificationModels.test';
 import uiUtilsTest from './UiUtils.test';
 import dashboardLayoutTest from './DashboardLayout.test';
 import proxyPresentationTest from './ProxyPresentation.test';
+import publicNetworkTest from './PublicNetwork.test';
+import activityDetailsTest from './ActivityDetails.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -32,4 +34,6 @@ export default function testsuite() {
   uiUtilsTest();
   dashboardLayoutTest();
   proxyPresentationTest();
+  publicNetworkTest();
+  activityDetailsTest();
 }

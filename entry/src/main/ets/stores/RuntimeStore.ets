@@ -30,6 +30,7 @@ import {
   TrafficSample
 } from '../model/RuntimeModels';
 import { DEFAULT_RUNTIME_MODE, RUNTIME_REFRESH_INTERVAL_MS } from '../constants/RuntimeConstants';
+import { sampledSpeed } from '../utils/ActivityUtils';
 import { CoreServiceState, ProxyState, RuntimeLifecycleSnapshot } from '../model/VpnModels';
 import { feedbackService } from '../services/FeedbackService';
 import { preferenceRepository } from '../repository/PreferenceRepository';
@@ -93,6 +94,7 @@ class RuntimeStore {
   private selectedProxyGroup: string = '';
   private trafficHistory: TrafficSample[] = [];
   private connections: ConnectionSnapshot[] = [];
+  private connectionsSampledAt: number = 0;
   private requests: RequestRecord[] = [];
   private busyKey: string = '';
   private lastBackgroundError: string = '';
@@ -641,8 +643,19 @@ class RuntimeStore {
   }
 
   private async refreshConnections(): Promise<void> {
+    const generation = this.runtimeSnapshotGeneration;
     const response = await runtimeControlService.execute<ConnectionsSnapshot>('connectionSnapshot');
     const snapshot = this.requireSuccess<ConnectionsSnapshot>(response);
+    if (generation !== this.runtimeSnapshotGeneration || !this.coreAvailable) { return; }
+    const now = Date.now();
+    const previous = new Map<string, ConnectionSnapshot>();
+    this.connections.forEach((connection: ConnectionSnapshot): void => { previous.set(connection.id, connection); });
+    snapshot.connections.forEach((connection: ConnectionSnapshot): void => {
+      const last = previous.get(connection.id);
+      connection.uploadSpeed = sampledSpeed(connection.upload, last?.upload, now - this.connectionsSampledAt);
+      connection.downloadSpeed = sampledSpeed(connection.download, last?.download, now - this.connectionsSampledAt);
+    });
+    this.connectionsSampledAt = now;
     this.mergeRequestHistory(snapshot.connections);
     this.connections = snapshot.connections;
   }
@@ -662,7 +675,7 @@ class RuntimeStore {
     previousById.forEach((record: RequestRecord): void => {
       merged.push({
         id: record.id, network: record.network, host: record.host,
-        destination: record.destination, process: record.process, start: record.start,
+        destination: record.destination, source: record.source, process: record.process, start: record.start,
         end: record.active ? now : record.end, upload: record.upload, download: record.download,
         chains: record.chains.slice(), rule: record.rule, rulePayload: record.rulePayload, active: false
       });
@@ -674,7 +687,7 @@ class RuntimeStore {
   private toRequestRecord(connection: ConnectionSnapshot, active: boolean, end: number): RequestRecord {
     return {
       id: connection.id, network: connection.network, host: connection.host,
-      destination: connection.destination, process: connection.process, start: connection.start,
+      destination: connection.destination, source: connection.source, process: connection.process, start: connection.start,
       end: end, upload: connection.upload, download: connection.download,
       chains: connection.chains.slice(), rule: connection.rule,
       rulePayload: connection.rulePayload, active: active
@@ -684,7 +697,7 @@ class RuntimeStore {
   private finishActiveRequests(): void {
     const now = Date.now();
     this.requests = this.requests.map((record: RequestRecord): RequestRecord => record.active ? {
-      id: record.id, network: record.network, host: record.host, destination: record.destination,
+      id: record.id, network: record.network, host: record.host, destination: record.destination, source: record.source,
       process: record.process, start: record.start, end: now, upload: record.upload,
       download: record.download, chains: record.chains.slice(), rule: record.rule,
       rulePayload: record.rulePayload, active: false

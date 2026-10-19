@@ -17,6 +17,10 @@
       "value": "#111113"
     },
     {
+      "name": "app_background_transparent",
+      "value": "#00111113"
+    },
+    {
       "name": "card_background",
       "value": "#1C1C1F"
     },
@@ -161,6 +165,10 @@
       "value": "#111113"
     },
     {
+      "name": "dashboard_background_transparent",
+      "value": "#00111113"
+    },
+    {
       "name": "dashboard_surface",
       "value": "#1C1C1F"
     },
@@ -207,6 +215,22 @@
     {
       "name": "dashboard_track",
       "value": "#3F3F46"
+    },
+    {
+      "name": "dashboard_status_action",
+      "value": "#2F80FF"
+    },
+    {
+      "name": "dashboard_status_surface",
+      "value": "#222936"
+    },
+    {
+      "name": "dashboard_status_glow",
+      "value": "#45307FFF"
+    },
+    {
+      "name": "dashboard_country_surface",
+      "value": "#333336"
     }
   ]
 }
