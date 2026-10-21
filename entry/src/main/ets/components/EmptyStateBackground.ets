@@ -1,3 +1,5 @@
+import { AppTheme } from '../model/ThemeModels';
+import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import {
   BODY_FONT_SIZE, CAPTION_FONT_SIZE, FLOATING_NAVIGATION_INSET
 } from '../constants/UiConstants';
@@ -5,6 +7,7 @@ import {
 /** 可复用空态背景；compact 用于卡片内展示，组件不拦截底层交互。 */
 @Component
 export struct EmptyStateBackground {
+  @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
   @Prop title: ResourceStr = '';
   @Prop description: ResourceStr = '';
   @Prop icon: Resource = $r('app.media.nav_activity');
@@ -21,13 +24,13 @@ export struct EmptyStateBackground {
           .accessibilityLevel('no')
       }
       Text(this.title)
-        .fontSize(this.compact ? CAPTION_FONT_SIZE : BODY_FONT_SIZE)
+        .fontSize(themeFontSize(this.compact ? CAPTION_FONT_SIZE : BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
         .fontColor($r('app.color.content_secondary'))
         .textAlign(TextAlign.Center)
         .width('100%')
       if (this.description !== '') {
         Text(this.description)
-          .fontSize(CAPTION_FONT_SIZE)
+          .fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
           .fontColor($r('app.color.content_secondary'))
           .textAlign(TextAlign.Center)
           .lineHeight(20)

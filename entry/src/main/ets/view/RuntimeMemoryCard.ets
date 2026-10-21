@@ -1,3 +1,5 @@
+import { AppTheme } from '../model/ThemeModels';
+import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LengthMetrics } from '@kit.ArkUI';
 import { DASHBOARD_CARD_RADIUS, DASHBOARD_CARD_PADDING } from '../constants/DashboardConstants';
@@ -11,6 +13,7 @@ const MEMORY_POLL_INTERVAL_MS = 5000;
 /** UI 进程 PSS 与独立宿主的 Mihomo 内存统计分别展示，缺失数据保留占位。 */
 @Component
 export struct RuntimeMemoryCard {
+  @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
   @Prop runtime: DashboardSnapshot | undefined = undefined;
   @Prop cardHeight: number = 148;
   @State appMemoryBytes: number | undefined = undefined;
@@ -68,11 +71,11 @@ export struct RuntimeMemoryCard {
   private legend(app: boolean) {
     Row({ space: 6 }) {
       Row().width(8).height(8).borderRadius(4)
-        .backgroundColor(app ? $r('app.color.dashboard_accent') : $r('app.color.dashboard_core_memory'))
+        .backgroundColor(app ? this.theme.accent : this.theme.accentSecondary)
         .accessibilityLevel('no')
-      Text(app ? '应用' : '内核').fontSize(12).fontColor($r('app.color.content_secondary'))
+      Text(app ? '应用' : '内核').fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
       Text(`${formatMemoryMegabytes(app ? this.appMemoryBytes : this.runtime?.memoryBytes)} MB`)
-        .fontSize(12).fontWeight(FontWeight.Medium)
+        .fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.content_primary'))
     }
     .accessibilityGroup(true)
@@ -86,7 +89,7 @@ export struct RuntimeMemoryCard {
         Row({ space: 8 }) {
           Image($r('app.media.runtime_memory')).width(18).height(18)
             .fillColor($r('app.color.content_secondary')).accessibilityLevel('no')
-          Text('内存信息').fontSize(14).fontWeight(FontWeight.Medium)
+          Text('内存信息').fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.content_primary')).layoutWeight(1).textAlign(TextAlign.Start)
           Image($r('app.media.action_chevron_down')).width(18).height(18).rotate({ angle: -90 })
             .fillColor($r('app.color.content_secondary')).accessibilityLevel('no')
@@ -97,8 +100,8 @@ export struct RuntimeMemoryCard {
       .margin({ top: -10, bottom: -8 }).accessibilityText('查看内存信息详情')
       .onClick((): void => { this.showDetails(); })
       Text() {
-        Span(formatMemoryMegabytes(this.usage().totalBytes)).fontSize(32).fontWeight(FontWeight.Bold)
-        Span(' MB').fontSize(14)
+        Span(formatMemoryMegabytes(this.usage().totalBytes)).fontSize(themeFontSize(32, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Bold)
+        Span(' MB').fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily)
       }
       .fontColor($r('app.color.content_primary')).maxLines(2)
       .accessibilityText(`合计内存 ${this.usage().totalBytes === undefined ? '暂不可用' :
@@ -109,21 +112,21 @@ export struct RuntimeMemoryCard {
             Row() {
               if (this.usage().appRatio > 0) {
                 Row().layoutWeight(this.usage().appRatio).height('100%')
-                  .backgroundColor($r('app.color.dashboard_accent'))
+                  .backgroundColor(this.theme.accent)
               }
               if (this.usage().appRatio > 0 && this.usage().appRatio < 1) {
-                Row().width(2).height('100%').backgroundColor($r('app.color.dashboard_surface'))
+                Row().width(2).height('100%').backgroundColor(this.theme.surface)
               }
               if (this.usage().appRatio < 1) {
                 Row().layoutWeight(1 - this.usage().appRatio).height('100%')
-                  .backgroundColor($r('app.color.dashboard_core_memory'))
+                  .backgroundColor(this.theme.accentSecondary)
               }
             }
             .width('100%').height('100%')
           }
         }
         .id('dashboard-memory-bar').width('100%').height(8).borderRadius(4).clip(true)
-        .backgroundColor($r('app.color.dashboard_track')).accessibilityLevel('no')
+        .backgroundColor(this.theme.muted).accessibilityLevel('no')
         Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(16), cross: LengthMetrics.vp(6) } }) {
           this.legend(true)
           this.legend(false)
@@ -134,6 +137,6 @@ export struct RuntimeMemoryCard {
     }
     .alignItems(HorizontalAlign.Start).justifyContent(FlexAlign.SpaceBetween).width('100%')
     .constraintSize({ minHeight: this.cardHeight }).padding(DASHBOARD_CARD_PADDING)
-    .borderRadius(DASHBOARD_CARD_RADIUS).backgroundColor($r('app.color.dashboard_surface'))
+    .borderRadius(DASHBOARD_CARD_RADIUS).backgroundColor(this.theme.surface)
   }
 }

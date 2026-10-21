@@ -8,7 +8,8 @@ export enum AppPage {
   SETTINGS,
   ACTIVITY,
   DNS,
-  RESOURCES
+  RESOURCES,
+  THEME
 }
 
 export enum ActivityTab {

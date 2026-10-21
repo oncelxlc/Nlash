@@ -1,3 +1,5 @@
+import { AppTheme } from '../model/ThemeModels';
+import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import { common } from '@kit.AbilityKit';
 import { HdsTabs, hdsMaterial } from '@kit.UIDesignKit';
 import { FeedbackEvent, FeedbackLevel } from '../model/FeedbackModels';
@@ -6,6 +8,7 @@ import { ActivityPage } from '../view/ActivityPage';
 import { DashboardPage } from '../view/DashboardPage';
 import { ProxyPage } from '../view/ProxyPage';
 import { SettingsPage } from '../view/SettingsPage';
+import { ThemePage } from '../view/ThemePage';
 import { AppPage } from '../model/NavigationModels';
 import { NAVIGATION_PAGES } from '../constants/NavigationConstants';
 import { AppNavigationState } from '../navigation/AppNavigationState';
@@ -21,6 +24,7 @@ import { detailTransition } from '../utils/AnimationUtils';
 @Entry
 @Component
 struct Index {
+  @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
   @State navigationState: AppNavigationState = new AppNavigationState();
   @State navigationTransition: NavigationTransition = settingsStore.getSnapshot().settings.navigationTransition;
   @State entranceOffset: number = 24;
@@ -89,6 +93,7 @@ struct Index {
       case AppPage.CONNECTIONS:
         return $r('app.string.nav_connections');
       case AppPage.SETTINGS:
+      case AppPage.THEME:
         return $r('app.string.nav_settings');
       case AppPage.ACTIVITY:
       case AppPage.DNS:
@@ -110,6 +115,7 @@ struct Index {
       case AppPage.CONNECTIONS:
         return $r('app.media.nav_connections');
       case AppPage.SETTINGS:
+      case AppPage.THEME:
         return $r('app.media.nav_settings');
       case AppPage.ACTIVITY:
         return $r('app.media.nav_activity');
@@ -123,12 +129,13 @@ struct Index {
   private getTabBarStyle(page: AppPage): BottomTabBarStyle {
     return new BottomTabBarStyle(this.getPageIcon(page), this.getPageLabel(page))
       .iconStyle({
-        selectedColor: $r('app.color.nav_selected'),
+        selectedColor: this.theme.accent,
         unselectedColor: $r('app.color.nav_unselected')
       })
       .labelStyle({
-        selectedColor: $r('app.color.nav_selected'),
-        unselectedColor: $r('app.color.nav_unselected')
+        selectedColor: this.theme.accent,
+        unselectedColor: $r('app.color.nav_unselected'),
+        font: { size: themeFontSize(12, this.theme), family: this.theme.fontFamily }
       });
   }
 
@@ -156,11 +163,15 @@ struct Index {
     } else if (page === AppPage.CONFIGURATION) {
       ConfigurationPage()
     } else if (page === AppPage.ACTIVITY) {
-      ActivityPage({
-        page: this.navigationState.detailPage,
-        selectedTab: this.navigationState.activityTab,
-        onBack: (): void => { this.selectPage(AppPage.SETTINGS); }
-      })
+      if (this.navigationState.detailPage === AppPage.THEME) {
+        ThemePage({ onBack: (): void => { this.selectPage(AppPage.SETTINGS); } })
+      } else {
+        ActivityPage({
+          page: this.navigationState.detailPage,
+          selectedTab: this.navigationState.activityTab,
+          onBack: (): void => { this.selectPage(AppPage.SETTINGS); }
+        })
+      }
     } else if (page === AppPage.SETTINGS) {
       SettingsPage({ onOpenPage: (destination: AppPage): void => { this.selectPage(destination); } })
     }
@@ -211,13 +222,14 @@ struct Index {
 
       if (this.navigationState.activityOpen) {
         Column() { this.pageContent(AppPage.ACTIVITY) }
-          .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
+          .width('100%').height('100%').backgroundColor(this.theme.background)
           .transition(detailTransition(this.navigationTransition === NavigationTransition.SLIDE))
       }
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.app_background'))
+    .backgroundColor(this.theme.background)
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
+
 }

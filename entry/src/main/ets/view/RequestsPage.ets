@@ -1,3 +1,5 @@
+import { AppTheme } from '../model/ThemeModels';
+import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import { EmptyStateBackground } from '../components/EmptyStateBackground';
 import { SecondaryPageHeader } from '../components/SecondaryPageHeader';
 import { HeaderIconButton } from '../components/HeaderIconButton';
@@ -19,6 +21,7 @@ interface RequestCardData { record: RequestRecord; }
 
 @Component
 export struct RequestsPage {
+  @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
   @Prop contentPadding: number = 16;
   @Link filter: RequestFilter;
   @Link query: string;
@@ -76,17 +79,17 @@ export struct RequestsPage {
   private searchControls() {
     Column({ space: 12 }) {
       TextInput({ placeholder: '搜索主机、地址、规则、进程或链路', text: this.query })
-        .id('request-search').height(CONTROL_HEIGHT).fontSize(BODY_FONT_SIZE)
+        .id('request-search').height(CONTROL_HEIGHT).fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
         .fontColor($r('app.color.content_primary')).placeholderColor($r('app.color.content_secondary'))
-        .backgroundColor($r('app.color.card_background')).borderRadius(24)
+        .backgroundColor(this.theme.surface).borderRadius(24)
         .accessibilityText('搜索最近请求').onChange((value: string): void => { this.query = value; })
       SingleChoiceControl({ labels: ['全部', '进行中', '已完成'],
         selectedIndex: FILTERS.indexOf(this.filter), accessibilityLabel: '请求状态筛选',
         onChange: (index: number): void => { this.filter = FILTERS[index]; } })
       Row() {
-        Text(`${this.visibleRequests().length} 条记录`).fontSize(CAPTION_FONT_SIZE)
+        Text(`${this.visibleRequests().length} 条记录`).fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
           .fontColor($r('app.color.content_secondary')).layoutWeight(1)
-        Button('清空记录').height(CONTROL_HEIGHT).fontSize(14)
+        Button('清空记录').height(CONTROL_HEIGHT).fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily)
           .fontColor($r('app.color.status_error')).backgroundColor(Color.Transparent)
           .enabled(this.requests.length > 0).onClick((): void => {
             this.clearRecords().catch((): void => { feedbackService.error('无法完成清空操作，请重试'); });
@@ -102,27 +105,27 @@ export struct RequestsPage {
     Button({ type: ButtonType.Normal }) {
       Column({ space: 10 }) {
         Row({ space: 10 }) {
-          Text(formatRecordTime(data.record.start)).fontSize(CAPTION_FONT_SIZE)
+          Text(formatRecordTime(data.record.start)).fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
             .fontColor($r('app.color.content_secondary')).layoutWeight(1)
-          Text(data.record.network.toUpperCase()).fontSize(CAPTION_FONT_SIZE).fontWeight(FontWeight.Medium)
+          Text(data.record.network.toUpperCase()).fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.content_secondary'))
         }.width('100%')
-        Text(requestEndpoint(data.record.host, data.record.destination)).fontSize(18).fontWeight(FontWeight.Medium)
+        Text(requestEndpoint(data.record.host, data.record.destination)).fontSize(themeFontSize(18, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.content_primary')).width('100%').wordBreak(WordBreak.BREAK_ALL)
         if (data.record.host.length > 0) {
-          Text(data.record.destination).fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
+          Text(data.record.destination).fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
             .width('100%').wordBreak(WordBreak.BREAK_ALL)
         }
         ConnectionRoute({ rule: data.record.rule, payload: data.record.rulePayload, chains: data.record.chains.slice().reverse() })
-        Text(data.record.process || data.record.source || '来源未报告').fontSize(CAPTION_FONT_SIZE)
+        Text(data.record.process || data.record.source || '来源未报告').fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
           .fontColor($r('app.color.content_secondary')).width('100%').wordBreak(WordBreak.BREAK_ALL)
         if (this.expandedId === data.record.id) {
           Column({ space: 8 }) {
-            Divider().color($r('app.color.nav_divider'))
+            Divider().color(this.theme.divider)
             Text(`${data.record.active ? '进行中' : '已完成'} · ↑ ${formatBytes(data.record.upload)}  ↓ ${formatBytes(data.record.download)}`)
-              .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
+              .fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary')).width('100%')
             if (data.record.end > 0) {
-              Text(`结束于 ${formatRecordTime(data.record.end)}`).fontSize(CAPTION_FONT_SIZE)
+              Text(`结束于 ${formatRecordTime(data.record.end)}`).fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
                 .fontColor($r('app.color.content_secondary')).width('100%')
             }
           }.width('100%').transition(revealTransition())
@@ -130,7 +133,7 @@ export struct RequestsPage {
       }.width('100%').alignItems(HorizontalAlign.Start)
     }
     .width('100%').padding(20).borderRadius(DETAIL_CARD_RADIUS)
-    .backgroundColor($r('app.color.card_background'))
+    .backgroundColor(this.theme.surface)
     .accessibilityText(`${requestEndpoint(data.record.host, data.record.destination)}，${data.record.active ? '进行中' : '已完成'}，` +
       `${this.expandedId === data.record.id ? '收起' : '展开'}请求详情`)
     .onClick((): void => { this.expandedId = this.expandedId === data.record.id ? '' : data.record.id; })
@@ -155,6 +158,6 @@ export struct RequestsPage {
         }
         .width('100%').height('100%').contentStartOffset(12).contentEndOffset(32).scrollBar(BarState.Off)
       }.width('100%').layoutWeight(1).padding({ left: this.contentPadding, right: this.contentPadding })
-    }.width('100%').height('100%').backgroundColor($r('app.color.app_background'))
+    }.width('100%').height('100%').backgroundColor(this.theme.background)
   }
 }

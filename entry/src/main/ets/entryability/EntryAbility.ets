@@ -1,4 +1,4 @@
-import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { resolveNotificationNavigationTarget } from '../utils/NotificationUtils';
@@ -97,7 +97,12 @@ export default class EntryAbility extends UIAbility {
         return;
       }
       hilog.info(DOMAIN, 'testTag', 'Succeeded in loading the content.');
+      settingsStore.onWindowReady();
     });
+  }
+
+  onConfigurationUpdate(_configuration: Configuration): void {
+    settingsStore.refreshTheme();
   }
 
   onWindowStageDestroy(): void {

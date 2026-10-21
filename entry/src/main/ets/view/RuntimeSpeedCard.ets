@@ -1,3 +1,5 @@
+import { AppTheme } from '../model/ThemeModels';
+import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { common } from '@kit.AbilityKit';
 import { DashboardSnapshot, TrafficSample } from '../model/RuntimeModels';
@@ -8,6 +10,7 @@ import { DASHBOARD_CARD_RADIUS } from '../constants/DashboardConstants';
 /** 按方向绘制最近一分钟速度；曲线不可用时仍保留实时数值。 */
 @Component
 export struct RuntimeSpeedCard {
+  @StorageProp('appTheme') @Watch('scheduleThemeRedraw') theme: AppTheme = DEFAULT_APP_THEME;
   @Prop runtime: DashboardSnapshot | undefined = undefined;
   @Prop @Watch('onHistoryChange') history: TrafficSample[] = [];
   @Prop proxyState: ProxyState = ProxyState.DISABLED;
@@ -81,7 +84,7 @@ export struct RuntimeSpeedCard {
     try {
       const resources = this.getUIContext().getHostContext()?.resourceManager;
       if (resources === undefined) { throw new Error('Chart UI context is unavailable'); }
-      const color = resources.getColorByNameSync(this.upload ? 'dashboard_upload' : 'dashboard_download');
+      const color = parseInt((this.upload ? this.theme.accentSecondary : this.theme.accent).slice(1), 16);
       const channels = `${(color >>> 16) & 255}, ${(color >>> 8) & 255}, ${color & 255}`;
       const context = this.chartContext;
       context.clearRect(0, 0, this.chartWidth, this.chartHeight);
@@ -141,25 +144,25 @@ export struct RuntimeSpeedCard {
     Column({ space: this.compact ? 4 : 8 }) {
       Row({ space: 6 }) {
         Image($r('app.media.action_arrow_up')).width(18).height(18).rotate({ angle: this.upload ? 0 : 180 })
-          .fillColor(this.upload ? $r('app.color.content_secondary') : $r('app.color.dashboard_download'))
+          .fillColor(this.upload ? $r('app.color.content_secondary') : this.theme.accent)
           .accessibilityLevel('no')
-        Text(this.upload ? '上传' : '下载').fontSize(14).fontWeight(FontWeight.Medium)
+        Text(this.upload ? '上传' : '下载').fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.content_secondary'))
         if (!this.compact) {
           Blank()
-          Text(`峰值 ${formatSpeed(this.peak())}`).fontSize(12).fontColor($r('app.color.content_secondary'))
+          Text(`峰值 ${formatSpeed(this.peak())}`).fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
         }
       }
       .width('100%')
       Text() {
         Span(this.runtime === undefined ? '—' : formatBytesParts(this.speed()).value)
-          .fontSize(this.compact ? 28 : 36).fontWeight(FontWeight.Bold)
-        Span(this.runtime === undefined ? '' : ` ${formatBytesParts(this.speed()).unit}/s`).fontSize(12)
+          .fontSize(themeFontSize(this.compact ? 28 : 36, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Bold)
+        Span(this.runtime === undefined ? '' : ` ${formatBytesParts(this.speed()).unit}/s`).fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily)
       }
       .fontColor($r('app.color.content_primary')).width('100%').maxLines(2)
       Text(`累计 ${this.runtime === undefined ? '—' :
         formatBytes(this.upload ? this.runtime.uploadTotal : this.runtime.downloadTotal)}`)
-        .fontSize(12).fontColor($r('app.color.content_secondary')).width('100%')
+        .fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary')).width('100%')
       Stack({ alignContent: Alignment.BottomStart }) {
         Canvas(this.chartContext)
           .width('100%').height('100%')
@@ -176,7 +179,7 @@ export struct RuntimeSpeedCard {
         if (this.chartUnavailable || !this.hasTrafficData() || this.proxyState !== ProxyState.ENABLED) {
           Text(this.chartUnavailable ? '曲线暂不可用' :
             (this.proxyState !== ProxyState.ENABLED ? '未连接' : '等待流量'))
-            .fontSize(12).fontColor($r('app.color.content_secondary'))
+            .fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
         }
       }
       .width('100%').height(this.compact ? 32 : 80)
@@ -184,7 +187,7 @@ export struct RuntimeSpeedCard {
     .alignItems(HorizontalAlign.Start).width(this.cardWidth)
     .constraintSize({ minHeight: this.compact ? 132 : 176 }).padding(this.compact ? 12 : 20)
     .borderRadius(this.compact ? 24 : DASHBOARD_CARD_RADIUS)
-    .backgroundColor(this.compact ? $r('app.color.dashboard_inset') : $r('app.color.dashboard_surface'))
+    .backgroundColor(this.compact ? this.theme.inset : this.theme.surface)
     .clip(true).accessibilityGroup(true)
     .accessibilityDescription(`最近 60 秒${this.upload ? '上传' : '下载'}速度，峰值 ${formatSpeed(this.peak())}`)
   }

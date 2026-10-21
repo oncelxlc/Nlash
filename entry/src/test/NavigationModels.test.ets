@@ -9,7 +9,7 @@ export default function navigationModelsTest() {
   describe('navigationModels', () => {
     it('opensEverySettingsDetailAndReturnsWithoutLosingThePrimaryPage', 0, () => {
       const state = new AppNavigationState();
-      [AppPage.REQUESTS, AppPage.CONNECTIONS, AppPage.DNS, AppPage.RESOURCES].forEach((page: AppPage): void => {
+      [AppPage.REQUESTS, AppPage.CONNECTIONS, AppPage.DNS, AppPage.RESOURCES, AppPage.THEME].forEach((page: AppPage): void => {
         state.selectPage(page);
         expect(state.detailPage).assertEqual(page);
         expect(state.activityOpen).assertTrue();

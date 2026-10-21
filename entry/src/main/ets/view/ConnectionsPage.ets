@@ -1,3 +1,5 @@
+import { AppTheme } from '../model/ThemeModels';
+import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import { EmptyStateBackground } from '../components/EmptyStateBackground';
 import { SecondaryPageHeader } from '../components/SecondaryPageHeader';
 import { HeaderIconButton } from '../components/HeaderIconButton';
@@ -14,6 +16,7 @@ interface ConnectionCardData { connection: ConnectionSnapshot; }
 
 @Component
 export struct ConnectionsPage {
+  @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
   @Prop contentPadding: number = 16;
   @Link query: string;
   onBack: () => void = (): void => {};
@@ -89,12 +92,12 @@ export struct ConnectionsPage {
     Column({ space: 4 }) {
       Row({ space: 8 }) {
         Text(`${elapsedLabel(data.connection.start)}  ${data.connection.network.toUpperCase()}`)
-          .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).layoutWeight(1)
+          .fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary')).layoutWeight(1)
         Column({ space: 2 }) {
           Text(`↑ ${formatSpeed(data.connection.uploadSpeed ?? 0)}`)
-            .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
+            .fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
           Text(`↓ ${formatSpeed(data.connection.downloadSpeed ?? 0)}`)
-            .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
+            .fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
         }.alignItems(HorizontalAlign.End)
         HeaderIconButton({ icon: $r('app.media.action_close_connection'),
           label: `关闭 ${requestEndpoint(data.connection.host, data.connection.destination)} 的连接`,
@@ -103,24 +106,24 @@ export struct ConnectionsPage {
       }.width('100%')
       Button({ type: ButtonType.Normal }) {
         Column({ space: 10 }) {
-          Text(requestEndpoint(data.connection.host, data.connection.destination)).fontSize(18).fontWeight(FontWeight.Medium)
+          Text(requestEndpoint(data.connection.host, data.connection.destination)).fontSize(themeFontSize(18, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.content_primary')).width('100%').wordBreak(WordBreak.BREAK_ALL)
           if (data.connection.host.length > 0) {
-            Text(data.connection.destination).fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
+            Text(data.connection.destination).fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
               .width('100%').wordBreak(WordBreak.BREAK_ALL)
           }
           ConnectionRoute({ rule: data.connection.rule, payload: data.connection.rulePayload,
             chains: data.connection.chains.slice().reverse() })
-          Text(data.connection.process || data.connection.source || '来源未报告').fontSize(CAPTION_FONT_SIZE)
+          Text(data.connection.process || data.connection.source || '来源未报告').fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
             .fontColor($r('app.color.content_secondary')).width('100%').wordBreak(WordBreak.BREAK_ALL)
           if (this.expandedId === data.connection.id) {
             Column({ space: 8 }) {
-              Divider().color($r('app.color.nav_divider'))
-              Text(`开始于 ${formatRecordTime(data.connection.start)}`).fontSize(CAPTION_FONT_SIZE)
+              Divider().color(this.theme.divider)
+              Text(`开始于 ${formatRecordTime(data.connection.start)}`).fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
                 .fontColor($r('app.color.content_secondary')).width('100%')
               Text(`${data.connection.type} · ↑ ${formatBytes(data.connection.upload)}  ↓ ${formatBytes(data.connection.download)}`)
-                .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
-              Text(`来源：${data.connection.source}`).fontSize(CAPTION_FONT_SIZE)
+                .fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary')).width('100%')
+              Text(`来源：${data.connection.source}`).fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
                 .fontColor($r('app.color.content_secondary')).width('100%').wordBreak(WordBreak.BREAK_ALL)
             }.width('100%').transition(revealTransition())
           }
@@ -130,7 +133,7 @@ export struct ConnectionsPage {
       .accessibilityText(`${requestEndpoint(data.connection.host, data.connection.destination)}，` +
         `${this.expandedId === data.connection.id ? '收起' : '展开'}连接详情`)
       .onClick((): void => { this.expandedId = this.expandedId === data.connection.id ? '' : data.connection.id; })
-    }.width('100%').padding(20).borderRadius(DETAIL_CARD_RADIUS).backgroundColor($r('app.color.card_background'))
+    }.width('100%').padding(20).borderRadius(DETAIL_CARD_RADIUS).backgroundColor(this.theme.surface)
   }
 
   build() {
@@ -140,11 +143,11 @@ export struct ConnectionsPage {
       if (this.searching) {
         Column({ space: 8 }) {
           TextInput({ placeholder: '搜索主机、地址、进程或链路', text: this.query })
-            .id('connection-search').height(CONTROL_HEIGHT).fontSize(BODY_FONT_SIZE)
+            .id('connection-search').height(CONTROL_HEIGHT).fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
             .fontColor($r('app.color.content_primary')).placeholderColor($r('app.color.content_secondary'))
-            .backgroundColor($r('app.color.card_background')).borderRadius(24)
+            .backgroundColor(this.theme.surface).borderRadius(24)
             .accessibilityText('搜索实时连接').onChange((value: string): void => { this.query = value; })
-          Text(`${this.visibleConnections().length} 个活动连接`).fontSize(CAPTION_FONT_SIZE)
+          Text(`${this.visibleConnections().length} 个活动连接`).fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
             .fontColor($r('app.color.content_secondary')).width('100%')
         }
         .padding({ left: this.contentPadding, right: this.contentPadding, bottom: 12 }).transition(revealTransition())
@@ -165,6 +168,6 @@ export struct ConnectionsPage {
         }
         .width('100%').height('100%').contentStartOffset(12).contentEndOffset(32).scrollBar(BarState.Off)
       }.width('100%').layoutWeight(1).padding({ left: this.contentPadding, right: this.contentPadding })
-    }.width('100%').height('100%').backgroundColor($r('app.color.app_background'))
+    }.width('100%').height('100%').backgroundColor(this.theme.background)
   }
 }

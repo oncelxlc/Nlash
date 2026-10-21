@@ -1,3 +1,5 @@
+import { AppTheme } from '../model/ThemeModels';
+import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import { RuntimeStatusCard } from './RuntimeStatusCard';
 import { RuntimeSpeedCard } from './RuntimeSpeedCard';
 import { RuntimeMemoryCard } from './RuntimeMemoryCard';
@@ -43,6 +45,7 @@ const VIEW_SYNC_INTERVAL_MS = 1000;
 /** 仪表盘按默认顺序聚合运行状态；用户操作交给 Store 与服务完成。 */
 @Component
 export struct DashboardPage {
+  @StorageProp('appTheme') @Watch('onThemeChange') theme: AppTheme = DEFAULT_APP_THEME;
   @State headerInset: number = 0;
   @State coreState: CoreServiceState = vpnService.getCoreState();
   @State proxyState: ProxyState = vpnService.getProxyState();
@@ -205,18 +208,20 @@ export struct DashboardPage {
 
   private ipQualityBackground(): ResourceColor {
     return this.publicIpQuality === IpQuality.GOOD ? $r('app.color.dashboard_success_surface') :
-      (this.publicIpQuality === IpQuality.POOR ? $r('app.color.status_error_surface') : $r('app.color.dashboard_inset'));
+      (this.publicIpQuality === IpQuality.POOR ? $r('app.color.status_error_surface') : this.theme.inset);
   }
 
   private updateWidth(width: Length): void {
     const wasCompact = this.isCompact();
     this.contentWidth = resolveContentWidth(width);
     this.metrics = resolveResponsiveMetrics(this.contentWidth);
-    this.fontScale = this.getUIContext().fp2px(1) / this.getUIContext().vp2px(1);
+    this.fontScale = this.theme.fontScale || this.getUIContext().fp2px(1) / this.getUIContext().vp2px(1);
     if (wasCompact !== this.isCompact()) {
       this.cardOrder = resolveDashboardCardOrder(this.isCompact());
     }
   }
+
+  private onThemeChange(): void { this.updateWidth(this.contentWidth); }
 
   private isCompact(): boolean {
     return proxyGroupColumnCount(this.contentWidth, this.fontScale) === 1;
@@ -455,7 +460,7 @@ export struct DashboardPage {
       .id('dashboard-core-status')
       .width(HEADER_ACTION_SIZE).height(HEADER_ACTION_SIZE).padding(0).borderRadius(16)
       .responseRegion({ x: -8, y: -8, width: CONTROL_HEIGHT, height: CONTROL_HEIGHT })
-      .backgroundColor($r('app.color.surface_muted'))
+      .backgroundColor(this.theme.muted)
       .enabled(!this.isCoreBusy() && !this.isProxyBusy() && !this.profileBusy)
       .accessibilityText(`${this.coreStatus()}，点击重启 Core`)
       .onClick((): void => { this.confirmCoreRestart(); })
@@ -467,7 +472,7 @@ export struct DashboardPage {
   private cardTitle(icon: Resource, title: string) {
     Row({ space: 8 }) {
       Image(icon).width(18).height(18).fillColor($r('app.color.content_secondary')).accessibilityLevel('no')
-      Text(title).fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
+      Text(title).fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
     }
     .constraintSize({ minHeight: 24 })
   }
@@ -487,16 +492,16 @@ export struct DashboardPage {
             Image(mode === RuntimeMode.RULE ? $r('app.media.nav_requests') :
               (mode === RuntimeMode.GLOBAL ? $r('app.media.public_network') : $r('app.media.action_locate')))
               .width(18).height(18)
-              .fillColor(this.selectedMode === mode ? $r('app.color.dashboard_on_accent') : $r('app.color.content_secondary'))
+              .fillColor(this.selectedMode === mode ? this.theme.onAccent : $r('app.color.content_secondary'))
               .accessibilityLevel('no')
-            Text(this.modeLabel(mode)).fontSize(14).fontWeight(FontWeight.Medium)
-              .fontColor(this.selectedMode === mode ? $r('app.color.dashboard_on_accent') : $r('app.color.content_secondary'))
+            Text(this.modeLabel(mode)).fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium)
+              .fontColor(this.selectedMode === mode ? this.theme.onAccent : $r('app.color.content_secondary'))
           }
           .padding({ top: 8, bottom: 8 })
         }
         .id(`dashboard-mode-${mode}`)
         .layoutWeight(1).constraintSize({ minHeight: 56 }).padding(0).borderRadius(28)
-        .backgroundColor(this.selectedMode === mode ? $r('app.color.dashboard_accent') : $r('app.color.dashboard_inset'))
+        .backgroundColor(this.selectedMode === mode ? this.theme.accent : this.theme.inset)
         .enabled(this.coreState === CoreServiceState.RUNNING && !this.profileBusy &&
           !this.isCoreBusy() && !this.isProxyBusy() && this.runtimeBusyKey.length === 0)
         .accessibilityText(`出站模式：${this.modeLabel(mode)}`)
@@ -515,14 +520,14 @@ export struct DashboardPage {
         this.modeButtons()
       }
       .width('100%').alignItems(HorizontalAlign.Start).padding(DASHBOARD_CARD_PADDING)
-      .borderRadius(DASHBOARD_CARD_RADIUS).backgroundColor($r('app.color.dashboard_surface'))
+      .borderRadius(DASHBOARD_CARD_RADIUS).backgroundColor(this.theme.surface)
     } else {
       Row({ space: 20 }) {
         this.cardTitle($r('app.media.nav_proxy'), '出站模式')
         Column() { this.modeButtons() }.layoutWeight(1)
       }
       .width('100%').padding({ left: DASHBOARD_CARD_PADDING, right: 12, top: 12, bottom: 12 })
-      .borderRadius(DASHBOARD_CARD_RADIUS).backgroundColor($r('app.color.dashboard_surface'))
+      .borderRadius(DASHBOARD_CARD_RADIUS).backgroundColor(this.theme.surface)
     }
   }
 
@@ -530,22 +535,22 @@ export struct DashboardPage {
   private proxyButton() {
     Button({ type: ButtonType.Normal }) {
       Stack() {
-        Row().width('76%').height('76%').borderRadius(100).backgroundColor($r('app.color.dashboard_status_action'))
-          .shadow({ radius: this.getUIContext().vp2px(10), color: $r('app.color.dashboard_status_glow'), offsetY: 5 })
+        Row().width('76%').height('76%').borderRadius(100).backgroundColor(this.theme.accent)
+          .shadow({ radius: this.getUIContext().vp2px(10), color: this.theme.accentGlow, offsetY: 5 })
           .accessibilityLevel('no')
         if (this.proxyState === ProxyState.ENABLED || this.proxyState === ProxyState.DISABLING) {
           Image($r('app.media.dashboard_bloom')).width('100%').height('100%')
-            .fillColor($r('app.color.dashboard_status_action')).accessibilityLevel('no')
+            .fillColor(this.theme.accent).accessibilityLevel('no')
         } else {
           Row().width('100%').height('100%').borderRadius(100)
-            .backgroundColor($r('app.color.dashboard_status_action')).accessibilityLevel('no')
+            .backgroundColor(this.theme.accent).accessibilityLevel('no')
         }
         if (this.isProxyBusy()) {
-          LoadingProgress().width(26).height(26).color(Color.White)
+          LoadingProgress().width(26).height(26).color(this.theme.onAccent)
         } else {
           Image(this.isProxyActive() ? $r('app.media.ic_public_pause') : $r('app.media.ic_public_play'))
             .width(this.isCompact() ? 24 : 30).height(this.isCompact() ? 24 : 30)
-            .fillColor(Color.White).accessibilityLevel('no')
+            .fillColor(this.theme.onAccent).accessibilityLevel('no')
         }
       }
       .width('100%').height('100%')
@@ -563,11 +568,11 @@ export struct DashboardPage {
     Button({ type: ButtonType.Normal }) {
       Stack() {
         Image($r('app.media.dashboard_clover')).width('100%').height('100%')
-          .fillColor($r('app.color.dashboard_country_surface')).accessibilityLevel('no')
+          .fillColor(this.theme.muted).accessibilityLevel('no')
           .rotate({ angle: this.countryRotation })
           .onAppear((): void => { this.updateCountryRotation(); })
           .onDisAppear((): void => { this.stopCountryRotation(); })
-        Text(this.publicCountryCode || '—').fontSize(14).fontWeight(FontWeight.Medium)
+        Text(this.publicCountryCode || '—').fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.content_primary')).maxLines(1)
       }
       .width('100%').height('100%')
@@ -585,11 +590,11 @@ export struct DashboardPage {
       Image($r('app.media.dashboard_status_wave')).width(this.isCompact() ? '48%' : '40%')
         .height(this.statusCardHeight)
         .objectFit(ImageFit.Fill).supportSvg2(true)
-        .fillColor(this.isProxyActive() ? $r('app.color.dashboard_status_surface') : $r('app.color.dashboard_inset'))
+        .fillColor(this.isProxyActive() ? this.theme.accentSurface : this.theme.inset)
         .accessibilityLevel('no').hitTestBehavior(HitTestMode.None)
       this.publicNetworkContent()
     }
-    .width('100%').backgroundColor($r('app.color.dashboard_surface'))
+    .width('100%').backgroundColor(this.theme.surface)
     .borderRadius(DASHBOARD_CARD_RADIUS).clip(true)
   }
 
@@ -608,13 +613,13 @@ export struct DashboardPage {
               }
               Text(this.hasStatusError() ? '异常' : (this.isProxyBusy() ? this.proxyStatus() :
                 (this.isProxyActive() ? '运行中' : '未运行')))
-                .fontSize(12).fontWeight(FontWeight.Medium)
+                .fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium)
                 .fontColor(this.hasStatusError() ? $r('app.color.status_error') :
                   (this.isProxyActive() ? $r('app.color.dashboard_success_text') : $r('app.color.content_secondary')))
             }
             .padding({ left: 9, right: 9, top: 4, bottom: 4 }).borderRadius(16)
             .backgroundColor(this.hasStatusError() ? $r('app.color.status_error_surface') :
-              (this.isProxyActive() ? $r('app.color.dashboard_success_surface') : $r('app.color.dashboard_inset')))
+              (this.isProxyActive() ? $r('app.color.dashboard_success_surface') : this.theme.inset))
           }
           .width('100%')
           Row({ space: 10 }) {
@@ -627,10 +632,10 @@ export struct DashboardPage {
                 .heightAdaptivePolicy(TextHeightAdaptivePolicy.MIN_FONT_SIZE_FIRST)
               Flex({ wrap: FlexWrap.Wrap,
                 space: { main: LengthMetrics.vp(5), cross: LengthMetrics.vp(4) } }) {
-                Text(this.ipTypeLabel()).id('dashboard-ip-type').fontSize(12)
-                  .fontColor($r('app.color.content_secondary')).backgroundColor($r('app.color.dashboard_inset'))
+                Text(this.ipTypeLabel()).id('dashboard-ip-type').fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily)
+                  .fontColor($r('app.color.content_secondary')).backgroundColor(this.theme.inset)
                   .padding({ left: 8, right: 8, top: 3, bottom: 3 }).borderRadius(14)
-                Text(this.ipQualityLabel()).id('dashboard-ip-quality').fontSize(12)
+                Text(this.ipQualityLabel()).id('dashboard-ip-quality').fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily)
                   .fontColor(this.ipQualityColor()).backgroundColor(this.ipQualityBackground())
                   .padding({ left: 8, right: 8, top: 3, bottom: 3 }).borderRadius(14)
                   .accessibilityDescription(this.publicIpRiskScore === undefined ? '尚无有效的 IP 风险评估' :
@@ -648,26 +653,26 @@ export struct DashboardPage {
       .width('100%').alignItems(VerticalAlign.Center)
       Row({ space: 20 }) {
         Column({ space: 4 }) {
-          Text('运行时长').fontSize(12).fontColor($r('app.color.content_secondary'))
+          Text('运行时长').fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
           Text(this.sessionStartedAt > 0 ? formatVpnRunDuration(this.elapsedSeconds) : '—')
-            .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
+            .fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
         }
         .alignItems(HorizontalAlign.Start)
         Column({ space: 4 }) {
-          Text('组织').fontSize(12).fontColor($r('app.color.content_secondary'))
+          Text('组织').fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
           Text(this.publicOrganization || '—').id('dashboard-ip-organization')
-            .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
+            .fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
             .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
         }
         .alignItems(HorizontalAlign.Start).layoutWeight(1)
       }
       .width('100%').alignItems(VerticalAlign.Top)
       if (!this.publicNetworkChecking && (this.publicNetworkError || this.publicIpQualityError)) {
-        Text(this.publicNetworkError || this.publicIpQualityError).fontSize(12)
+        Text(this.publicNetworkError || this.publicIpQualityError).fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily)
           .fontColor($r('app.color.content_secondary')).width('100%')
       }
       if (this.hasStatusError()) {
-        Text(this.headerHint()).fontSize(12).fontColor($r('app.color.status_error')).width('100%')
+        Text(this.headerHint()).fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.status_error')).width('100%')
       }
     }
     .padding(DASHBOARD_CARD_PADDING).width('100%').alignItems(HorizontalAlign.Start)
@@ -678,22 +683,22 @@ export struct DashboardPage {
   private vpnCard() {
     Row({ space: 12 }) {
       Stack() {
-        Image($r('app.media.dashboard_bloom')).width(44).height(44).fillColor($r('app.color.dashboard_accent'))
-        Image($r('app.media.dashboard_shield')).width(24).height(24).fillColor($r('app.color.dashboard_on_accent'))
+        Image($r('app.media.dashboard_bloom')).width(44).height(44).fillColor(this.theme.accent)
+        Image($r('app.media.dashboard_shield')).width(24).height(24).fillColor(this.theme.onAccent)
       }
       .accessibilityLevel('no')
       Column({ space: 2 }) {
-        Text('VPN').fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
-        Text(this.proxyStatus()).fontSize(12).fontColor($r('app.color.content_secondary'))
+        Text('VPN').fontSize(themeFontSize(16, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
+        Text(this.proxyStatus()).fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
       }
       .alignItems(HorizontalAlign.Start).layoutWeight(1)
       Toggle({ type: ToggleType.Switch, isOn: this.isProxyActive() })
-        .id('dashboard-vpn-switch').selectedColor($r('app.color.dashboard_accent'))
+        .id('dashboard-vpn-switch').selectedColor(this.theme.accent)
         .enabled(this.canToggleProxy()).accessibilityText('VPN 代理')
         .onChange((enabled: boolean): void => { this.toggleProxy(enabled); })
     }
     .width('100%').padding({ left: DASHBOARD_CARD_PADDING, right: DASHBOARD_CARD_PADDING, top: 16, bottom: 16 })
-    .borderRadius(DASHBOARD_CARD_RADIUS).backgroundColor($r('app.color.dashboard_surface'))
+    .borderRadius(DASHBOARD_CARD_RADIUS).backgroundColor(this.theme.surface)
   }
 
   @Builder
@@ -719,7 +724,7 @@ export struct DashboardPage {
         this.speedTiles()
       }
       .width('100%').alignItems(HorizontalAlign.Start).padding(DASHBOARD_CARD_PADDING)
-      .borderRadius(DASHBOARD_CARD_RADIUS).backgroundColor($r('app.color.dashboard_surface'))
+      .borderRadius(DASHBOARD_CARD_RADIUS).backgroundColor(this.theme.surface)
     } else {
       this.speedTiles()
     }
@@ -734,7 +739,7 @@ export struct DashboardPage {
         if (this.activeProfile?.type === ProfileType.SUBSCRIPTION) {
           Button({ type: ButtonType.Circle }) {
             if (this.profileBusy || this.profileOperation) {
-              LoadingProgress().width(18).height(18).color($r('app.color.dashboard_accent'))
+              LoadingProgress().width(18).height(18).color(this.theme.accent)
             } else {
               Image($r('app.media.action_refresh')).width(18).height(18)
                 .fillColor($r('app.color.content_secondary')).accessibilityLevel('no')
@@ -752,14 +757,14 @@ export struct DashboardPage {
       .width('100%').margin({ top: -10, bottom: -8, right: -10 })
       if (this.activeProfile === undefined) {
         Button('添加配置', { type: ButtonType.Normal })
-          .fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
+          .fontSize(themeFontSize(16, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
           .height(44).padding(0).backgroundColor(Color.Transparent)
           .onClick((): void => { navigationIntentService.publish(AppPage.CONFIGURATION); })
       } else {
         Column({ space: 4 }) {
           Button({ type: ButtonType.Normal }) {
             Row({ space: 8 }) {
-              Text(this.activeProfile.name).fontSize(18).fontWeight(FontWeight.Medium)
+              Text(this.activeProfile.name).fontSize(themeFontSize(18, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium)
                 .fontColor($r('app.color.content_primary')).maxLines(2)
                 .textOverflow({ overflow: TextOverflow.Ellipsis }).flexShrink(1)
               Image($r('app.media.action_switch')).width(20).height(20)
@@ -776,10 +781,10 @@ export struct DashboardPage {
             space: { main: LengthMetrics.vp(12), cross: LengthMetrics.vp(4) } }) {
             Text(this.activeProfile.type === ProfileType.LOCAL ? '本地配置' :
               `更新于 ${formatProfileRelativeTime(this.activeProfile.lastUpdateAt)}`)
-              .fontSize(12).fontColor($r('app.color.content_secondary'))
+              .fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
             if (this.activeProfile.type === ProfileType.SUBSCRIPTION) {
               Text(formatProfileRemainingDays(this.activeProfile.expireAt))
-                .fontSize(12).fontColor($r('app.color.content_secondary'))
+                .fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
             }
           }
           .width('100%')
@@ -790,27 +795,27 @@ export struct DashboardPage {
             Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween, alignItems: ItemAlign.Center,
               space: { main: LengthMetrics.vp(12), cross: LengthMetrics.vp(4) } }) {
               Text() {
-                Span(`${Math.round(profileUsageRatio(this.activeProfile) * 100)}%`).fontSize(20).fontWeight(FontWeight.Bold)
-                Span(' 已用').fontSize(13)
+                Span(`${Math.round(profileUsageRatio(this.activeProfile) * 100)}%`).fontSize(themeFontSize(20, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Bold)
+                Span(' 已用').fontSize(themeFontSize(13, this.theme)).fontFamily(this.theme.fontFamily)
               }
               .fontColor($r('app.color.content_primary'))
               Text(`${formatProfileBytes((this.activeProfile.uploadBytes ?? 0) + (this.activeProfile.downloadBytes ?? 0)).replace(/([KMGT]?B)$/, ' $1')}` +
                 ` / ${formatProfileBytes(this.activeProfile.totalBytes ?? 0).replace(/([KMGT]?B)$/, ' $1')}`)
-                .fontSize(12).fontColor($r('app.color.content_secondary'))
+                .fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
             }
             .width('100%')
             SubscriptionUsageBar({ ratio: profileUsageRatio(this.activeProfile) })
           }
           .width('100%').alignItems(HorizontalAlign.Start).margin({ top: 8 })
         } else if (this.activeProfile.type === ProfileType.SUBSCRIPTION) {
-          Text('未提供流量信息').fontSize(12).fontColor($r('app.color.content_secondary'))
+          Text('未提供流量信息').fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
         }
       }
     }
     .width('100%').alignItems(HorizontalAlign.Start).justifyContent(FlexAlign.SpaceBetween)
     .constraintSize({ minHeight: this.isCompact() ? 0 : 196 })
     .padding(DASHBOARD_CARD_PADDING).borderRadius(DASHBOARD_CARD_RADIUS)
-    .backgroundColor($r('app.color.dashboard_surface'))
+    .backgroundColor(this.theme.surface)
   }
 
   @Builder
@@ -818,14 +823,14 @@ export struct DashboardPage {
     Row({ space: 8 }) {
       Image(icon).width(24).height(24).fillColor($r('app.color.content_secondary')).accessibilityLevel('no')
       Column({ space: 4 }) {
-        Text(label).fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
-        Text(value).fontSize(12).fontColor(available ? $r('app.color.proxy_delay_success') : $r('app.color.content_secondary'))
+        Text(label).fontSize(themeFontSize(13, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
+        Text(value).fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily).fontColor(available ? $r('app.color.proxy_delay_success') : $r('app.color.content_secondary'))
           .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
       }
       .alignItems(HorizontalAlign.Start).layoutWeight(1)
     }
     .layoutWeight(1).constraintSize({ minHeight: 58 }).padding(10)
-    .borderRadius(20).backgroundColor($r('app.color.dashboard_inset')).accessibilityGroup(true)
+    .borderRadius(20).backgroundColor(this.theme.inset).accessibilityGroup(true)
   }
 
   @Builder
@@ -851,7 +856,7 @@ export struct DashboardPage {
       .width('100%')
     }
     .width('100%').alignItems(HorizontalAlign.Start).padding(DASHBOARD_CARD_PADDING)
-    .borderRadius(DASHBOARD_CARD_RADIUS).backgroundColor($r('app.color.dashboard_surface'))
+    .borderRadius(DASHBOARD_CARD_RADIUS).backgroundColor(this.theme.surface)
   }
 
   @Builder
@@ -868,31 +873,31 @@ export struct DashboardPage {
           Column({ space: 12 }) {
             Stack() {
               Image($r('app.media.dashboard_bloom')).width(56).height(56)
-                .fillColor($r('app.color.dashboard_inset'))
+                .fillColor(this.theme.inset)
               Image($r('app.media.nav_proxy')).width(26).height(26).fillColor($r('app.color.content_secondary'))
             }
             .accessibilityLevel('no')
-            Text('暂无策略组').fontSize(14).fontColor($r('app.color.content_secondary'))
+            Text('暂无策略组').fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
           }
           .width('100%').padding({ top: 12, bottom: 12 })
         } else {
           Row({ space: 12 }) {
-            Text(`${this.groups.length}`).fontSize(36).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary'))
-            Text('个').fontSize(14).fontColor($r('app.color.content_secondary'))
+            Text(`${this.groups.length}`).fontSize(themeFontSize(36, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary'))
+            Text('个').fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
             Blank()
             Row({ space: -8 }) {
               ForEach(this.groups.slice(0, 3), (group: ProxyGroupSnapshot) => {
-                Text(group.name.substring(0, 1).toUpperCase()).fontSize(16).fontWeight(FontWeight.Medium)
+                Text(group.name.substring(0, 1).toUpperCase()).fontSize(themeFontSize(16, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium)
                   .fontColor($r('app.color.content_secondary')).textAlign(TextAlign.Center)
                   .width(36).height(40).borderRadius(14)
-                  .backgroundColor($r('app.color.dashboard_inset'))
-                  .border({ width: 2, color: $r('app.color.dashboard_surface') })
+                  .backgroundColor(this.theme.inset)
+                  .border({ width: 2, color: this.theme.surface })
               }, (group: ProxyGroupSnapshot): string => group.name)
               if (this.groups.length > 3) {
-                Text(`+${this.groups.length - 3}`).fontSize(12).fontWeight(FontWeight.Medium)
+                Text(`+${this.groups.length - 3}`).fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium)
                   .fontColor($r('app.color.content_secondary')).textAlign(TextAlign.Center)
-                  .width(36).height(40).borderRadius(14).backgroundColor($r('app.color.dashboard_inset'))
-                  .border({ width: 2, color: $r('app.color.dashboard_surface') })
+                  .width(36).height(40).borderRadius(14).backgroundColor(this.theme.inset)
+                  .border({ width: 2, color: this.theme.surface })
               }
             }
             .accessibilityLevel('no')
@@ -904,7 +909,7 @@ export struct DashboardPage {
       .constraintSize({ minHeight: this.isCompact() ? 80 : 136 })
     }
     .width('100%').padding(DASHBOARD_CARD_PADDING).borderRadius(DASHBOARD_CARD_RADIUS)
-    .backgroundColor($r('app.color.dashboard_surface'))
+    .backgroundColor(this.theme.surface)
     .accessibilityText(`${this.groups.length} 个策略组，打开代理页`)
     .onClick((): void => { navigationIntentService.publish(AppPage.PROXY); })
   }
@@ -962,8 +967,8 @@ export struct DashboardPage {
   build() {
     FadingScrollLayout({
       topInset: $headerInset,
-      surface: $r('app.color.dashboard_background'),
-      transparentSurface: $r('app.color.dashboard_background_transparent'), gap: 20,
+      surface: this.theme.background,
+      transparentSurface: this.theme.transparentBackground, gap: 20,
       header: (): void => { this.pageHeader(); },
       content: (): void => { this.scrollContent(); }
     })

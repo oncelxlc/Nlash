@@ -1,7 +1,12 @@
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
+import { resourceManager } from '@kit.LocalizationKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
+import { ThemeControl } from '@kit.ArkUI';
 import { AppSettings, AppThemeMode, NavigationTransition, SettingsStoreListener, SettingsStoreSnapshot } from '../model/SettingsModels';
 import { DEFAULT_APP_SETTINGS } from '../constants/SettingsConstants';
 import { preferenceRepository } from '../repository/PreferenceRepository';
+import { normalizeAppSettings } from '../utils/SettingsUtils';
+import { resolveAppTheme } from '../utils/ThemeUtils';
 
 /** 维护应用设置快照，并在持久化成功后通知页面、应用系统主题。 */
 class SettingsStore {
@@ -10,6 +15,7 @@ class SettingsStore {
   private saving: boolean = false;
   private initialized: boolean = false;
   private initializeOperation: Promise<void> | undefined;
+  private windowReady: boolean = false;
   private listeners: Set<SettingsStoreListener> = new Set<SettingsStoreListener>();
 
   initialize(context: common.ApplicationContext): Promise<void> {
@@ -45,34 +51,68 @@ class SettingsStore {
   }
 
   async setThemeMode(mode: AppThemeMode): Promise<void> {
-    await this.save({
-      themeMode: mode,
-      navigationTransition: this.settings.navigationTransition,
-      mtu: this.settings.mtu,
-      delayTestUrl: this.settings.delayTestUrl
-    });
-    this.applyTheme(mode);
+    const next = this.copySettings(this.settings);
+    next.themeMode = mode;
+    await this.setAppearance(next);
   }
 
   async setNavigationTransition(transition: NavigationTransition): Promise<void> {
-    await this.save({
-      themeMode: this.settings.themeMode,
-      navigationTransition: transition,
-      mtu: this.settings.mtu,
-      delayTestUrl: this.settings.delayTestUrl
-    });
+    const next = this.copySettings(this.settings);
+    next.navigationTransition = transition;
+    await this.setAppearance(next);
+  }
+
+  async setAppearance(settings: AppSettings): Promise<void> {
+    const next = this.copySettings(settings);
+    next.mtu = this.settings.mtu;
+    next.delayTestUrl = this.settings.delayTestUrl;
+    const previousMode = this.settings.themeMode;
+    await this.save(next);
+    if (previousMode !== next.themeMode) { this.applyTheme(next.themeMode); }
+    this.refreshTheme();
+  }
+
+  /** 系统配色变化和自定义外观均替换同一对象，已挂载的页面与弹窗即时刷新。 */
+  refreshTheme(): void {
+    const resources = this.context?.resourceManager;
+    let dark = false;
+    let systemAccent = DEFAULT_APP_SETTINGS.themeColor;
+    try {
+      dark = resources?.getConfigurationSync().colorMode === resourceManager.ColorMode.DARK;
+      if (resources !== undefined) {
+        const color = resources.getColorSync($r('sys.color.ohos_id_color_emphasize').id);
+        systemAccent = '#' + (color & 0xFFFFFF).toString(16).padStart(6, '0');
+      }
+    } catch (error) {
+      hilog.warn(0x0000, 'NlashTheme', 'Cannot read system palette: %{public}s', String(error));
+    }
+    const theme = resolveAppTheme(this.settings, dark, systemAccent);
+    AppStorage.setOrCreate('appTheme', theme);
+    ThemeControl.setDefaultTheme({ colors: {
+      brand: theme.accent,
+      fontEmphasize: theme.accent,
+      iconEmphasize: theme.accent,
+      backgroundPrimary: theme.background,
+      backgroundSecondary: theme.surface,
+      compBackgroundPrimary: theme.surface,
+      compBackgroundEmphasize: theme.accent,
+      compEmphasizeSecondary: theme.accentSurface
+    } });
+  }
+
+  onWindowReady(): void {
+    this.windowReady = true;
+    this.applyTheme(this.settings.themeMode);
+    this.refreshTheme();
   }
 
   async setMtu(mtu: number): Promise<void> {
     if (!Number.isFinite(mtu) || mtu < 1280 || mtu > 9000) {
       throw new Error('MTU 必须在 1280–9000 之间');
     }
-    await this.save({
-      themeMode: this.settings.themeMode,
-      mtu: Math.round(mtu),
-      navigationTransition: this.settings.navigationTransition,
-      delayTestUrl: this.settings.delayTestUrl
-    });
+    const next = this.copySettings(this.settings);
+    next.mtu = Math.round(mtu);
+    await this.save(next);
   }
 
   async setDelayTestUrl(url: string): Promise<void> {
@@ -80,12 +120,9 @@ class SettingsStore {
     if ((!value.startsWith('https://') && !value.startsWith('http://')) || value.length > 2048) {
       throw new Error('延迟测试地址必须是有效的 HTTP(S) URL');
     }
-    await this.save({
-      themeMode: this.settings.themeMode,
-      mtu: this.settings.mtu,
-      delayTestUrl: value,
-      navigationTransition: this.settings.navigationTransition
-    });
+    const next = this.copySettings(this.settings);
+    next.delayTestUrl = value;
+    await this.save(next);
   }
 
   /** 同时校验并保存网络设置，避免表单的一部分成功、另一部分失败。 */
@@ -97,12 +134,10 @@ class SettingsStore {
     if ((!value.startsWith('https://') && !value.startsWith('http://')) || value.length > 2048) {
       throw new Error('延迟测试地址必须是有效的 HTTP(S) URL');
     }
-    await this.save({
-      themeMode: this.settings.themeMode,
-      mtu: Math.round(mtu),
-      delayTestUrl: value,
-      navigationTransition: this.settings.navigationTransition
-    });
+    const next = this.copySettings(this.settings);
+    next.mtu = Math.round(mtu);
+    next.delayTestUrl = value;
+    await this.save(next);
   }
 
   private async initializeInternal(context: common.ApplicationContext): Promise<void> {
@@ -110,6 +145,7 @@ class SettingsStore {
     this.settings = await preferenceRepository.getAppSettings();
     this.initialized = true;
     this.applyTheme(this.settings.themeMode);
+    this.refreshTheme();
     this.publish();
   }
 
@@ -121,6 +157,7 @@ class SettingsStore {
     if (!this.initialized) {
       throw new Error('设置尚未初始化');
     }
+    if (this.saving) { throw new Error('设置正在保存，请稍后重试'); }
     this.saving = true;
     this.publish();
     try {
@@ -136,7 +173,7 @@ class SettingsStore {
 
   private applyTheme(mode: AppThemeMode): void {
     const context = this.context;
-    if (context === undefined) {
+    if (context === undefined || !this.windowReady) {
       return;
     }
     let colorMode = ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET;
@@ -153,12 +190,7 @@ class SettingsStore {
   }
 
   private copySettings(settings: AppSettings): AppSettings {
-    return {
-      themeMode: settings.themeMode,
-      navigationTransition: settings.navigationTransition,
-      mtu: settings.mtu,
-      delayTestUrl: settings.delayTestUrl
-    };
+    return normalizeAppSettings(settings);
   }
 
   private publish(): void {

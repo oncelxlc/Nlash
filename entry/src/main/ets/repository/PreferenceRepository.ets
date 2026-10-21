@@ -3,7 +3,7 @@ import { preferences } from '@kit.ArkData';
 import { ProxySelection, RuntimeMode } from '../model/RuntimeModels';
 import { AppSettings, AppThemeMode } from '../model/SettingsModels';
 import { DEFAULT_APP_SETTINGS } from '../constants/SettingsConstants';
-import { resolveNavigationTransition } from '../utils/SettingsUtils';
+import { parseAppearanceSettings, resolveNavigationTransition } from '../utils/SettingsUtils';
 
 const PREFERENCES_NAME = 'nlash_settings';
 const ACTIVE_PROFILE_ID = 'activeProfileId';
@@ -11,6 +11,7 @@ const ACTIVE_PROFILE_PATH = 'activeProfilePath';
 const PROFILE_ORDER = 'profileOrder';
 const THEME_MODE = 'themeMode';
 const NAVIGATION_TRANSITION = 'navigationTransition';
+const APPEARANCE_SETTINGS = 'appearanceSettings';
 const VPN_MTU = 'vpnMtu';
 const DELAY_TEST_URL = 'delayTestUrl';
 const NOTIFICATION_PERMISSION_REQUESTED = 'notificationPermissionRequested';
@@ -174,9 +175,18 @@ class PreferenceRepository {
     const transitionValue = await store.get(NAVIGATION_TRANSITION, DEFAULT_APP_SETTINGS.navigationTransition);
     const mtuValue = await store.get(VPN_MTU, DEFAULT_APP_SETTINGS.mtu);
     const testUrlValue = await store.get(DELAY_TEST_URL, DEFAULT_APP_SETTINGS.delayTestUrl);
+    const appearanceValue = await store.get(APPEARANCE_SETTINGS, '{}');
+    const appearance = parseAppearanceSettings(typeof appearanceValue === 'string' ? appearanceValue : '{}');
     return {
       themeMode: this.parseThemeMode(typeof themeValue === 'string' ? themeValue : ''),
       navigationTransition: resolveNavigationTransition(typeof transitionValue === 'string' ? transitionValue : ''),
+      pureBlack: appearance.pureBlack,
+      themeColor: appearance.themeColor,
+      customThemeColor: appearance.customThemeColor,
+      themeColorStyle: appearance.themeColorStyle,
+      fontFamily: appearance.fontFamily,
+      followSystemFontScale: appearance.followSystemFontScale,
+      customFontScale: appearance.customFontScale,
       mtu: typeof mtuValue === 'number' && mtuValue >= 1280 && mtuValue <= 9000 ?
         Math.round(mtuValue) : DEFAULT_APP_SETTINGS.mtu,
       delayTestUrl: typeof testUrlValue === 'string' && this.isHttpUrl(testUrlValue) ?
@@ -190,6 +200,7 @@ class PreferenceRepository {
     await store.put(NAVIGATION_TRANSITION, settings.navigationTransition);
     await store.put(VPN_MTU, settings.mtu);
     await store.put(DELAY_TEST_URL, settings.delayTestUrl);
+    await store.put(APPEARANCE_SETTINGS, JSON.stringify(settings));
     await store.flush();
   }
 

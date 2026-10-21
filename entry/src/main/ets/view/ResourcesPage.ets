@@ -1,3 +1,5 @@
+import { AppTheme } from '../model/ThemeModels';
+import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import { GeoResource, GeoResourceSnapshot, GeoSettingsPatch } from '../model/DiagnosticsModels';
 import { RuntimeStoreSnapshot } from '../model/RuntimeModels';
 import { diagnosticsService } from '../services/DiagnosticsService';
@@ -15,6 +17,7 @@ interface ResourceRowData { resource: GeoResource; index: number; }
 
 @Component
 export struct ResourcesPage {
+  @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
   @Prop contentPadding: number = 16;
   onBack: () => void = (): void => {};
   @State snapshot: GeoResourceSnapshot = {
@@ -124,7 +127,7 @@ export struct ResourcesPage {
         Image($r('app.media.action_more')).width(24).height(24)
           .fillColor($r('app.color.content_primary')).accessibilityLevel('no')
       }
-      .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).padding(0).backgroundColor($r('app.color.card_background'))
+      .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).padding(0).backgroundColor(this.theme.surface)
       .accessibilityText('资源更新设置')
       .enabled(this.available && this.loaded && !this.saving && !this.updating && !this.snapshot.updating)
       .bindMenu([
@@ -141,11 +144,11 @@ export struct ResourcesPage {
     Button({ type: ButtonType.Normal }) {
       Row({ space: 16 }) {
         Column({ space: 4 }) {
-          Text(data.resource.kind).fontSize(20).fontColor($r('app.color.content_primary')).width('100%')
+          Text(data.resource.kind).fontSize(themeFontSize(20, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_primary')).width('100%')
           Text(this.available ? (this.loaded ? elapsedLabel(data.resource.updatedAt) : '正在读取…') : 'Core 就绪后读取')
-            .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
+            .fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary')).width('100%')
         }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-        Text(data.resource.updatedAt > 0 ? formatBytes(data.resource.size) : '--').fontSize(14).fontWeight(FontWeight.Medium)
+        Text(data.resource.updatedAt > 0 ? formatBytes(data.resource.size) : '--').fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.content_secondary'))
       }.width('100%')
     }
@@ -154,7 +157,7 @@ export struct ResourcesPage {
     .accessibilityText(`${data.resource.kind}，${elapsedLabel(data.resource.updatedAt)}，编辑下载地址`)
     .onClick((): void => { this.openEditor(data.resource.kind, data.resource.url, false); })
     if (data.index < this.snapshot.resources.length - 1) {
-      Divider().color($r('app.color.nav_divider')).padding({ left: 20, right: 20 })
+      Divider().color(this.theme.divider).padding({ left: 20, right: 20 })
     }
   }
 
@@ -164,28 +167,28 @@ export struct ResourcesPage {
         onBack: this.onBack, actions: (): void => { this.actions(); } })
       Scroll() {
         Column({ space: 20 }) {
-          Text('Geo').fontSize(14).fontColor($r('app.color.content_secondary')).width('100%').padding({ left: 16 })
+          Text('Geo').fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary')).width('100%').padding({ left: 16 })
           Column() {
             ForEach(this.snapshot.resources, (resource: GeoResource, index: number) => {
               this.resourceRow({ resource: this.snapshot.resources[index], index: index })
             }, (resource: GeoResource): string => resource.kind)
-          }.width('100%').borderRadius(DETAIL_CARD_RADIUS).clip(true).backgroundColor($r('app.color.card_background'))
+          }.width('100%').borderRadius(DETAIL_CARD_RADIUS).clip(true).backgroundColor(this.theme.surface)
           if (this.updating || this.snapshot.updating) {
             Row({ space: 12 }) {
               LoadingProgress().width(20).height(20).color($r('app.color.content_primary'))
-              Text('正在下载并校验资源…').fontSize(14).fontColor($r('app.color.content_secondary'))
+              Text('正在下载并校验资源…').fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
             }.width('100%').transition(revealTransition())
           }
           if (this.errorMessage.length > 0 || this.loadError.length > 0) {
-            Text(this.errorMessage || this.loadError).fontSize(14).fontColor($r('app.color.status_error')).width('100%')
+            Text(this.errorMessage || this.loadError).fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.status_error')).width('100%')
               .transition(revealTransition())
           }
           Text(this.available ?
             `点按资源可编辑下载源。${this.snapshot.autoUpdate ? `Core 运行时每 ${this.snapshot.intervalHours} 小时自动更新。` : '自动更新已关闭。'}更新的文件将在下次启动 Core 时使用。` :
             '请先启动 Core，再读取或更新 Geo 资源。')
-            .fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary')).width('100%')
+            .fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary')).width('100%')
         }.width('100%').padding({ top: 24, bottom: 32, left: this.contentPadding, right: this.contentPadding })
       }.width('100%').layoutWeight(1).scrollBar(BarState.Off).align(Alignment.Top)
-    }.width('100%').height('100%').backgroundColor($r('app.color.app_background'))
+    }.width('100%').height('100%').backgroundColor(this.theme.background)
   }
 }

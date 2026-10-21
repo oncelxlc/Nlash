@@ -1,3 +1,5 @@
+import { AppTheme } from '../model/ThemeModels';
+import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import {
   ProxyDelayOperationSnapshot,
   ProxyGroupSnapshot,
@@ -23,6 +25,7 @@ import { ProxyNodeCard } from '../components/ProxyNodeCard';
 /** 策略组可独立展开；节点选择、分组偏好和并发测速仍由 RuntimeStore 管理。 */
 @Component
 export struct ProxyPage {
+  @StorageProp('appTheme') @Watch('onThemeChange') theme: AppTheme = DEFAULT_APP_THEME;
   @State headerInset: number = 0;
   @Prop forceExpanded: boolean = false;
   @State coreAvailable: boolean = false;
@@ -57,7 +60,7 @@ export struct ProxyPage {
     this.restoreSelectionPending = true;
     this.entryGroup = '';
     this.getUIContext().getUIObserver().on('didLayout', this.restoreSelectionAfterLayout);
-    this.fontScale = this.getUIContext().fp2px(1) / this.getUIContext().vp2px(1);
+    this.fontScale = this.theme.fontScale || this.getUIContext().fp2px(1) / this.getUIContext().vp2px(1);
     this.unsubscribeRuntime = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
       this.coreAvailable = snapshot.coreAvailable;
       this.previewLoading = snapshot.previewLoading;
@@ -105,8 +108,10 @@ export struct ProxyPage {
   private updateWidth(width: Length): void {
     this.contentWidth = resolveContentWidth(width);
     this.metrics = resolveResponsiveMetrics(this.contentWidth, this.forceExpanded);
-    this.fontScale = this.getUIContext().fp2px(1) / this.getUIContext().vp2px(1);
+    this.fontScale = this.theme.fontScale || this.getUIContext().fp2px(1) / this.getUIContext().vp2px(1);
   }
+
+  private onThemeChange(): void { this.updateWidth(this.contentWidth); }
 
   private columnCount(): number {
     return proxyGroupColumnCount(this.contentWidth, this.fontScale);
@@ -215,14 +220,14 @@ export struct ProxyPage {
         Image($r('app.media.action_search')).width(24).height(24)
           .fillColor($r('app.color.content_primary')).accessibilityLevel('no')
       }
-      .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).backgroundColor($r('app.color.card_background'))
+      .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).backgroundColor(this.theme.surface)
       .accessibilityText(this.searchVisible ? '关闭代理搜索' : '搜索代理组和节点')
       .onClick((): void => { this.searchVisible = !this.searchVisible; this.query = ''; })
       Button({ type: ButtonType.Circle }) {
         Image($r('app.media.action_more')).width(24).height(24).rotate({ angle: 90 })
           .fillColor($r('app.color.content_primary')).accessibilityLevel('no')
       }
-      .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).backgroundColor($r('app.color.card_background'))
+      .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).backgroundColor(this.theme.surface)
       .accessibilityText('代理页面更多操作')
       .bindMenu([
         { value: '展开全部', action: (): void => {
@@ -247,7 +252,7 @@ export struct ProxyPage {
       .onClick((): void => { this.locateSelected(group, column); })
       Button({ type: ButtonType.Circle }) {
         if (this.isGroupTesting(group.name)) {
-          LoadingProgress().width(20).height(20).color($r('app.color.action_primary'))
+          LoadingProgress().width(20).height(20).color(this.theme.accent)
         } else {
           Image($r('app.media.action_bolt')).width(20).height(20)
             .fillColor($r('app.color.content_primary')).accessibilityLevel('no')
@@ -258,7 +263,7 @@ export struct ProxyPage {
       .accessibilityText(this.isGroupTesting(group.name) ? `${group.name} 正在测速` : `测试 ${group.name} 全部节点延迟`)
       .onClick((): void => { this.testGroup(group.name); })
     }
-    .borderRadius(24).backgroundColor($r('app.color.proxy_node_background'))
+    .borderRadius(24).backgroundColor(this.theme.inset)
   }
 
   @Builder
@@ -268,14 +273,14 @@ export struct ProxyPage {
         Button({ type: ButtonType.Normal }) {
           Row({ space: 12 }) {
             Text(Array.from(group.name)[0]?.toLocaleUpperCase() ?? '')
-              .width(36).height(40).textAlign(TextAlign.Center).fontSize(18).fontWeight(FontWeight.Medium)
+              .width(36).height(40).textAlign(TextAlign.Center).fontSize(themeFontSize(18, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium)
               .fontColor($r('app.color.content_secondary')).borderRadius(14)
-              .backgroundColor($r('app.color.proxy_node_background')).accessibilityLevel('no')
+              .backgroundColor(this.theme.inset).accessibilityLevel('no')
             Column({ space: 4 }) {
-              Text(group.name).fontSize(16).fontWeight(FontWeight.Bold)
+              Text(group.name).fontSize(themeFontSize(16, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Bold)
                 .fontColor($r('app.color.content_primary')).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
                 .width('100%')
-              Text(this.selectedNode(group) || '暂无选择').fontSize(CAPTION_FONT_SIZE)
+              Text(this.selectedNode(group) || '暂无选择').fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
                 .fontColor($r('app.color.content_secondary')).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
                 .width('100%')
             }
@@ -290,7 +295,7 @@ export struct ProxyPage {
         if (this.isExpanded(group.name) && this.fontScale <= 1.2) {
           this.groupActions(group, column)
         } else if (!this.isExpanded(group.name)) {
-          Text(group.type).fontSize(CAPTION_FONT_SIZE).fontWeight(FontWeight.Medium)
+          Text(group.type).fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.content_secondary')).constraintSize({ maxWidth: 80 })
             .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
         }
@@ -299,7 +304,7 @@ export struct ProxyPage {
             .rotate({ angle: this.isExpanded(group.name) ? 180 : 0 })
             .fillColor($r('app.color.content_primary')).accessibilityLevel('no')
         }
-        .width(44).height(44).backgroundColor($r('app.color.proxy_node_background'))
+        .width(44).height(44).backgroundColor(this.theme.inset)
         .accessibilityText(`${this.isExpanded(group.name) ? '收起' : '展开'} ${group.name}`)
         .onClick((): void => { this.toggleGroup(group.name); })
       }
@@ -308,7 +313,7 @@ export struct ProxyPage {
         Row() { this.groupActions(group, column) }.width('100%').justifyContent(FlexAlign.End)
       }
     }
-    .width('100%').padding(12).borderRadius(28).backgroundColor($r('app.color.card_background'))
+    .width('100%').padding(12).borderRadius(28).backgroundColor(this.theme.surface)
   }
 
   @Builder
@@ -348,13 +353,13 @@ export struct ProxyPage {
               }, (node: ProxyNodeSnapshot, row: number): string => `${row}:${proxyNodeRenderKey(node)}`)
             if (this.groups[groupIndex].nodes.length === 0) {
               ListItem() {
-                Text('当前代理组暂无节点').fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
+                Text('当前代理组暂无节点').fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
                   .padding(16).width('100%')
               }
             }
           }
         }
-        .borderRadius(28).backgroundColor($r('app.color.card_background'))
+        .borderRadius(28).backgroundColor(this.theme.surface)
       }, (groupIndex: number): string => `${groupIndex}:${this.groups[groupIndex].name}:${this.nodeColumnCount()}`)
     }
     .sticky(StickyStyle.Header).scrollBar(BarState.Off)
@@ -375,7 +380,7 @@ export struct ProxyPage {
       if (this.searchVisible) {
         Search({ value: this.query, placeholder: '搜索代理组、节点或协议' })
           .height(CONTROL_HEIGHT).fontColor($r('app.color.content_primary'))
-          .backgroundColor($r('app.color.card_background')).borderRadius(24)
+          .backgroundColor(this.theme.surface).borderRadius(24)
           .margin({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
           .accessibilityText('搜索代理组、节点或协议')
           .onChange((value: string): void => { this.query = value; })

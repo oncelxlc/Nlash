@@ -1,9 +1,12 @@
+import { AppTheme } from '../model/ThemeModels';
+import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import { CONTROL_HEIGHT, DETAIL_CARD_RADIUS, BODY_FONT_SIZE } from '../constants/UiConstants';
 import { resourceInputError } from '../utils/DiagnosticsUtils';
 import { revealTransition } from '../utils/AnimationUtils';
 
 @CustomDialog
 export struct ResourceInputDialog {
+  @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
   controller?: CustomDialogController;
   title: string = '';
   initialInput: string = '';
@@ -29,32 +32,34 @@ export struct ResourceInputDialog {
 
   build() {
     Column({ space: 20 }) {
-      Text(this.title).fontSize(22).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
+      Text(this.title).fontSize(themeFontSize(22, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary'))
       Column({ space: 8 }) {
-        Text(this.interval ? '更新间隔（小时）' : '下载地址').fontSize(14)
+        Text(this.interval ? '更新间隔（小时）' : '下载地址').fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily)
           .fontColor($r('app.color.content_secondary')).width('100%')
         TextArea({ text: this.input, placeholder: this.interval ? '1–720' : 'https://' })
-          .id('resource-input').height(this.interval ? 64 : 128).fontSize(BODY_FONT_SIZE)
+          .id('resource-input').height(this.interval ? 64 : 128).fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
           .type(this.interval ? TextAreaType.NUMBER : TextAreaType.NORMAL)
           .fontColor($r('app.color.content_primary')).placeholderColor($r('app.color.content_secondary'))
-          .backgroundColor($r('app.color.app_background')).borderRadius(20).padding(16)
+          .backgroundColor(this.theme.background).borderRadius(20).padding(16)
           .enabled(!this.saving).accessibilityText(this.interval ? '自动更新间隔，1 至 720 小时' : `${this.title} 下载地址`)
           .onChange((value: string): void => { this.input = value; })
         if (this.errorMessage.length > 0) {
-          Text(this.errorMessage).fontSize(14).fontColor($r('app.color.status_error')).width('100%')
+          Text(this.errorMessage).fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.status_error')).width('100%')
             .transition(revealTransition())
         }
       }.width('100%')
       Row({ space: 12 }) {
         Button('取消').height(CONTROL_HEIGHT).layoutWeight(1).borderRadius(24)
-          .fontColor($r('app.color.content_primary')).backgroundColor($r('app.color.surface_muted'))
+          .fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
+          .fontColor($r('app.color.content_primary')).backgroundColor(this.theme.muted)
           .enabled(!this.saving).onClick((): void => { this.controller?.close(); })
         Button(this.saving ? '保存中…' : '提交').height(CONTROL_HEIGHT).layoutWeight(1).borderRadius(24)
-          .fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.action_primary'))
+          .fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
+          .fontColor(this.theme.onAccent).backgroundColor(this.theme.accent)
           .enabled(!this.saving).onClick((): void => { this.submit(); })
       }.width('100%')
     }
     .width('90%').constraintSize({ maxWidth: 440 }).padding(24).borderRadius(DETAIL_CARD_RADIUS + 8)
-    .backgroundColor($r('app.color.card_background'))
+    .backgroundColor(this.theme.surface)
   }
 }

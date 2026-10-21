@@ -1,3 +1,5 @@
+import { AppTheme } from '../model/ThemeModels';
+import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import {
   DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES,
   MAX_PROFILE_UPDATE_INTERVAL_MINUTES,
@@ -30,6 +32,7 @@ import { EmptyStateBackground } from '../components/EmptyStateBackground';
 /** 配置管理页面，编辑草稿独立于 Store，下载、保存与活动配置切换统一交给 ProfileStore。 */
 @Component
 export struct ConfigurationPage {
+  @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
   @State headerInset: number = 0;
   @Prop forceExpanded: boolean = false;
   @State profiles: Profile[] = [];
@@ -386,14 +389,14 @@ export struct ConfigurationPage {
         .onClick((): void => { this.updateAll(); })
       }
       .borderRadius(CONTROL_HEIGHT / 2)
-      .backgroundColor($r('app.color.card_background'))
+      .backgroundColor(this.theme.surface)
       Button({ type: ButtonType.Circle }) {
         Image($r('app.media.action_sort')).width(24).height(24)
-          .fillColor(this.managingProfiles ? $r('app.color.action_primary') : $r('app.color.content_primary'))
+          .fillColor(this.managingProfiles ? this.theme.accent : $r('app.color.content_primary'))
           .accessibilityLevel('no')
       }
       .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).padding(0)
-      .backgroundColor(this.managingProfiles ? $r('app.color.selection_background') : $r('app.color.card_background'))
+      .backgroundColor(this.managingProfiles ? this.theme.accentSurface : this.theme.surface)
       .enabled(this.busyProfileId.length === 0 && this.profiles.length > 0)
       .accessibilityText(this.managingProfiles ? '完成配置管理与排序' : '管理配置与排序')
       .accessibilitySelected(this.managingProfiles)
@@ -406,13 +409,13 @@ export struct ConfigurationPage {
     if (this.busyProfileId.length > 0 && this.getStageLabel().length > 0) {
       Column() {
         Row({ space: 12 }) {
-          LoadingProgress().width(20).height(20).color($r('app.color.nav_selected'))
-          Text(this.getStageLabel()).fontSize(14).fontColor($r('app.color.nav_selected')).layoutWeight(1)
+          LoadingProgress().width(20).height(20).color(this.theme.accent)
+          Text(this.getStageLabel()).fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontColor(this.theme.accent).layoutWeight(1)
         }
         .width('100%')
         .padding(16)
         .borderRadius(BUTTON_RADIUS)
-        .backgroundColor($r('app.color.nav_selected_background'))
+        .backgroundColor(this.theme.muted)
       }
       .width('100%')
       .padding({ left: contentPadding, right: contentPadding })
@@ -427,7 +430,7 @@ export struct ConfigurationPage {
           Column({ space: 4 }) {
             Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.Center }) {
               Text(profile.name)
-                .fontSize(BODY_FONT_SIZE)
+                .fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
                 .fontWeight(FontWeight.Medium)
                 .fontColor($r('app.color.content_primary'))
                 .maxLines(2)
@@ -435,11 +438,11 @@ export struct ConfigurationPage {
                 .margin({ right: 8 })
               if (formatProfileExpiry(profile.expireAt ?? 0).length > 0) {
                 Text(formatProfileExpiry(profile.expireAt ?? 0))
-                  .fontSize(12).fontWeight(FontWeight.Medium)
-                  .fontColor($r('app.color.profile_badge_text'))
+                  .fontSize(themeFontSize(12, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium)
+                  .fontColor(this.theme.accent)
                   .padding({ left: 8, right: 8, top: 3, bottom: 3 })
                   .borderRadius(16)
-                  .backgroundColor($r('app.color.selection_background'))
+                  .backgroundColor(this.theme.accentSurface)
                   .maxLines(1)
               }
             }
@@ -447,7 +450,7 @@ export struct ConfigurationPage {
             Text((profile.totalBytes ?? 0) > 0 ?
               `${formatProfileBytes(this.usedBytes(profile))} / ${formatProfileBytes(profile.totalBytes ?? 0)}` :
               (profile.type === ProfileType.LOCAL ? '本地 YAML' : getSubscriptionHost(profile.sourceUrl)))
-              .fontSize(CAPTION_FONT_SIZE)
+              .fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
               .fontColor($r('app.color.content_secondary'))
               .maxLines(2)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -458,19 +461,19 @@ export struct ConfigurationPage {
           if (profile.type === ProfileType.SUBSCRIPTION || profile.id === this.busyProfileId) {
             Text(profile.id === this.busyProfileId ? (this.getStageLabel() || '处理中…') :
               formatProfileRelativeTime(profile.lastUpdateAt))
-              .fontSize(CAPTION_FONT_SIZE)
+              .fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
               .fontColor($r('app.color.content_secondary'))
               .constraintSize({ maxWidth: 88 })
               .textAlign(TextAlign.End)
           }
           if (profile.id === this.busyProfileId) {
-            LoadingProgress().width(28).height(28).color($r('app.color.action_primary'))
+            LoadingProgress().width(28).height(28).color(this.theme.accent)
           } else if (profile.id === this.activeProfileId) {
             Image($r('app.media.action_check'))
               .width(28).height(28).padding(5)
-              .fillColor($r('app.color.accent_foreground'))
+              .fillColor(this.theme.onAccent)
               .borderRadius(14)
-              .backgroundColor($r('app.color.action_primary'))
+              .backgroundColor(this.theme.accent)
               .accessibilityLevel('no')
           }
         }
@@ -479,7 +482,7 @@ export struct ConfigurationPage {
         .constraintSize({ minHeight: 76 })
       }
       .layoutWeight(1).padding(0).borderRadius(32)
-      .backgroundColor($r('app.color.card_background'))
+      .backgroundColor(this.theme.surface)
       .enabled(this.busyProfileId.length === 0)
       .accessibilityText(`${profile.name}，${profile.id === this.activeProfileId ? '当前使用' : '点击设为活动配置'}` +
         (profile.id === this.busyProfileId ? `，${this.getStageLabel() || '正在处理配置'}` : ''))
@@ -501,12 +504,12 @@ export struct ConfigurationPage {
     }
     .width('100%')
     .borderRadius(32)
-    .backgroundColor($r('app.color.card_background'))
+    .backgroundColor(this.theme.surface)
   }
 
   @Builder
   private fieldLabel(label: string) {
-    Text(label).fontSize(14).fontColor($r('app.color.content_secondary')).width('100%')
+    Text(label).fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary')).width('100%')
   }
 
   @Builder
@@ -514,9 +517,10 @@ export struct ConfigurationPage {
     Column({ space: 12 }) {
       this.fieldLabel('名称')
       TextInput({ placeholder: '配置名称', text: this.editName })
+        .fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
         .width('100%').height(CONTROL_HEIGHT)
         .fontColor($r('app.color.content_primary'))
-        .backgroundColor($r('app.color.card_background'))
+        .backgroundColor(this.theme.surface)
         .borderRadius(BUTTON_RADIUS)
         .enabled(this.busyProfileId.length === 0)
         .accessibilityText('配置名称')
@@ -524,21 +528,22 @@ export struct ConfigurationPage {
       if (this.editingProfile()?.type === ProfileType.SUBSCRIPTION) {
         this.fieldLabel('订阅 URL')
         TextInput({ placeholder: 'https://example.com/subscription', text: this.editUrl })
+          .fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
           .type(InputType.URL).width('100%').height(CONTROL_HEIGHT)
           .fontColor($r('app.color.content_primary'))
-          .backgroundColor($r('app.color.card_background'))
+          .backgroundColor(this.theme.surface)
           .borderRadius(BUTTON_RADIUS)
           .enabled(this.busyProfileId.length === 0)
           .accessibilityText('订阅 URL')
           .onChange((value: string): void => { this.editUrl = value; this.editorDirty = true; })
         Row({ space: 12 }) {
           Column({ space: 4 }) {
-            Text('自动更新').fontSize(BODY_FONT_SIZE).fontColor($r('app.color.content_primary'))
-            Text('启动、回到前台及到期后检查').fontSize(CAPTION_FONT_SIZE).fontColor($r('app.color.content_secondary'))
+            Text('自动更新').fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_primary'))
+            Text('启动、回到前台及到期后检查').fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary'))
           }
           .layoutWeight(1).alignItems(HorizontalAlign.Start)
           Toggle({ type: ToggleType.Switch, isOn: this.editAutoUpdateEnabled })
-            .selectedColor($r('app.color.nav_selected'))
+            .selectedColor(this.theme.accent)
             .enabled(this.busyProfileId.length === 0)
             .accessibilityText('自动更新订阅')
             .onChange((value: boolean): void => { this.editAutoUpdateEnabled = value; this.editorDirty = true; })
@@ -546,9 +551,10 @@ export struct ConfigurationPage {
         .width('100%').padding({ top: 12, bottom: 12 })
         this.fieldLabel(`更新间隔 · 分钟（${MIN_PROFILE_UPDATE_INTERVAL_MINUTES}–${MAX_PROFILE_UPDATE_INTERVAL_MINUTES}）`)
         TextInput({ placeholder: `${DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES}`, text: this.editIntervalMinutes })
+          .fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
           .type(InputType.Number).width('100%').height(CONTROL_HEIGHT)
           .fontColor($r('app.color.content_primary'))
-          .backgroundColor($r('app.color.card_background'))
+          .backgroundColor(this.theme.surface)
           .borderRadius(BUTTON_RADIUS)
           .enabled(this.busyProfileId.length === 0)
           .accessibilityText('自动更新间隔，分钟')
@@ -556,7 +562,7 @@ export struct ConfigurationPage {
       }
       this.statusBanner()
       if (this.formError.length > 0) {
-        Text(this.formError).fontSize(14).fontColor($r('app.color.status_error')).width('100%')
+        Text(this.formError).fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.status_error')).width('100%')
       }
     }
     .width('100%')
@@ -573,10 +579,10 @@ export struct ConfigurationPage {
       }
       .width(HEADER_ACTION_SIZE).height(HEADER_ACTION_SIZE).padding(0).borderRadius(8)
       .responseRegion({ x: -8, y: -8, width: CONTROL_HEIGHT, height: CONTROL_HEIGHT })
-      .backgroundColor($r('app.color.surface_muted'))
+      .backgroundColor(this.theme.muted)
       .accessibilityText('返回配置列表')
       .onClick((): void => { this.requestCloseEditor(); })
-      Text('编辑配置').fontSize(PAGE_TITLE_SIZE).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary'))
+      Text('编辑配置').fontSize(themeFontSize(PAGE_TITLE_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary'))
         .constraintSize({ minHeight: HEADER_CONTENT_HEIGHT })
         .layoutWeight(1)
     }
@@ -595,7 +601,7 @@ export struct ConfigurationPage {
         Button(this.busyProfileId.length > 0 ? '保存中…' :
           (this.editingProfile()?.type === ProfileType.SUBSCRIPTION ? '保存并更新' : '保存名称'))
           .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
-          .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.action_primary'))
+          .fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontColor(this.theme.onAccent).backgroundColor(this.theme.accent)
           .enabled(this.busyProfileId.length === 0)
           .onClick((): void => { this.saveEditor(); })
       }
@@ -679,29 +685,31 @@ export struct ConfigurationPage {
   @Builder
   private addProfileSheet() {
     Column({ space: 12 }) {
-      Text('添加订阅').fontSize(24).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary')).width('100%')
+      Text('添加订阅').fontSize(themeFontSize(24, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary')).width('100%')
       this.fieldLabel('名称 · 可选')
       TextInput({ placeholder: '配置名称', text: this.addName })
+        .fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
         .width('100%').height(CONTROL_HEIGHT)
-        .fontColor($r('app.color.content_primary')).backgroundColor($r('app.color.surface_muted'))
+        .fontColor($r('app.color.content_primary')).backgroundColor(this.theme.muted)
         .borderRadius(BUTTON_RADIUS)
         .enabled(!this.isAddingSubscription())
         .accessibilityText('订阅名称，可选')
         .onChange((value: string): void => { this.addName = value; })
       this.fieldLabel('订阅 URL')
       TextInput({ placeholder: 'https://example.com/subscription', text: this.addUrl })
+        .fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
         .width('100%').height(CONTROL_HEIGHT).type(InputType.URL)
-        .fontColor($r('app.color.content_primary')).backgroundColor($r('app.color.surface_muted'))
+        .fontColor($r('app.color.content_primary')).backgroundColor(this.theme.muted)
         .borderRadius(BUTTON_RADIUS)
         .enabled(!this.isAddingSubscription())
         .accessibilityText('订阅 URL')
         .onChange((value: string): void => { this.addUrl = value; })
       if (this.formError.length > 0) {
-        Text(this.formError).fontSize(14).fontColor($r('app.color.status_error')).width('100%')
+        Text(this.formError).fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.status_error')).width('100%')
       }
       Button(this.isAddingSubscription() ? this.getStageLabel() : '下载并校验')
         .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
-        .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.action_primary'))
+        .fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontColor(this.theme.onAccent).backgroundColor(this.theme.accent)
         .enabled(this.busyProfileId.length === 0 && this.addUrl.trim().length > 0)
         .onClick((): void => { this.addSubscription(); })
     }
@@ -711,14 +719,14 @@ export struct ConfigurationPage {
   @Builder
   private addSourceSheet() {
     Column({ space: 16 }) {
-      Text('添加配置').fontSize(24).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary')).width('100%')
+      Text('添加配置').fontSize(themeFontSize(24, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Bold).fontColor($r('app.color.content_primary')).width('100%')
       Button('添加订阅')
         .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
-        .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.accent_foreground')).backgroundColor($r('app.color.action_primary'))
+        .fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontColor(this.theme.onAccent).backgroundColor(this.theme.accent)
         .onClick((): void => { this.openAddSubscription(); })
       Button('导入本地 YAML')
         .type(ButtonType.Normal).width('100%').height(CONTROL_HEIGHT).borderRadius(BUTTON_RADIUS)
-        .fontSize(BODY_FONT_SIZE).fontColor($r('app.color.nav_selected')).backgroundColor($r('app.color.nav_selected_background'))
+        .fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontColor(this.theme.accent).backgroundColor(this.theme.muted)
         .onClick((): void => { this.showProfileSheet = false; this.importLocal(); })
     }
     .alignItems(HorizontalAlign.Start).width('100%').padding(24)
@@ -734,11 +742,11 @@ export struct ConfigurationPage {
       if (this.showEditor) { this.editorContent() } else { this.mainContent() }
     }
     .width('100%').height('100%')
-    .backgroundColor($r('app.color.app_background'))
+    .backgroundColor(this.theme.background)
     .onAreaChange((_old: Area, area: Area): void => { this.updateWidth(area.width); })
     .bindSheet(this.showProfileSheet, this.profileSheet(), {
       height: SheetSize.FIT_CONTENT,
-      backgroundColor: $r('app.color.card_background'),
+      backgroundColor: this.theme.surface,
       onDisappear: (): void => {
         this.showProfileSheet = false;
         this.clearSheetInputs();
