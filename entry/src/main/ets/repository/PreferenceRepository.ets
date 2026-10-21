@@ -3,7 +3,7 @@ import { preferences } from '@kit.ArkData';
 import { ProxySelection, RuntimeMode } from '../model/RuntimeModels';
 import { AppSettings, AppThemeMode } from '../model/SettingsModels';
 import { DEFAULT_APP_SETTINGS } from '../constants/SettingsConstants';
-import { parseAppearanceSettings, resolveNavigationTransition } from '../utils/SettingsUtils';
+import { isValidDelayTestUrl, parseAppearanceSettings, resolveNavigationTransition } from '../utils/SettingsUtils';
 
 const PREFERENCES_NAME = 'nlash_settings';
 const ACTIVE_PROFILE_ID = 'activeProfileId';
@@ -189,7 +189,7 @@ class PreferenceRepository {
       customFontScale: appearance.customFontScale,
       mtu: typeof mtuValue === 'number' && mtuValue >= 1280 && mtuValue <= 9000 ?
         Math.round(mtuValue) : DEFAULT_APP_SETTINGS.mtu,
-      delayTestUrl: typeof testUrlValue === 'string' && this.isHttpUrl(testUrlValue) ?
+      delayTestUrl: typeof testUrlValue === 'string' && isValidDelayTestUrl(testUrlValue) ?
         testUrlValue : DEFAULT_APP_SETTINGS.delayTestUrl
     };
   }
@@ -316,10 +316,6 @@ class PreferenceRepository {
       return AppThemeMode.DARK;
     }
     return AppThemeMode.SYSTEM;
-  }
-
-  private isHttpUrl(value: string): boolean {
-    return value.startsWith('https://') || value.startsWith('http://');
   }
 
   private async readProxySelectionRecords(): Promise<StoredProxySelection[]> {

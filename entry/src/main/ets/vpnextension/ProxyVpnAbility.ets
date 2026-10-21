@@ -1,13 +1,13 @@
 import { Want } from '@kit.AbilityKit';
 import { BusinessError, systemDateTime } from '@kit.BasicServicesKit';
 import { fileIo } from '@kit.CoreFileKit';
-import { vpnExtension, VpnExtensionAbility } from '@kit.NetworkKit';
+import { connection, vpnExtension, VpnExtensionAbility } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { util } from '@kit.ArkTS';
 import { CoreEvent, CoreEventType, CoreResult, CoreRuntimeState } from '../model/CoreModels';
 import { DEFAULT_RUNTIME_MODE } from '../constants/RuntimeConstants';
 import { BOOTSTRAP_CORE_CONFIG, BOOTSTRAP_PROFILE_SIGNATURE } from '../constants/VpnConstants';
-import { ProxySessionTimer } from '../utils/VpnUtils';
+import { buildPlatformVpnConfig, ProxySessionTimer } from '../utils/VpnUtils';
 import {
   ProxyGroupSnapshot,
   ProxySelection,
@@ -22,6 +22,7 @@ import { coreControlServer } from '../services/CoreControlServer';
 import { CoreRecoveryDecision, CoreRecoveryPolicy } from '../services/CoreRecoveryPolicy';
 import { ProtectChannelServer, SocketProtector } from '../services/ProtectChannelServer';
 import { publishVpnState } from '../services/VpnStatePublisher';
+import { GeneralSettings } from '../model/GeneralSettingsModels';
 
 const DOMAIN = 0x4E4C;
 const TAG = 'NlashProxyVpn';
@@ -95,6 +96,8 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
   private runtimeDefaultSelections: ProxySelection[] = [];
   private runtimeMode: RuntimeMode = DEFAULT_RUNTIME_MODE;
   private runtimeMtu: number = DEFAULT_MTU;
+  private runtimeIpv6: boolean = false;
+  private networkMonitor: connection.NetConnection | undefined;
   private desiredProxyEnabled: boolean = false;
   private lastLifecycleMessage: string = '';
   private sessionTimer: ProxySessionTimer = new ProxySessionTimer();
@@ -117,11 +120,16 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     this.enqueue(async (): Promise<void> => {
       await controlReady;
       await this.loadCore('', await this.prepareBootstrapConfig(), BOOTSTRAP_PROFILE_SIGNATURE, false);
+      try { this.monitorSystemDNS(); }
+      catch (_error) { hilog.warn(DOMAIN, TAG, 'system DNS monitor unavailable'); }
     }).catch((error: Error): void => { this.setFailure(this.errorMessage(error)); });
   }
 
   onDestroy(): void {
     this.destroying = true;
+    try { this.networkMonitor?.unregister((_error: BusinessError): void => {}); }
+    catch (_error) { hilog.warn(DOMAIN, TAG, 'system DNS monitor cleanup failed'); }
+    this.networkMonitor = undefined;
     coreControlServer.stop();
     hilog.info(DOMAIN, TAG, 'onDestroy');
     this.enqueue((): Promise<void> => this.shutdown()).catch((error: Error): void => {
@@ -147,6 +155,22 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     if (command.type === 'lifecycleSnapshot') {
       await this.lifecycleQueue;
       return this.successResponse();
+    }
+    if (command.type === 'saveGeneralSettings') {
+      const settings = command.payload as GeneralSettings | undefined;
+      if (settings === undefined || settings === null || typeof settings.ipv6 !== 'boolean' ||
+        typeof settings.appendSystemDns !== 'boolean') {
+        return this.failureResponse('INVALID_ARGUMENT', '常规设置参数无效');
+      }
+      let response = '';
+      try {
+        await this.enqueue(async (): Promise<void> => {
+          response = await this.saveGeneralSettings(raw, settings);
+        });
+        return response;
+      } catch (error) {
+        return this.failureResponse('SETTINGS_FAILED', this.errorMessage(error));
+      }
     }
     if (command.type === 'setProxyEnabled') {
       const payload = command.payload as SetProxyEnabledPayload | undefined;
@@ -255,6 +279,7 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
       }
       const workDir = `${this.context.filesDir}/core/work`;
       await this.ensureDirectory(workDir);
+      await this.refreshSystemDNS(false);
       const result = await coreClient.start({ configPath: configPath, workDir: workDir });
       if (!result.ok || coreClient.getState() !== CoreRuntimeState.RUNNING) {
         throw new Error(`Core start failed: ${result.code}: ${result.message}`);
@@ -361,6 +386,70 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     }
   }
 
+  private async saveGeneralSettings(raw: string, next: GeneralSettings): Promise<string> {
+    const previous = await this.executeRequiredCommand<GeneralSettings>('generalSettings');
+    const reconnect = previous.ipv6 !== next.ipv6 && this.proxyState === ProxyState.ENABLED;
+    if (next.appendSystemDns) { await this.refreshSystemDNS(true); }
+    if (reconnect) { await this.disableProxy(true); }
+    let applied = false;
+    try {
+      const response = await coreClient.executeCommand(raw);
+      const result = this.parseCommandResponse<GeneralSettings>(response);
+      if (!result.ok) { throw new Error(result.message || '常规设置应用失败'); }
+      applied = true;
+      if (reconnect) { await this.enableProxy(); }
+      return response;
+    } catch (error) {
+      try {
+        if (applied) { await this.executeRequiredOK('saveGeneralSettings', previous); }
+        if (reconnect) { await this.enableProxy(); }
+      } catch (restoreError) {
+        throw new Error('设置应用失败，原代理恢复失败，请重启 Core');
+      }
+      throw new Error(this.errorMessage(error));
+    }
+  }
+
+  private monitorSystemDNS(): void {
+    const monitor = connection.createNetConnection({ netCapabilities: {
+      bearerTypes: [], networkCap: [connection.NetCap.NET_CAPABILITY_INTERNET, connection.NetCap.NET_CAPABILITY_NOT_VPN]
+    } });
+    this.networkMonitor = monitor;
+    const refresh = (): void => {
+      if (this.destroying) { return; }
+      this.enqueue((): Promise<void> => this.refreshSystemDNS(false)).catch((): void => {
+        hilog.warn(DOMAIN, TAG, 'system DNS refresh failed');
+      });
+    };
+    monitor.on('netAvailable', refresh);
+    monitor.on('netConnectionPropertiesChange', refresh);
+    monitor.on('netLost', refresh);
+    monitor.register((error: BusinessError): void => {
+      if (error) { hilog.warn(DOMAIN, TAG, 'system DNS monitor unavailable'); }
+    });
+  }
+
+  private async refreshSystemDNS(required: boolean): Promise<void> {
+    try {
+      // getDefaultNet 返回默认非 VPN 网络，不能把 TUN 的 DNS 再追加到自身上游。
+      const network = await connection.getDefaultNet();
+      const servers: string[] = [];
+      if (network.netId !== 0) {
+        const properties = await connection.getConnectionProperties(network);
+        properties.dnses.forEach((address: connection.NetAddress): void => {
+          const value = address.address;
+          if (value.length > 0 && value !== '0.0.0.0' && value !== '::' && value !== '::1' &&
+            !value.startsWith('127.') && !servers.includes(value)) { servers.push(value); }
+        });
+      }
+      if (required && servers.length === 0) { throw new Error('当前网络未提供可用的系统 DNS'); }
+      await this.executeRequiredOK('updateSystemDNS', servers.slice(0, 16));
+    } catch (error) {
+      if (required) { throw new Error('无法读取或应用系统 DNS，请检查当前网络后重试'); }
+      hilog.warn(DOMAIN, TAG, 'system DNS refresh unavailable');
+    }
+  }
+
   /** 依次创建平台 TUN、监听 protect 通道、接入 Core，失败时回收本轮平台资源。 */
   private async enableProxy(): Promise<void> {
     if (this.proxyState === ProxyState.ENABLED && coreClient.isProxyEnabled()) {
@@ -378,9 +467,10 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
     this.publish('正在创建 VPN/TUN');
     try {
       this.runtimeMtu = (await preferenceRepository.getAppSettings(this.context.getApplicationContext())).mtu;
+      this.runtimeIpv6 = (await this.executeRequiredCommand<GeneralSettings>('generalSettings')).ipv6;
       const connection = vpnExtension.createVpnConnection(this.context);
       this.vpnConnection = connection;
-      const fd = await connection.create(this.vpnConfig());
+      const fd = await connection.create(buildPlatformVpnConfig(this.runtimeMtu, this.runtimeIpv6));
       if (fd < 0) {
         throw new Error(`VpnConnection.create returned invalid fd=${fd}`);
       }
@@ -730,29 +820,6 @@ export default class ProxyVpnAbility extends VpnExtensionAbility {
 
   private isRuntimeMode(mode: RuntimeMode): boolean {
     return mode === RuntimeMode.RULE || mode === RuntimeMode.GLOBAL || mode === RuntimeMode.DIRECT;
-  }
-
-  // 平台接管 IPv4 默认路由；地址、前缀和 MTU 须与 Go configureHarmonyTun 保持一致。
-  private vpnConfig(): vpnExtension.VpnConfig {
-    return {
-      addresses: [{
-        address: { address: '172.19.0.1', family: 1 },
-        prefixLength: 30
-      }],
-      routes: [{
-        interface: 'vpn-tun',
-        destination: { address: { address: '0.0.0.0', family: 1 }, prefixLength: 0 },
-        gateway: { address: '0.0.0.0', family: 1 },
-        hasGateway: false,
-        isDefaultRoute: true
-      }],
-      dnsAddresses: ['1.1.1.1'],
-      mtu: this.runtimeMtu,
-      isIPv4Accepted: true,
-      isIPv6Accepted: false,
-      isInternal: false,
-      isBlocking: false
-    };
   }
 
   private lifecycleSnapshot(): RuntimeLifecycleSnapshot {

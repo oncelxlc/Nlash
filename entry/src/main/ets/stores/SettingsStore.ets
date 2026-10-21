@@ -5,7 +5,7 @@ import { ThemeControl } from '@kit.ArkUI';
 import { AppSettings, AppThemeMode, NavigationTransition, SettingsStoreListener, SettingsStoreSnapshot } from '../model/SettingsModels';
 import { DEFAULT_APP_SETTINGS } from '../constants/SettingsConstants';
 import { preferenceRepository } from '../repository/PreferenceRepository';
-import { normalizeAppSettings } from '../utils/SettingsUtils';
+import { isValidDelayTestUrl, normalizeAppSettings } from '../utils/SettingsUtils';
 import { resolveAppTheme } from '../utils/ThemeUtils';
 
 /** 维护应用设置快照，并在持久化成功后通知页面、应用系统主题。 */
@@ -117,7 +117,7 @@ class SettingsStore {
 
   async setDelayTestUrl(url: string): Promise<void> {
     const value = url.trim();
-    if ((!value.startsWith('https://') && !value.startsWith('http://')) || value.length > 2048) {
+    if (!isValidDelayTestUrl(value)) {
       throw new Error('延迟测试地址必须是有效的 HTTP(S) URL');
     }
     const next = this.copySettings(this.settings);
@@ -131,7 +131,7 @@ class SettingsStore {
       throw new Error('MTU 必须在 1280–9000 之间');
     }
     const value = url.trim();
-    if ((!value.startsWith('https://') && !value.startsWith('http://')) || value.length > 2048) {
+    if (!isValidDelayTestUrl(value)) {
       throw new Error('延迟测试地址必须是有效的 HTTP(S) URL');
     }
     const next = this.copySettings(this.settings);

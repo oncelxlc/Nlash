@@ -18,6 +18,7 @@ import (
 // 同一文件后续被覆盖为无效内容，验证回滚依赖已接受的内存字节而非重新读取磁盘。
 func TestConfigurationHotApplyPreservesRuntimeAndAcceptedData(t *testing.T) {
 	dir := t.TempDir()
+	writeTestGeneralSettings(t, dir)
 	path := filepath.Join(dir, "active.yaml")
 	bootstrap := []byte("port: 0\nsocks-port: 0\nmixed-port: 0\nexternal-controller: ''\n" +
 		"dns:\n  enable: false\ntun:\n  enable: false\nrules:\n  - MATCH,REJECT\n")
@@ -126,6 +127,7 @@ func TestApplyRuntimeConfigSynchronizesPlatformTun(t *testing.T) {
 		}
 	})
 	C.SetHomeDir(t.TempDir())
+	writeTestGeneralSettings(t, C.Path.HomeDir())
 	cfg, _, err := parseRuntimeConfigData([]byte("dns:\n  enable: false\nrules:\n  - MATCH,REJECT\n"), false)
 	if err != nil {
 		t.Fatal(err)
@@ -183,8 +185,11 @@ func TestConfigureHarmonyCoreDisablesTunAndRouting(t *testing.T) {
 		t.Fatalf("core-only runtime retained TUN settings: %+v", cfg.General.Tun)
 	}
 	if cfg.General.Tun.AutoRoute || cfg.General.Tun.AutoDetectInterface ||
-		cfg.General.Tun.AutoRedirect || cfg.General.Tun.StrictRoute || cfg.General.IPv6 {
+		cfg.General.Tun.AutoRedirect || cfg.General.Tun.StrictRoute {
 		t.Fatal("core-only runtime retained platform routing")
+	}
+	if !cfg.General.IPv6 {
+		t.Fatal("core-only runtime discarded the configured IPv6 option")
 	}
 }
 

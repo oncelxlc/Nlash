@@ -16,6 +16,7 @@ import dashboardLayoutTest from './DashboardLayout.test';
 import proxyPresentationTest from './ProxyPresentation.test';
 import publicNetworkTest from './PublicNetwork.test';
 import activityDetailsTest from './ActivityDetails.test';
+import generalSettingsTest from './GeneralSettings.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -36,4 +37,5 @@ export default function testsuite() {
   proxyPresentationTest();
   publicNetworkTest();
   activityDetailsTest();
+  generalSettingsTest();
 }

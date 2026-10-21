@@ -18,6 +18,7 @@ import (
 func writeDelayLifecycleConfig(t *testing.T, testURL string) (string, string) {
 	t.Helper()
 	dir := t.TempDir()
+	writeTestGeneralSettings(t, dir)
 	if err := os.WriteFile(filepath.Join(dir, "nodes.yaml"), []byte("proxies:\n  - name: imported\n    type: direct\n"), 0600); err != nil {
 		t.Fatal(err)
 	}

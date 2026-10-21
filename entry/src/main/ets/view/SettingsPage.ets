@@ -136,6 +136,7 @@ export struct SettingsPage {
   @Builder
   private themeCard() {
     Column() {
+      this.moreRow('常规', $r('app.media.nav_settings'), AppPage.GENERAL)
       this.moreRow('主题', $r('app.media.theme_palette'), AppPage.THEME, false)
     }
     .width('100%').borderRadius(24).clip(true).backgroundColor(this.theme.surface)

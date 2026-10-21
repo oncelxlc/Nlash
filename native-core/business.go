@@ -11,9 +11,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/metacubex/mihomo/adapter"
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
 	"github.com/metacubex/mihomo/adapter/provider"
 	"github.com/metacubex/mihomo/common/utils"
+	"github.com/metacubex/mihomo/component/dialer"
+	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/metacubex/mihomo/config"
 	C "github.com/metacubex/mihomo/constant"
 	P "github.com/metacubex/mihomo/constant/provider"
@@ -38,13 +41,14 @@ type coreCommandResponse struct {
 }
 
 type dashboardSnapshot struct {
-	Mode            string `json:"mode"`
-	UploadSpeed     int64  `json:"uploadSpeed"`
-	DownloadSpeed   int64  `json:"downloadSpeed"`
-	UploadTotal     int64  `json:"uploadTotal"`
-	DownloadTotal   int64  `json:"downloadTotal"`
-	MemoryBytes     uint64 `json:"memoryBytes"`
-	ConnectionCount int    `json:"connectionCount"`
+	Mode             string `json:"mode"`
+	UploadSpeed      int64  `json:"uploadSpeed"`
+	DownloadSpeed    int64  `json:"downloadSpeed"`
+	UploadTotal      int64  `json:"uploadTotal"`
+	DownloadTotal    int64  `json:"downloadTotal"`
+	MemoryBytes      uint64 `json:"memoryBytes"`
+	ConnectionCount  int    `json:"connectionCount"`
+	OnlyProxyTraffic bool   `json:"onlyProxyTraffic"`
 }
 
 // proxyNodeSnapshot 用 Tested 区分未测速与测速失败，Delay 为 -1 时没有可用延迟。
@@ -201,6 +205,12 @@ func (runtime *coreRuntime) executeCommand(raw string) string {
 	if command.Type == "saveGeoSettings" {
 		return marshalCommandResponse(runtime.saveGeoSettings(command.Payload))
 	}
+	if command.Type == "saveGeneralSettings" {
+		return marshalCommandResponse(runtime.saveGeneralSettings(command.Payload))
+	}
+	if command.Type == "updateSystemDNS" {
+		return marshalCommandResponse(runtime.updateSystemDNS(command.Payload))
+	}
 	runtime.mu.RLock()
 	defer runtime.mu.RUnlock()
 	if command.Type == "previewProxySnapshot" {
@@ -213,6 +223,13 @@ func (runtime *coreRuntime) executeCommand(raw string) string {
 			return marshalCommandResponse(commandFailure("PREVIEW_FAILED", err.Error()))
 		}
 		return marshalCommandResponse(commandSuccess(snapshot))
+	}
+	if command.Type == "generalSettings" {
+		settings, err := readGeneralSettings(runtime.workDir)
+		if runtime.workDir == "" || err != nil {
+			return marshalCommandResponse(commandFailure("READ_FAILED", "常规设置暂不可读取，请先启动 Core 宿主"))
+		}
+		return marshalCommandResponse(commandSuccess(settings))
 	}
 	if runtime.state != coreRunning {
 		return marshalCommandResponse(commandFailure("CORE_NOT_RUNNING", "core is not running"))
@@ -239,7 +256,7 @@ func (runtime *coreRuntime) executeCommand(raw string) string {
 		var payload selectProxyPayload
 		if !decodeCommandPayload(command.Payload, &payload) {
 			response = commandFailure("INVALID_ARGUMENT", "proxy selection is invalid")
-		} else if err := selectProxy(payload.Group, payload.Proxy); err != nil {
+		} else if err := selectProxy(payload.Group, payload.Proxy, runtime.general.AutoCloseConnections); err != nil {
 			response = commandFailure("SELECT_FAILED", err.Error())
 		} else {
 			response = commandSuccess(nil)
@@ -317,7 +334,7 @@ func restoreProxySnapshot(snapshot proxySnapshot) error {
 	tunnel.SetMode(mode)
 	for _, group := range snapshot.Groups {
 		if group.Selectable && group.Selected != "" {
-			if err := selectProxy(group.Name, group.Selected); err != nil {
+			if err := selectProxy(group.Name, group.Selected, false); err != nil {
 				return err
 			}
 		}
@@ -326,21 +343,22 @@ func restoreProxySnapshot(snapshot proxySnapshot) error {
 }
 
 func (runtime *coreRuntime) dashboardSnapshot() dashboardSnapshot {
-	uploadSpeed, downloadSpeed := statistic.DefaultManager.Now()
-	uploadTotal, downloadTotal := statistic.DefaultManager.Total()
+	uploadSpeed, downloadSpeed := statistic.DefaultManager.NowTraffic(runtime.general.OnlyProxyTraffic)
+	uploadTotal, downloadTotal := statistic.DefaultManager.TotalTraffic(runtime.general.OnlyProxyTraffic)
 	connectionCount := 0
 	statistic.DefaultManager.Range(func(statistic.Tracker) bool {
 		connectionCount++
 		return true
 	})
 	return dashboardSnapshot{
-		Mode:            tunnel.Mode().String(),
-		UploadSpeed:     uploadSpeed,
-		DownloadSpeed:   downloadSpeed,
-		UploadTotal:     uploadTotal,
-		DownloadTotal:   downloadTotal,
-		MemoryBytes:     statistic.DefaultManager.Memory(),
-		ConnectionCount: connectionCount,
+		Mode:             tunnel.Mode().String(),
+		UploadSpeed:      uploadSpeed,
+		DownloadSpeed:    downloadSpeed,
+		UploadTotal:      uploadTotal,
+		DownloadTotal:    downloadTotal,
+		MemoryBytes:      statistic.DefaultManager.Memory(),
+		ConnectionCount:  connectionCount,
+		OnlyProxyTraffic: runtime.general.OnlyProxyTraffic,
 	}
 }
 
@@ -467,6 +485,11 @@ func parsePreviewConfig(configPath string) (*config.Config, []string, func(), er
 	}
 	C.SetHomeDir(homeDir)
 	C.SetConfig(cleanPath)
+	settings, err := readGeneralSettings(homeDir)
+	if err != nil {
+		return nil, nil, func() {}, errors.New("general settings cannot be read")
+	}
+	applyGeneralOverrides(raw, settings, nil)
 	cfg, err := config.ParseRawConfig(raw)
 	if err != nil {
 		return nil, nil, func() {}, errors.New("configuration is invalid")
@@ -508,6 +531,13 @@ func (runtime *coreRuntime) previewGroupDelay(payload previewGroupDelayPayload) 
 	}
 	runtime.mu.RLock()
 	cfg, _, cleanup, err := parsePreviewConfig(payload.ConfigPath)
+	if err == nil && runtime.state != coreRunning {
+		// UI 进程没有运行 Core，预览测速仍须使用已保存的连接与解析设置。
+		adapter.UnifiedDelay.Store(cfg.General.UnifiedDelay)
+		dialer.SetTcpConcurrent(cfg.General.TCPConcurrent)
+		resolver.DisableIPv6 = !cfg.General.IPv6
+		resolver.DefaultHosts = resolver.NewHosts(cfg.Hosts)
+	}
 	runtime.mu.RUnlock()
 	if err != nil {
 		return groupDelayResult{}, err
@@ -681,8 +711,8 @@ func (runtime *coreRuntime) connectionsSnapshot() connectionsSnapshot {
 	}
 }
 
-// selectProxy 仅允许手选策略组；切换后关闭现有连接，使后续请求使用新节点。
-func selectProxy(groupName string, proxyName string) error {
+// selectProxy 仅允许手选策略组；恢复配置时不关闭连接，用户切换遵循常规设置。
+func selectProxy(groupName string, proxyName string, closeConnections bool) error {
 	if groupName == "" || proxyName == "" {
 		return errors.New("proxy selection is empty")
 	}
@@ -694,10 +724,14 @@ func selectProxy(groupName string, proxyName string) error {
 	if !ok {
 		return errors.New("proxy group is not selectable")
 	}
+	group, isGroup := groupProxy.Adapter().(outboundgroup.ProxyGroup)
+	changed := !isGroup || group.Now() != proxyName
 	if err := selector.Set(proxyName); err != nil {
 		return errors.New("proxy was not found in group")
 	}
-	closeAllConnections()
+	if changed && closeConnections {
+		closeAllConnections()
+	}
 	return nil
 }
 

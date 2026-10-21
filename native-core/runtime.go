@@ -84,6 +84,8 @@ type coreRuntime struct {
 	geoContext         context.Context
 	geoCancel          context.CancelFunc
 	geoTimer           *time.Timer
+	general            generalSettings
+	systemDNS          []string
 }
 
 var runtimeInstance = &coreRuntime{state: coreStopped}
@@ -170,6 +172,7 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	if err := os.MkdirAll(options.workDir, 0700); err != nil {
 		return runtime.setFailure(coreStartFailed, err)
 	}
+	runtime.workDir = options.workDir
 
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -187,7 +190,11 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	if err != nil {
 		return runtime.setFailure(coreConfigInvalid, err)
 	}
-	cfg, proxyGroupOrder, err := parseRuntimeConfigData(data, false)
+	settings, err := readGeneralSettings(options.workDir)
+	if err != nil {
+		return runtime.setFailure(coreConfigInvalid, err)
+	}
+	cfg, proxyGroupOrder, err := parseRuntimeConfigWithSettings(data, false, settings, runtime.systemDNS)
 	if err != nil {
 		return runtime.setFailure(coreConfigInvalid, err)
 	}
@@ -199,6 +206,8 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	runtime.proxyEnabled = false
 	activeSocketProtect.Store(nil)
 	if err := applyRuntimeConfig(cfg); err != nil {
+		executor.Shutdown()
+		_ = applyController("", "")
 		return runtime.setFailure(coreStartFailed, err)
 	}
 	runtime.configPath = options.configPath
@@ -206,6 +215,7 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	runtime.previousConfigPath = ""
 	runtime.previousConfigData = nil
 	runtime.workDir = options.workDir
+	runtime.general = settings
 	runtime.proxyGroupOrder = proxyGroupOrder
 	runtime.state = coreRunning
 	runtime.scheduleGeoUpdates()
@@ -235,7 +245,7 @@ func (runtime *coreRuntime) applyConfig(configPath string, rollback bool) coreCo
 	}
 	C.SetHomeDir(runtime.workDir)
 	C.SetConfig(configPath)
-	cfg, order, err := parseRuntimeConfigData(data, runtime.proxyEnabled)
+	cfg, order, err := parseRuntimeConfigWithSettings(data, runtime.proxyEnabled, runtime.general, runtime.systemDNS)
 	if err != nil {
 		C.SetConfig(runtime.configPath)
 		return commandFailure("CONFIG_INVALID", sanitizeCoreError(err))
@@ -248,7 +258,6 @@ func (runtime *coreRuntime) applyConfig(configPath string, rollback bool) coreCo
 		if restoreErr == nil {
 			// Use the original TUN settings even if the failed apply changed the listener state.
 			oldConfig.General.Tun = cfg.General.Tun
-			oldConfig.General.IPv6 = false
 			restoreErr = applyRuntimeConfig(oldConfig)
 		}
 		if restoreErr == nil {
@@ -285,6 +294,9 @@ func applyRuntimeConfig(cfg *config.Config) (err error) {
 		}
 	}()
 	executor.ApplyConfig(cfg, true)
+	if err := applyHarmonyListeners(cfg); err != nil {
+		return err
+	}
 	// The pinned FlClash branch leaves TUN lifecycle management to its host.
 	listener.ReCreateTun(cfg.General.Tun, tunnel.Tunnel)
 	if listener.GetTunConf().Enable != cfg.General.Tun.Enable {
@@ -381,7 +393,7 @@ func (runtime *coreRuntime) parseActiveConfig(autoHealthChecks bool) (*config.Co
 	}
 	C.SetHomeDir(runtime.workDir)
 	C.SetConfig(runtime.configPath)
-	cfg, _, err := parseRuntimeConfigData(runtime.configData, autoHealthChecks)
+	cfg, _, err := parseRuntimeConfigWithSettings(runtime.configData, autoHealthChecks, runtime.general, runtime.systemDNS)
 	return cfg, err
 }
 
@@ -438,11 +450,21 @@ func parseRuntimeConfigWithPath(configPath string) (*config.Config, []string, er
 
 // parseRuntimeConfigData 在解析前适配平台资源与健康检查，并保留 YAML 中的策略组顺序。
 func parseRuntimeConfigData(data []byte, autoHealthChecks bool) (*config.Config, []string, error) {
+	settings, err := readGeneralSettings(C.Path.HomeDir())
+	if err != nil {
+		return nil, nil, err
+	}
+	return parseRuntimeConfigWithSettings(data, autoHealthChecks, settings, nil)
+}
+
+func parseRuntimeConfigWithSettings(data []byte, autoHealthChecks bool, settings generalSettings,
+	systemDNS []string) (*config.Config, []string, error) {
 	raw, err := config.UnmarshalRawConfig(data)
 	if err != nil {
 		return nil, nil, err
 	}
 	proxyGroupOrder := rawProxyGroupOrder(raw)
+	applyGeneralOverrides(raw, settings, systemDNS)
 	applyHarmonyGeoMirrors(raw)
 	if err := applySavedGeoSettings(raw, C.Path.HomeDir()); err != nil {
 		return nil, nil, err
@@ -516,12 +538,14 @@ func configureHarmonyTun(cfg *config.Config, tunFD int, mtu int) {
 	cfg.General.Tun.Stack = C.TunSystem
 	cfg.General.Tun.Inet4Address = []netip.Prefix{netip.MustParsePrefix("172.19.0.1/30")}
 	cfg.General.Tun.Inet6Address = nil
+	if cfg.General.IPv6 {
+		cfg.General.Tun.Inet6Address = []netip.Prefix{netip.MustParsePrefix("fdfe:dcba:9876::1/126")}
+	}
 	cfg.General.Tun.DNSHijack = []string{"any:53"}
 	cfg.General.Tun.AutoRoute = false
 	cfg.General.Tun.AutoDetectInterface = false
 	cfg.General.Tun.AutoRedirect = false
 	cfg.General.Tun.StrictRoute = false
-	cfg.General.IPv6 = false
 }
 
 // configureHarmonyCore 禁用 Mihomo 自建 TUN 和路由管理，支持 Core 独立运行。
@@ -532,7 +556,6 @@ func configureHarmonyCore(cfg *config.Config) {
 	cfg.General.Tun.AutoDetectInterface = false
 	cfg.General.Tun.AutoRedirect = false
 	cfg.General.Tun.StrictRoute = false
-	cfg.General.IPv6 = false
 }
 
 // protectSocket 必须收到宿主确认后才允许拨号继续，防止出站流量重新进入 TUN。
@@ -573,6 +596,9 @@ func (runtime *coreRuntime) stop() (code coreErrorCode) {
 	}()
 	activeSocketProtect.Store(nil)
 	executor.Shutdown()
+	if err := applyController("", ""); err != nil {
+		return runtime.setFailure(coreStopFailed, err)
+	}
 	protect := runtime.protect
 	runtime.protect = nil
 	if protect != nil {
@@ -583,7 +609,6 @@ func (runtime *coreRuntime) stop() (code coreErrorCode) {
 	runtime.configData = nil
 	runtime.previousConfigPath = ""
 	runtime.previousConfigData = nil
-	runtime.workDir = ""
 	runtime.proxyGroupOrder = nil
 	runtime.lastError = ""
 	runtime.state = coreStopped

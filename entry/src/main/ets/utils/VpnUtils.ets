@@ -1,6 +1,28 @@
 import {
   VpnState, CoreServiceState, ProxyState, CoreRestartAction, VpnStateEnvelope, ProxySessionTiming
 } from '../model/VpnModels';
+import { vpnExtension } from '@kit.NetworkKit';
+
+/** 与 Go configureHarmonyTun 保持一致；IPv6 改变时由宿主重建系统 TUN。 */
+export function buildPlatformVpnConfig(mtu: number, ipv6: boolean): vpnExtension.VpnConfig {
+  const config: vpnExtension.VpnConfig = {
+    addresses: [{ address: { address: '172.19.0.1', family: 1 }, prefixLength: 30 }],
+    routes: [{
+      interface: 'vpn-tun', destination: { address: { address: '0.0.0.0', family: 1 }, prefixLength: 0 },
+      gateway: { address: '0.0.0.0', family: 1 }, hasGateway: false, isDefaultRoute: true
+    }],
+    dnsAddresses: ['1.1.1.1'], mtu: mtu, isIPv4Accepted: true, isIPv6Accepted: ipv6,
+    isInternal: false, isBlocking: false
+  };
+  if (ipv6) {
+    config.addresses.push({ address: { address: 'fdfe:dcba:9876::1', family: 2 }, prefixLength: 126 });
+    config.routes?.push({
+      interface: 'vpn-tun', destination: { address: { address: '::', family: 2 }, prefixLength: 0 },
+      gateway: { address: '::', family: 2 }, hasGateway: false, isDefaultRoute: true
+    });
+  }
+  return config;
+}
 
 /** 使用系统启动后的单调毫秒计时；重启代理资源时可保留同一会话，显式结束后才重新计时。 */
 export class ProxySessionTimer {

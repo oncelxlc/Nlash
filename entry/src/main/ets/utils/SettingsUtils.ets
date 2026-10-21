@@ -3,6 +3,10 @@ import { AppFont, AppSettings, AppThemeMode, NavigationTransition, ThemeColorSty
 import { THEME_FONTS, THEME_COLOR_STYLES, MIN_CUSTOM_FONT_SCALE, MAX_CUSTOM_FONT_SCALE } from '../constants/ThemeConstants';
 import { normalizeThemeColor } from './ThemeUtils';
 
+export function isValidDelayTestUrl(value: string): boolean {
+  return value.length <= 2048 && /^https?:\/\/[^/\s?#@]+(?:[/?][^\s#]*)?$/.test(value);
+}
+
 /** 已保存值可能来自旧版本或异常数据，未知过渡类型回退到项目默认值。 */
 export function resolveNavigationTransition(value: string): NavigationTransition {
   return NAVIGATION_TRANSITION_OPTIONS.find((transition: NavigationTransition): boolean => transition === value) ??

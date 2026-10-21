@@ -571,6 +571,9 @@ class RuntimeStore {
       return false;
     }
     const collecting = this.proxyState === ProxyState.ENABLED;
+    if ((this.dashboard?.onlyProxyTraffic === true) !== (dashboard.onlyProxyTraffic === true)) {
+      this.trafficHistory = [];
+    }
     this.dashboard = mergeProxyTrafficSnapshot(dashboard, this.dashboard, collecting ? this.trafficBaseline : undefined);
     this.trafficBaseline = collecting ? dashboard : undefined;
     if (collecting) {

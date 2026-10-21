@@ -28,6 +28,7 @@ export interface TrafficChartPoint {
 /** 与 Go 仪表盘响应对齐；速率为字节/秒，总量和内存为字节。 */
 export interface DashboardSnapshot {
   mode: RuntimeMode;
+  onlyProxyTraffic?: boolean;
   uploadSpeed: number;
   downloadSpeed: number;
   uploadTotal: number;

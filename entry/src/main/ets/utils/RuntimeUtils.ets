@@ -195,15 +195,18 @@ export function connectionTitle(connection: ConnectionSnapshot): string {
 /** 只累加有效代理采样区间的总量差，无基线时速率归零，计数器重置不产生负流量。 */
 export function mergeProxyTrafficSnapshot(snapshot: DashboardSnapshot, previous: DashboardSnapshot | undefined,
   baseline: DashboardSnapshot | undefined): DashboardSnapshot {
+  const changedScope = (previous?.onlyProxyTraffic === true) !== (snapshot.onlyProxyTraffic === true);
+  const currentBaseline = changedScope ? undefined : baseline;
   // ponytail: count completed VPN sampling intervals; native session counters for exact start/stop boundaries.
   return {
     mode: snapshot.mode,
-    uploadSpeed: baseline === undefined ? 0 : snapshot.uploadSpeed,
-    downloadSpeed: baseline === undefined ? 0 : snapshot.downloadSpeed,
-    uploadTotal: (previous?.uploadTotal ?? 0) + (baseline === undefined ? 0 :
-      Math.max(0, snapshot.uploadTotal - baseline.uploadTotal)),
-    downloadTotal: (previous?.downloadTotal ?? 0) + (baseline === undefined ? 0 :
-      Math.max(0, snapshot.downloadTotal - baseline.downloadTotal)),
+    onlyProxyTraffic: snapshot.onlyProxyTraffic === true,
+    uploadSpeed: currentBaseline === undefined ? 0 : snapshot.uploadSpeed,
+    downloadSpeed: currentBaseline === undefined ? 0 : snapshot.downloadSpeed,
+    uploadTotal: (changedScope ? 0 : (previous?.uploadTotal ?? 0)) + (currentBaseline === undefined ? 0 :
+      Math.max(0, snapshot.uploadTotal - currentBaseline.uploadTotal)),
+    downloadTotal: (changedScope ? 0 : (previous?.downloadTotal ?? 0)) + (currentBaseline === undefined ? 0 :
+      Math.max(0, snapshot.downloadTotal - currentBaseline.downloadTotal)),
     memoryBytes: snapshot.memoryBytes,
     connectionCount: snapshot.connectionCount
   };

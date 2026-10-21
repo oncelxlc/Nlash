@@ -9,6 +9,7 @@ import { DashboardPage } from '../view/DashboardPage';
 import { ProxyPage } from '../view/ProxyPage';
 import { SettingsPage } from '../view/SettingsPage';
 import { ThemePage } from '../view/ThemePage';
+import { GeneralPage } from '../view/GeneralPage';
 import { AppPage } from '../model/NavigationModels';
 import { NAVIGATION_PAGES } from '../constants/NavigationConstants';
 import { AppNavigationState } from '../navigation/AppNavigationState';
@@ -94,6 +95,7 @@ struct Index {
         return $r('app.string.nav_connections');
       case AppPage.SETTINGS:
       case AppPage.THEME:
+      case AppPage.GENERAL:
         return $r('app.string.nav_settings');
       case AppPage.ACTIVITY:
       case AppPage.DNS:
@@ -116,6 +118,7 @@ struct Index {
         return $r('app.media.nav_connections');
       case AppPage.SETTINGS:
       case AppPage.THEME:
+      case AppPage.GENERAL:
         return $r('app.media.nav_settings');
       case AppPage.ACTIVITY:
         return $r('app.media.nav_activity');
@@ -165,6 +168,8 @@ struct Index {
     } else if (page === AppPage.ACTIVITY) {
       if (this.navigationState.detailPage === AppPage.THEME) {
         ThemePage({ onBack: (): void => { this.selectPage(AppPage.SETTINGS); } })
+      } else if (this.navigationState.detailPage === AppPage.GENERAL) {
+        GeneralPage({ onBack: (): void => { this.selectPage(AppPage.SETTINGS); } })
       } else {
         ActivityPage({
           page: this.navigationState.detailPage,
