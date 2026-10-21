@@ -38,6 +38,7 @@ export struct ResourceInputDialog {
           .fontColor($r('app.color.content_secondary')).width('100%')
         TextArea({ text: this.input, placeholder: this.interval ? '1–720' : 'https://' })
           .id('resource-input').height(this.interval ? 64 : 128).fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
+          .placeholderFont({ size: themeFontSize(BODY_FONT_SIZE, this.theme), family: this.theme.fontFamily })
           .type(this.interval ? TextAreaType.NUMBER : TextAreaType.NORMAL)
           .fontColor($r('app.color.content_primary')).placeholderColor($r('app.color.content_secondary'))
           .backgroundColor(this.theme.background).borderRadius(20).padding(16)

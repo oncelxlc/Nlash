@@ -40,6 +40,7 @@ export struct GeneralInputDialog {
       if (this.multiline) {
         TextArea({ text: this.input, placeholder: 'example.com = 1.2.3.4' })
           .id('general-hosts-input').height(200).fontSize(themeFontSize(BODY_FONT_SIZE, this.theme))
+          .placeholderFont({ size: themeFontSize(BODY_FONT_SIZE, this.theme), family: this.theme.fontFamily })
           .fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_primary'))
           .placeholderColor($r('app.color.content_secondary')).backgroundColor(this.theme.background)
           .borderRadius(16).padding(16).maxLength(10000).enabled(!this.saving).accessibilityText(this.title)

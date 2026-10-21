@@ -108,6 +108,7 @@ export struct DnsQueriesPage {
         Column() {
           TextInput({ placeholder: '搜索域名、结果、类型或上游', text: this.query })
             .id('dns-search').height(CONTROL_HEIGHT).fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
+            .placeholderFont({ size: themeFontSize(BODY_FONT_SIZE, this.theme), family: this.theme.fontFamily })
             .fontColor($r('app.color.content_primary')).placeholderColor($r('app.color.content_secondary'))
             .backgroundColor(this.theme.surface).borderRadius(24)
             .accessibilityText('搜索 DNS 查询').onChange((value: string): void => { this.query = value; })

@@ -39,6 +39,7 @@ export struct ThemeColorDialog {
         TextInput({ text: this.input, placeholder: '#2F80FF' }).id('theme-custom-color-input')
           .layoutWeight(1).constraintSize({ minHeight: CONTROL_HEIGHT }).maxLength(7)
           .fontSize(themeFontSize(16, this.theme)).fontFamily(this.theme.fontFamily)
+          .placeholderFont({ size: themeFontSize(16, this.theme), family: this.theme.fontFamily })
           .fontColor($r('app.color.content_primary')).backgroundColor(this.theme.inset)
           .accessibilityText('自定义主题色，六位十六进制颜色').enabled(!this.saving)
           .onChange((value: string): void => { this.input = value; this.errorMessage = ''; })

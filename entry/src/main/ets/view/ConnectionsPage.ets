@@ -1,4 +1,5 @@
 import { AppTheme } from '../model/ThemeModels';
+import { ThemeAlertDialog } from '../components/ThemeAlertDialog';
 import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import { EmptyStateBackground } from '../components/EmptyStateBackground';
 import { SecondaryPageHeader } from '../components/SecondaryPageHeader';
@@ -27,6 +28,8 @@ export struct ConnectionsPage {
   @State searching: boolean = false;
   @State expandedId: string = '';
   private unsubscribe: (() => void) | undefined;
+  private alertDialog: CustomDialogController | undefined;
+  private cancelConfirmation: (() => void) | undefined;
 
   aboutToAppear(): void {
     this.searching = this.query.length > 0;
@@ -41,7 +44,11 @@ export struct ConnectionsPage {
     runtimeStore.refresh();
   }
 
-  aboutToDisappear(): void { this.unsubscribe?.(); }
+  aboutToDisappear(): void {
+    this.unsubscribe?.();
+    this.cancelConfirmation?.();
+    this.alertDialog?.close();
+  }
 
   private async closeConnection(id: string): Promise<void> {
     try {
@@ -53,12 +60,18 @@ export struct ConnectionsPage {
   }
 
   private async closeAllConnections(): Promise<void> {
-    const result = await this.getUIContext().getPromptAction().showDialog({
-      title: '关闭全部连接？', message: '当前传输会中断，应用可能自动重新建立连接。',
-      buttons: [{ text: '取消', color: $r('app.color.content_secondary') },
-        { text: '全部关闭', color: $r('app.color.status_error') }]
+    const confirmed = await new Promise<boolean>((resolve): void => {
+      this.cancelConfirmation = (): void => { resolve(false); };
+      this.alertDialog = new CustomDialogController({
+        builder: ThemeAlertDialog({ title: '关闭全部连接？', message: '当前传输会中断，应用可能自动重新建立连接。',
+          confirmLabel: '全部关闭', destructive: true, onConfirm: (): void => { resolve(true); },
+          onCancel: this.cancelConfirmation }),
+        cancel: this.cancelConfirmation, customStyle: true, alignment: DialogAlignment.Center
+      });
+      this.alertDialog.open();
     });
-    if (result.index !== 1) { return; }
+    this.cancelConfirmation = undefined;
+    if (!confirmed) { return; }
     try {
       await runtimeStore.closeAllConnections();
       feedbackService.success('全部连接已关闭');
@@ -144,6 +157,7 @@ export struct ConnectionsPage {
         Column({ space: 8 }) {
           TextInput({ placeholder: '搜索主机、地址、进程或链路', text: this.query })
             .id('connection-search').height(CONTROL_HEIGHT).fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
+            .placeholderFont({ size: themeFontSize(BODY_FONT_SIZE, this.theme), family: this.theme.fontFamily })
             .fontColor($r('app.color.content_primary')).placeholderColor($r('app.color.content_secondary'))
             .backgroundColor(this.theme.surface).borderRadius(24)
             .accessibilityText('搜索实时连接').onChange((value: string): void => { this.query = value; })

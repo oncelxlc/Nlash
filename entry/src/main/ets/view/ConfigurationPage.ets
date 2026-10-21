@@ -1,4 +1,6 @@
 import { AppTheme } from '../model/ThemeModels';
+import { ThemeAlertDialog } from '../components/ThemeAlertDialog';
+import { themeMenu } from '../components/ThemeMenu';
 import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import {
   DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES,
@@ -55,6 +57,7 @@ export struct ConfigurationPage {
   @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
   private unsubscribe: (() => void) | undefined = undefined;
   private editorBackUnsubscribe: (() => void) | undefined = undefined;
+  private alertDialog: CustomDialogController | undefined;
 
   aboutToAppear(): void {
     this.editorBackUnsubscribe = configurationEditorService.bind((): void => {
@@ -72,6 +75,7 @@ export struct ConfigurationPage {
   }
 
   aboutToDisappear(): void {
+    this.alertDialog?.close();
     this.unsubscribe?.();
     this.unsubscribe = undefined;
     this.editorBackUnsubscribe?.();
@@ -196,22 +200,13 @@ export struct ConfigurationPage {
       this.closeEditorImmediately();
       return;
     }
-    AlertDialog.show({
-      title: '放弃修改',
-      message: '当前修改尚未保存，确定关闭编辑器吗？',
-      primaryButton: {
-        value: '继续编辑',
-        action: (): void => {
-        }
-      },
-      secondaryButton: {
-        value: '放弃修改',
-        fontColor: $r('app.color.status_error'),
-        action: (): void => {
-          this.closeEditorImmediately();
-        }
-      }
+    this.alertDialog = new CustomDialogController({
+      builder: ThemeAlertDialog({ title: '放弃修改', message: '当前修改尚未保存，确定关闭编辑器吗？',
+        cancelLabel: '继续编辑', confirmLabel: '放弃修改', destructive: true,
+        onConfirm: (): void => { this.closeEditorImmediately(); } }),
+      customStyle: true, alignment: DialogAlignment.Center
     });
+    this.alertDialog.open();
   }
 
   // 本地配置仅支持重命名，不把订阅专用字段计入未保存变化。
@@ -256,22 +251,12 @@ export struct ConfigurationPage {
   }
 
   private confirmRemove(profile: Profile): void {
-    AlertDialog.show({
-      title: '删除配置',
-      message: `确定删除“${profile.name}”及其沙箱配置文件吗？`,
-      primaryButton: {
-        value: '取消',
-        action: (): void => {
-        }
-      },
-      secondaryButton: {
-        value: '删除',
-        fontColor: $r('app.color.status_error'),
-        action: (): void => {
-          this.removeProfile(profile.id);
-        }
-      }
+    this.alertDialog = new CustomDialogController({
+      builder: ThemeAlertDialog({ title: '删除配置', message: `确定删除“${profile.name}”及其沙箱配置文件吗？`,
+        confirmLabel: '删除', destructive: true, onConfirm: (): void => { this.removeProfile(profile.id); } }),
+      customStyle: true, alignment: DialogAlignment.Center
     });
+    this.alertDialog.open();
   }
 
   private async removeProfile(id: string): Promise<void> {
@@ -499,12 +484,17 @@ export struct ConfigurationPage {
         .margin({ right: 8 })
         .enabled(this.busyProfileId.length === 0)
         .accessibilityText(`${profile.name} 的更多操作`)
-        .bindMenu(this.profileActions(profile))
+        .bindMenu(this.profileMenu(profile), { backgroundColor: this.theme.surface })
       }
     }
     .width('100%')
     .borderRadius(32)
     .backgroundColor(this.theme.surface)
+  }
+
+  @Builder
+  private profileMenu(profile: Profile) {
+    themeMenu(this.profileActions(profile), this.theme)
   }
 
   @Builder
@@ -518,6 +508,7 @@ export struct ConfigurationPage {
       this.fieldLabel('名称')
       TextInput({ placeholder: '配置名称', text: this.editName })
         .fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
+        .placeholderFont({ size: themeFontSize(BODY_FONT_SIZE, this.theme), family: this.theme.fontFamily })
         .width('100%').height(CONTROL_HEIGHT)
         .fontColor($r('app.color.content_primary'))
         .backgroundColor(this.theme.surface)
@@ -529,6 +520,7 @@ export struct ConfigurationPage {
         this.fieldLabel('订阅 URL')
         TextInput({ placeholder: 'https://example.com/subscription', text: this.editUrl })
           .fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
+          .placeholderFont({ size: themeFontSize(BODY_FONT_SIZE, this.theme), family: this.theme.fontFamily })
           .type(InputType.URL).width('100%').height(CONTROL_HEIGHT)
           .fontColor($r('app.color.content_primary'))
           .backgroundColor(this.theme.surface)
@@ -552,6 +544,7 @@ export struct ConfigurationPage {
         this.fieldLabel(`更新间隔 · 分钟（${MIN_PROFILE_UPDATE_INTERVAL_MINUTES}–${MAX_PROFILE_UPDATE_INTERVAL_MINUTES}）`)
         TextInput({ placeholder: `${DEFAULT_PROFILE_UPDATE_INTERVAL_MINUTES}`, text: this.editIntervalMinutes })
           .fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
+          .placeholderFont({ size: themeFontSize(BODY_FONT_SIZE, this.theme), family: this.theme.fontFamily })
           .type(InputType.Number).width('100%').height(CONTROL_HEIGHT)
           .fontColor($r('app.color.content_primary'))
           .backgroundColor(this.theme.surface)
@@ -689,6 +682,7 @@ export struct ConfigurationPage {
       this.fieldLabel('名称 · 可选')
       TextInput({ placeholder: '配置名称', text: this.addName })
         .fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
+        .placeholderFont({ size: themeFontSize(BODY_FONT_SIZE, this.theme), family: this.theme.fontFamily })
         .width('100%').height(CONTROL_HEIGHT)
         .fontColor($r('app.color.content_primary')).backgroundColor(this.theme.muted)
         .borderRadius(BUTTON_RADIUS)
@@ -698,6 +692,7 @@ export struct ConfigurationPage {
       this.fieldLabel('订阅 URL')
       TextInput({ placeholder: 'https://example.com/subscription', text: this.addUrl })
         .fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
+        .placeholderFont({ size: themeFontSize(BODY_FONT_SIZE, this.theme), family: this.theme.fontFamily })
         .width('100%').height(CONTROL_HEIGHT).type(InputType.URL)
         .fontColor($r('app.color.content_primary')).backgroundColor(this.theme.muted)
         .borderRadius(BUTTON_RADIUS)

@@ -1,4 +1,5 @@
 import { AppTheme } from '../model/ThemeModels';
+import { themeMenu } from '../components/ThemeMenu';
 import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import {
   ProxyDelayOperationSnapshot,
@@ -16,7 +17,7 @@ import { ResponsiveMetrics } from '../model/ResponsiveModels';
 import {
   resolveResponsiveMetrics, resolveContentWidth, proxyGroupColumnCount, proxyNodeColumnCount
 } from '../utils/ResponsiveUtils';
-import { CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CAPTION_FONT_SIZE } from '../constants/UiConstants';
+import { CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CAPTION_FONT_SIZE, BODY_FONT_SIZE } from '../constants/UiConstants';
 import { PageHeader } from '../components/PageHeader';
 import { FadingScrollLayout } from '../components/FadingScrollLayout';
 import { EmptyStateBackground } from '../components/EmptyStateBackground';
@@ -214,6 +215,16 @@ export struct ProxyPage {
   }
 
   @Builder
+  private moreMenu() {
+    themeMenu([
+      { value: '展开全部', action: (): void => {
+        this.expandedGroups = this.groups.map((group: ProxyGroupSnapshot): string => group.name);
+      } },
+      { value: '收起全部', action: (): void => { this.query = ''; this.expandedGroups = []; } }
+    ], this.theme)
+  }
+
+  @Builder
   private headerActions() {
     Row({ space: 8 }) {
       Button({ type: ButtonType.Circle }) {
@@ -229,12 +240,7 @@ export struct ProxyPage {
       }
       .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).backgroundColor(this.theme.surface)
       .accessibilityText('代理页面更多操作')
-      .bindMenu([
-        { value: '展开全部', action: (): void => {
-          this.expandedGroups = this.groups.map((group: ProxyGroupSnapshot): string => group.name);
-        } },
-        { value: '收起全部', action: (): void => { this.query = ''; this.expandedGroups = []; } }
-      ])
+      .bindMenu(this.moreMenu(), { backgroundColor: this.theme.surface })
     }
   }
 
@@ -364,7 +370,6 @@ export struct ProxyPage {
     }
     .sticky(StickyStyle.Header).scrollBar(BarState.Off)
     .borderRadius(28).clip(true)
-    .contentStartOffset(this.headerInset)
     .contentEndOffset(this.metrics.pagePadding + FLOATING_NAVIGATION_INSET)
     .layoutWeight(1).height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
@@ -380,6 +385,9 @@ export struct ProxyPage {
       if (this.searchVisible) {
         Search({ value: this.query, placeholder: '搜索代理组、节点或协议' })
           .height(CONTROL_HEIGHT).fontColor($r('app.color.content_primary'))
+          .textFont({ size: themeFontSize(BODY_FONT_SIZE, this.theme), family: this.theme.fontFamily })
+          .placeholderFont({ size: themeFontSize(BODY_FONT_SIZE, this.theme), family: this.theme.fontFamily })
+          .placeholderColor($r('app.color.content_secondary'))
           .backgroundColor(this.theme.surface).borderRadius(24)
           .margin({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
           .accessibilityText('搜索代理组、节点或协议')
@@ -409,7 +417,8 @@ export struct ProxyPage {
         if (this.columnCount() === 2) { this.groupColumn(1) }
       }
       .width('100%').height('100%').alignItems(VerticalAlign.Top)
-      .padding({ left: this.metrics.pagePadding, right: this.metrics.pagePadding })
+      // 顶部留白放在列表外，使吸顶位置与圆角裁剪边界一致。
+      .padding({ top: this.headerInset, left: this.metrics.pagePadding, right: this.metrics.pagePadding })
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
   }

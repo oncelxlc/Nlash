@@ -1,4 +1,5 @@
 import { AppTheme } from '../model/ThemeModels';
+import { ThemeAlertDialog } from '../components/ThemeAlertDialog';
 import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import { EmptyStateBackground } from '../components/EmptyStateBackground';
 import { SecondaryPageHeader } from '../components/SecondaryPageHeader';
@@ -31,6 +32,8 @@ export struct RequestsPage {
   @State searching: boolean = false;
   @State expandedId: string = '';
   private unsubscribe: (() => void) | undefined;
+  private alertDialog: CustomDialogController | undefined;
+  private cancelConfirmation: (() => void) | undefined;
 
   aboutToAppear(): void {
     this.searching = this.query.length > 0 || this.filter !== RequestFilter.ALL;
@@ -42,7 +45,11 @@ export struct RequestsPage {
     });
   }
 
-  aboutToDisappear(): void { this.unsubscribe?.(); }
+  aboutToDisappear(): void {
+    this.unsubscribe?.();
+    this.cancelConfirmation?.();
+    this.alertDialog?.close();
+  }
 
   private visibleRequests(): RequestRecord[] {
     const keyword = this.query.trim().toLowerCase();
@@ -55,12 +62,18 @@ export struct RequestsPage {
   }
 
   private async clearRecords(): Promise<void> {
-    const result = await this.getUIContext().getPromptAction().showDialog({
-      title: '清空最近请求？', message: '仅清空本次会话的记录，不会关闭活动连接。',
-      buttons: [{ text: '取消', color: $r('app.color.content_secondary') },
-        { text: '清空', color: $r('app.color.status_error') }]
+    const confirmed = await new Promise<boolean>((resolve): void => {
+      this.cancelConfirmation = (): void => { resolve(false); };
+      this.alertDialog = new CustomDialogController({
+        builder: ThemeAlertDialog({ title: '清空最近请求？', message: '仅清空本次会话的记录，不会关闭活动连接。',
+          confirmLabel: '清空', destructive: true, onConfirm: (): void => { resolve(true); },
+          onCancel: this.cancelConfirmation }),
+        cancel: this.cancelConfirmation, customStyle: true, alignment: DialogAlignment.Center
+      });
+      this.alertDialog.open();
     });
-    if (result.index === 1) {
+    this.cancelConfirmation = undefined;
+    if (confirmed) {
       this.getUIContext().animateTo(selectionAnimation(), (): void => {
         runtimeStore.clearRequests();
         this.expandedId = '';
@@ -80,6 +93,7 @@ export struct RequestsPage {
     Column({ space: 12 }) {
       TextInput({ placeholder: '搜索主机、地址、规则、进程或链路', text: this.query })
         .id('request-search').height(CONTROL_HEIGHT).fontSize(themeFontSize(BODY_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily)
+        .placeholderFont({ size: themeFontSize(BODY_FONT_SIZE, this.theme), family: this.theme.fontFamily })
         .fontColor($r('app.color.content_primary')).placeholderColor($r('app.color.content_secondary'))
         .backgroundColor(this.theme.surface).borderRadius(24)
         .accessibilityText('搜索最近请求').onChange((value: string): void => { this.query = value; })

@@ -1,4 +1,5 @@
 import { AppTheme } from '../model/ThemeModels';
+import { ThemeAlertDialog } from '../components/ThemeAlertDialog';
 import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LengthMetrics } from '@kit.ArkUI';
@@ -20,6 +21,7 @@ export struct RuntimeMemoryCard {
   private generation: number = 0;
   private readingMemory: boolean = false;
   private timer: number | undefined = undefined;
+  private alertDialog: CustomDialogController | undefined;
 
   aboutToAppear(): void {
     this.generation += 1;
@@ -28,6 +30,7 @@ export struct RuntimeMemoryCard {
   }
 
   aboutToDisappear(): void {
+    this.alertDialog?.close();
     this.generation += 1;
     if (this.timer !== undefined) {
       clearInterval(this.timer);
@@ -57,14 +60,16 @@ export struct RuntimeMemoryCard {
   }
 
   private showDetails(): void {
-    AlertDialog.show({
-      title: '内存信息',
-      message: `应用 ${formatMemoryMegabytes(this.usage().appBytes)} MB\n` +
-        `内核 ${formatMemoryMegabytes(this.usage().coreBytes)} MB\n\n` +
-        '应用为 UI 进程物理内存（PSS），每 5 秒刷新；内核为 Mihomo 统计值，来自独立 VPN 宿主。' +
-        '合计为两项之和，缺失时显示“—”。MB 按 1024 × 1024 字节换算。',
-      confirm: { value: '知道了', action: (): void => {} }
+    this.alertDialog = new CustomDialogController({
+      builder: ThemeAlertDialog({ title: '内存信息',
+        message: `应用 ${formatMemoryMegabytes(this.usage().appBytes)} MB\n` +
+          `内核 ${formatMemoryMegabytes(this.usage().coreBytes)} MB\n\n` +
+          '应用为 UI 进程物理内存（PSS），每 5 秒刷新；内核为 Mihomo 统计值，来自独立 VPN 宿主。' +
+          '合计为两项之和，缺失时显示“—”。MB 按 1024 × 1024 字节换算。',
+        confirmLabel: '知道了', cancelLabel: '' }),
+      customStyle: true, alignment: DialogAlignment.Center
     });
+    this.alertDialog.open();
   }
 
   @Builder

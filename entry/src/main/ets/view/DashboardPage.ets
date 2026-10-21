@@ -1,4 +1,6 @@
 import { AppTheme } from '../model/ThemeModels';
+import { ThemeAlertDialog } from '../components/ThemeAlertDialog';
+import { themeMenu } from '../components/ThemeMenu';
 import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import { RuntimeStatusCard } from './RuntimeStatusCard';
 import { RuntimeSpeedCard } from './RuntimeSpeedCard';
@@ -87,6 +89,7 @@ export struct DashboardPage {
   private unsubscribeProfile: (() => void) | undefined = undefined;
   private viewSyncTimer: number | undefined = undefined;
   private lastTrafficSampleTimestamp: number = 0;
+  private alertDialog: CustomDialogController | undefined;
 
   aboutToAppear(): void {
     this.unsubscribeProfile = profileStore.subscribe((snapshot: ProfileStoreSnapshot): void => {
@@ -106,6 +109,7 @@ export struct DashboardPage {
   }
 
   aboutToDisappear(): void {
+    this.alertDialog?.close();
     this.unsubscribeProfile?.();
     this.unsubscribeProfile = undefined;
     this.unsubscribeLifecycle?.();
@@ -350,6 +354,11 @@ export struct DashboardPage {
     }));
   }
 
+  @Builder
+  private profileMenu() {
+    themeMenu(this.profileChoices(), this.theme)
+  }
+
   private async setMode(mode: RuntimeMode): Promise<void> {
     if (mode === this.selectedMode || this.runtimeBusyKey.length > 0) {
       return;
@@ -371,21 +380,13 @@ export struct DashboardPage {
       this.restartCore();
       return;
     }
-    AlertDialog.show({
-      title: '重启 Core',
-      message: '重启会短暂中断代理，完成后自动恢复。本次使用时长将继续累计。',
-      primaryButton: {
-        value: '取消',
-        action: (): void => {
-        }
-      },
-      secondaryButton: {
-        value: '重启',
-        action: (): void => {
-          this.restartCore();
-        }
-      }
+    this.alertDialog = new CustomDialogController({
+      builder: ThemeAlertDialog({ title: '重启 Core',
+        message: '重启会短暂中断代理，完成后自动恢复。本次使用时长将继续累计。',
+        confirmLabel: '重启', onConfirm: (): void => { this.restartCore(); } }),
+      customStyle: true, alignment: DialogAlignment.Center
     });
+    this.alertDialog.open();
   }
 
   private async restartCore(): Promise<void> {
@@ -626,9 +627,11 @@ export struct DashboardPage {
             this.countryRefreshButton()
             Column({ space: 4 }) {
               Text(this.publicIpv4 === '未知' ? '—' : this.publicIpv4)
-                .id('dashboard-public-ip').fontSize(this.isCompact() ? 22 : 30).fontWeight(FontWeight.Bold)
+                .id('dashboard-public-ip').fontSize(themeFontSize(this.isCompact() ? 22 : 30, this.theme))
+                .fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Bold)
                 .fontColor($r('app.color.content_primary')).width('100%')
-                .maxLines(1).minFontSize(14).maxFontSize(this.isCompact() ? 22 : 30)
+                .maxLines(this.fontScale > 1.2 ? 2 : 1).minFontSize(themeFontSize(14, this.theme))
+                .maxFontSize(themeFontSize(this.isCompact() ? 22 : 30, this.theme))
                 .heightAdaptivePolicy(TextHeightAdaptivePolicy.MIN_FONT_SIZE_FIRST)
               Flex({ wrap: FlexWrap.Wrap,
                 space: { main: LengthMetrics.vp(5), cross: LengthMetrics.vp(4) } }) {
@@ -776,7 +779,7 @@ export struct DashboardPage {
           .backgroundColor(Color.Transparent).borderRadius(8).align(Alignment.Start)
           .enabled(!this.profileBusy && !this.profileOperation)
           .accessibilityText(`当前配置 ${this.activeProfile.name}，切换配置`)
-          .bindMenu(this.profileChoices())
+          .bindMenu(this.profileMenu(), { backgroundColor: this.theme.surface })
           Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween,
             space: { main: LengthMetrics.vp(12), cross: LengthMetrics.vp(4) } }) {
             Text(this.activeProfile.type === ProfileType.LOCAL ? '本地配置' :

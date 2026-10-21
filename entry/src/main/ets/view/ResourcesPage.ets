@@ -1,4 +1,5 @@
 import { AppTheme } from '../model/ThemeModels';
+import { themeMenu } from '../components/ThemeMenu';
 import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
 import { GeoResource, GeoResourceSnapshot, GeoSettingsPatch } from '../model/DiagnosticsModels';
 import { RuntimeStoreSnapshot } from '../model/RuntimeModels';
@@ -118,6 +119,16 @@ export struct ResourcesPage {
   }
 
   @Builder
+  private updateMenu() {
+    themeMenu([
+      { value: `自动更新：${this.snapshot.autoUpdate ? '开启' : '关闭'}`, icon: $r('app.media.action_switch'),
+        action: (): void => { this.toggleAutoUpdate(); } },
+      { value: `自动更新间隔 · ${this.snapshot.intervalHours} 小时`, icon: $r('app.media.nav_requests'),
+        action: (): void => { this.openEditor('自动更新间隔', this.snapshot.intervalHours.toString(), true); } }
+    ], this.theme)
+  }
+
+  @Builder
   private actions() {
     Row({ space: 8 }) {
       HeaderIconButton({ icon: $r('app.media.action_refresh'), label: '更新 Geo 资源',
@@ -130,12 +141,7 @@ export struct ResourcesPage {
       .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).padding(0).backgroundColor(this.theme.surface)
       .accessibilityText('资源更新设置')
       .enabled(this.available && this.loaded && !this.saving && !this.updating && !this.snapshot.updating)
-      .bindMenu([
-        { value: `自动更新：${this.snapshot.autoUpdate ? '开启' : '关闭'}`, icon: $r('app.media.action_switch'),
-          action: (): void => { this.toggleAutoUpdate(); } },
-        { value: `自动更新间隔 · ${this.snapshot.intervalHours} 小时`, icon: $r('app.media.nav_requests'),
-          action: (): void => { this.openEditor('自动更新间隔', this.snapshot.intervalHours.toString(), true); } }
-      ])
+      .bindMenu(this.updateMenu(), { backgroundColor: this.theme.surface })
     }
   }
 
