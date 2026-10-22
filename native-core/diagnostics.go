@@ -8,6 +8,7 @@ import (
 	"time"
 
 	coreDNS "github.com/metacubex/mihomo/dns"
+	"github.com/metacubex/mihomo/tunnel/statistic"
 	D "github.com/miekg/dns"
 )
 
@@ -33,6 +34,7 @@ type dnsQueryHistory struct {
 	next    uint64
 	count   int
 	since   time.Time
+	enabled bool
 }
 
 var dnsHistory dnsQueryHistory
@@ -42,6 +44,11 @@ func init() {
 }
 
 func (history *dnsQueryHistory) append(query coreDNS.QueryRecord) {
+	history.mu.Lock()
+	defer history.mu.Unlock()
+	if !history.enabled || query.Start.Before(history.since) {
+		return
+	}
 	record := dnsQueryRecord{
 		Host: strings.TrimSuffix(query.Question.Name, "."), Type: D.TypeToString[query.Question.Qtype],
 		Answers: []string{}, Initiator: query.Initiator, Upstream: query.Upstream,
@@ -85,11 +92,6 @@ func (history *dnsQueryHistory) append(query coreDNS.QueryRecord) {
 			}
 		}
 	}
-	history.mu.Lock()
-	defer history.mu.Unlock()
-	if query.Start.Before(history.since) {
-		return
-	}
 	if len(record.Upstream) > 512 {
 		record.Upstream = record.Upstream[:512]
 	}
@@ -112,10 +114,17 @@ func (history *dnsQueryHistory) snapshot() []dnsQueryRecord {
 	return result
 }
 
-func (history *dnsQueryHistory) clear() {
+func (history *dnsQueryHistory) setEnabled(enabled bool) {
 	history.mu.Lock()
 	defer history.mu.Unlock()
 	history.records = [maxDNSHistory]dnsQueryRecord{}
 	history.count = 0
 	history.since = time.Now()
+	history.enabled = enabled
+}
+
+func clearProxyActivity() {
+	dnsHistory.setEnabled(false)
+	closeAllConnections()
+	statistic.DefaultManager.ResetStatistic()
 }

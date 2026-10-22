@@ -182,7 +182,7 @@ struct Index {
     } else if (page === AppPage.ABOUT) {
       AboutPage({ onBack: (): void => { this.selectPage(AppPage.SETTINGS); } })
     } else if (page === AppPage.SETTINGS) {
-      SettingsPage({ isActive: this.isPageActive(page),
+      SettingsPage({
         onOpenPage: (destination: AppPage): void => { this.selectPage(destination); } })
     } else {
       ActivityPage({ page: page, isActive: this.isPageActive(page),

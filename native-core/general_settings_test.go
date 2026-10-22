@@ -177,7 +177,7 @@ func TestOnlyProxyTrafficExcludesDirectCounters(t *testing.T) {
 	statistic.DefaultManager.PushUploaded(false, 40)
 	statistic.DefaultManager.PushDownloaded(true, 1000)
 	statistic.DefaultManager.PushDownloaded(false, 80)
-	runtime := &coreRuntime{}
+	runtime := &coreRuntime{proxyEnabled: true}
 	all := runtime.dashboardSnapshot()
 	runtime.general.OnlyProxyTraffic = true
 	proxy := runtime.dashboardSnapshot()

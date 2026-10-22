@@ -28,11 +28,11 @@ export struct ThemePage {
   @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
   onBack: () => void = (): void => {};
   @State settings: AppSettings = settingsStore.getSnapshot().settings;
-  @State saving: boolean = false;
   @State errorMessage: string = '';
   @State headerInset: number = 0;
   @State contentPadding: number = 16;
   @State scaleDraft: number = 100;
+  private saving: boolean = false;
   private unsubscribe: (() => void) | undefined = undefined;
   private colorDialog: CustomDialogController = new CustomDialogController({
     builder: ThemeColorDialog({
@@ -50,9 +50,11 @@ export struct ThemePage {
 
   aboutToAppear(): void {
     this.unsubscribe = settingsStore.subscribe((snapshot: SettingsStoreSnapshot): void => {
-      this.settings = snapshot.settings;
       this.saving = snapshot.saving;
-      if (!snapshot.saving) { this.scaleDraft = Math.round(snapshot.settings.customFontScale * 100); }
+      // 保存锁只拦截重复提交，不切换整页控件的禁用外观或重复刷新设置。
+      if (snapshot.saving) { return; }
+      this.settings = snapshot.settings;
+      this.scaleDraft = Math.round(snapshot.settings.customFontScale * 100);
     });
   }
 
@@ -67,6 +69,7 @@ export struct ThemePage {
     const next = settingsStore.getSnapshot().settings;
     change(next);
     this.errorMessage = '';
+    if (JSON.stringify(next) === JSON.stringify(this.settings)) { return; }
     try { await settingsStore.setAppearance(next); }
     catch (error) { this.errorMessage = (error as Error).message || '主题保存失败，请重试'; }
   }
@@ -104,7 +107,7 @@ export struct ThemePage {
       }.width('100%')
     }.id(`theme-choice-${$$.label}`).width('100%').constraintSize({ minHeight: 68 })
       .padding({ left: 16, right: 16, top: 10, bottom: 10 })
-      .backgroundColor(Color.Transparent).borderRadius(0).enabled(!this.saving)
+      .backgroundColor(Color.Transparent).borderRadius(0)
       .accessibilityText($$.label).accessibilitySelected($$.selected).onClick($$.action)
     if (!$$.last) { Divider().color(this.theme.divider).margin({ left: 70, right: 16 }) }
   }
@@ -148,7 +151,7 @@ export struct ThemePage {
       }
     }.id(`theme-color-${option.value}`).width(44).height(44).padding(0).backgroundColor(Color.Transparent)
       .border({ width: this.settings.themeColor === option.value ? 2 : 0, color: this.theme.accent })
-      .accessibilityText(option.label).accessibilitySelected(this.settings.themeColor === option.value).enabled(!this.saving)
+      .accessibilityText(option.label).accessibilitySelected(this.settings.themeColor === option.value)
       .onClick((): void => { this.update((next: AppSettings): void => { next.themeColor = option.value; }); })
   }
 
@@ -163,7 +166,9 @@ export struct ThemePage {
       Button({ type: ButtonType.Circle }) {
         Image($r('app.media.action_add')).width(22).height(22).fillColor($r('app.color.content_primary')).accessibilityLevel('no')
       }.id('theme-custom-color').width(44).height(44).padding(10).backgroundColor(this.theme.muted)
-        .accessibilityText('自定义主题色').enabled(!this.saving).onClick((): void => { this.colorDialog.open(); })
+        .accessibilityText('自定义主题色').onClick((): void => {
+          if (!this.saving) { this.colorDialog.open(); }
+        })
     }.width('100%').padding(12).borderRadius(24).backgroundColor(this.theme.surface)
     Row({ space: 12 }) {
       Text('配色风格').fontSize(themeFontSize(16, this.theme)).fontFamily(this.theme.fontFamily)
@@ -177,7 +182,7 @@ export struct ThemePage {
         .optionFontColor($r('app.color.content_primary')).selectedOptionFontColor(this.theme.accent)
         .optionBgColor(this.theme.surface).selectedOptionBgColor(this.theme.accentSurface)
         .menuBackgroundColor(this.theme.surface)
-        .fontColor($r('app.color.content_secondary')).backgroundColor(Color.Transparent).enabled(!this.saving)
+        .fontColor($r('app.color.content_secondary')).backgroundColor(Color.Transparent)
         .accessibilityText('配色风格').onSelect((index: number): void => {
           this.update((next: AppSettings): void => { next.themeColorStyle = THEME_COLOR_STYLES[index]; });
         })
@@ -213,7 +218,7 @@ export struct ThemePage {
         .optionFontColor($r('app.color.content_primary')).selectedOptionFontColor(this.theme.accent)
         .optionBgColor(this.theme.surface).selectedOptionBgColor(this.theme.accentSurface)
         .menuBackgroundColor(this.theme.surface)
-        .fontColor($r('app.color.content_primary')).backgroundColor(Color.Transparent).layoutWeight(1).enabled(!this.saving)
+        .fontColor($r('app.color.content_primary')).backgroundColor(Color.Transparent).layoutWeight(1)
         .accessibilityText('应用字体').onSelect((index: number): void => {
           this.update((next: AppSettings): void => { next.fontFamily = THEME_FONTS[index]; });
         })
@@ -221,7 +226,7 @@ export struct ThemePage {
     this.sectionTitle('文本缩放', $r('app.media.theme_type'))
     SingleChoiceControl({
       labels: ['跟随系统', '自定义'], selectedIndex: this.settings.followSystemFontScale ? 0 : 1,
-      isEnabled: !this.saving, accessibilityLabel: '文本缩放',
+      accessibilityLabel: '文本缩放',
       onChange: (index: number): void => {
         this.update((next: AppSettings): void => { next.followSystemFontScale = index === 0; });
       }
@@ -239,9 +244,10 @@ export struct ThemePage {
       if (!this.settings.followSystemFontScale) {
         Slider({ value: this.scaleDraft, min: MIN_CUSTOM_FONT_SCALE * 100, max: MAX_CUSTOM_FONT_SCALE * 100, step: 5 })
           .id('theme-font-scale').width('100%').showSteps(true).showTips(true).selectedColor(this.theme.accent)
-          .trackColor(this.theme.muted).blockColor(this.theme.accent).enabled(!this.saving)
+          .trackColor(this.theme.muted).blockColor(this.theme.accent)
           .accessibilityText('自定义文字大小，85% 至 200%')
           .onChange((value: number, mode: SliderChangeMode): void => {
+            if (this.saving) { return; }
             this.scaleDraft = value;
             if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
               this.update((next: AppSettings): void => { next.customFontScale = value / 100; });

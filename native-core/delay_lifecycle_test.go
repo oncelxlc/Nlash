@@ -61,6 +61,7 @@ func closeDelayTestRuntime(runtime *coreRuntime) {
 	runtime.stop()
 	if cachefile.Cache().DB != nil {
 		_ = cachefile.Cache().Close()
+		cachefile.Cache().DB = nil
 	}
 }
 

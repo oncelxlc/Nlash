@@ -132,14 +132,7 @@ class RuntimeStore {
         this.proxyState = snapshot.proxyState;
         this.sessionEndedAt = snapshot.sessionEndedAt;
         this.trafficGeneration += 1;
-        this.trafficBaseline = undefined;
-        if (snapshot.sessionEndedAt > 0) {
-          this.trafficHistory = [];
-        }
-        if (this.dashboard !== undefined) {
-          this.dashboard = mergeProxyTrafficSnapshot(this.dashboard,
-            snapshot.sessionEndedAt > 0 ? undefined : this.dashboard, undefined);
-        }
+        this.clearSessionRecords();
         this.publish();
       }
       const available = snapshot.coreState === CoreServiceState.RUNNING;
@@ -163,9 +156,7 @@ class RuntimeStore {
         this.coreAvailable = false;
         this.runtimeSnapshotGeneration += 1;
         this.stopPolling();
-        this.finishActiveRequests();
-        this.dashboard = undefined;
-        this.connections = [];
+        this.clearSessionRecords();
         this.publish();
         this.loadPreview();
       }
@@ -192,6 +183,7 @@ class RuntimeStore {
   getSnapshot(): RuntimeStoreSnapshot {
     return {
       coreAvailable: this.coreAvailable,
+      proxyEnabled: this.coreAvailable && this.proxyState === ProxyState.ENABLED,
       refreshing: this.refreshing,
       previewLoading: this.previewLoading,
       dashboard: this.dashboard,
@@ -371,18 +363,6 @@ class RuntimeStore {
       await this.refreshDashboard(generation);
       await this.refreshProxies(generation);
       this.publish();
-    });
-  }
-
-  async resetTraffic(): Promise<void> {
-    this.requireRuntime();
-    await this.runAction('traffic', async (): Promise<void> => {
-      this.requireOK<Object>(await runtimeControlService.execute<Object>('resetTraffic'));
-      this.trafficGeneration += 1;
-      this.trafficBaseline = undefined;
-      this.dashboard = undefined;
-      this.trafficHistory = [];
-      await this.refreshDashboard();
     });
   }
 
@@ -646,10 +626,13 @@ class RuntimeStore {
   }
 
   private async refreshConnections(): Promise<void> {
+    if (this.proxyState !== ProxyState.ENABLED) { return; }
     const generation = this.runtimeSnapshotGeneration;
+    const trafficGeneration = this.trafficGeneration;
     const response = await runtimeControlService.execute<ConnectionsSnapshot>('connectionSnapshot');
     const snapshot = this.requireSuccess<ConnectionsSnapshot>(response);
-    if (generation !== this.runtimeSnapshotGeneration || !this.coreAvailable) { return; }
+    if (generation !== this.runtimeSnapshotGeneration || trafficGeneration !== this.trafficGeneration ||
+      !this.coreAvailable || this.proxyState !== ProxyState.ENABLED) { return; }
     const now = Date.now();
     const previous = new Map<string, ConnectionSnapshot>();
     this.connections.forEach((connection: ConnectionSnapshot): void => { previous.set(connection.id, connection); });
@@ -697,14 +680,13 @@ class RuntimeStore {
     };
   }
 
-  private finishActiveRequests(): void {
-    const now = Date.now();
-    this.requests = this.requests.map((record: RequestRecord): RequestRecord => record.active ? {
-      id: record.id, network: record.network, host: record.host, destination: record.destination, source: record.source,
-      process: record.process, start: record.start, end: now, upload: record.upload,
-      download: record.download, chains: record.chains.slice(), rule: record.rule,
-      rulePayload: record.rulePayload, active: false
-    } : record);
+  private clearSessionRecords(): void {
+    this.requests = [];
+    this.connections = [];
+    this.connectionsSampledAt = 0;
+    this.trafficHistory = [];
+    this.trafficBaseline = undefined;
+    this.dashboard = undefined;
   }
 
   private async runAction(key: string, action: () => Promise<void>): Promise<void> {

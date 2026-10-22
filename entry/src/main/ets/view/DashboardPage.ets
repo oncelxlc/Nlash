@@ -132,6 +132,10 @@ export struct DashboardPage {
       clearInterval(this.viewSyncTimer);
       this.viewSyncTimer = undefined;
     }
+    this.runtime = undefined;
+    this.history = [];
+    this.requestCount = 0;
+    this.lastTrafficSampleTimestamp = 0;
   }
 
   // 每秒刷新计时和展示快照，仅在新流量样本到达时替换图表数据，避免重复绘制。
@@ -167,6 +171,12 @@ export struct DashboardPage {
     this.runtimeProfileId = snapshot.profileId;
     this.sessionStartedAt = snapshot.sessionStartedAt;
     this.sessionEndedAt = snapshot.sessionEndedAt;
+    if (snapshot.proxyState !== ProxyState.ENABLED) {
+      this.runtime = undefined;
+      this.history = [];
+      this.requestCount = 0;
+      this.lastTrafficSampleTimestamp = 0;
+    }
     this.updateElapsedSeconds();
   }
 
@@ -428,8 +438,9 @@ export struct DashboardPage {
   }
 
   private updateElapsedSeconds(): void {
-    this.elapsedSeconds = proxySessionElapsedSeconds(this.sessionStartedAt, this.sessionEndedAt,
-      systemDateTime.getUptime(systemDateTime.TimeType.STARTUP));
+    this.elapsedSeconds = this.proxyState === ProxyState.ENABLED ?
+      proxySessionElapsedSeconds(this.sessionStartedAt, this.sessionEndedAt,
+        systemDateTime.getUptime(systemDateTime.TimeType.STARTUP)) : 0;
   }
 
 

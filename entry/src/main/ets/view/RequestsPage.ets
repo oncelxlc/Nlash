@@ -59,6 +59,9 @@ export struct RequestsPage {
     this.unsubscribe = undefined;
     this.cancelConfirmation?.();
     this.alertDialog?.close();
+    this.requests = [];
+    this.recordsById = new Map<string, RequestRecord>();
+    this.expandedId = '';
   }
 
   private visibleRequests(): RequestRecord[] {
@@ -172,7 +175,7 @@ export struct RequestsPage {
         if (this.visibleRequests().length === 0) {
           EmptyStateBackground({ icon: $r('app.media.nav_requests'),
             title: this.requests.length === 0 ? '暂无请求记录' : '没有匹配的请求',
-            description: this.requests.length === 0 ? '产生网络连接后，这里会保留最近 200 条会话记录。' :
+            description: this.requests.length === 0 ? '仅保留本次代理运行期间的最近 200 条请求，关闭后立即清空，不保存到本地。' :
               '尝试其他关键词，或切换为全部状态。' })
         }
         List({ space: 12 }) {

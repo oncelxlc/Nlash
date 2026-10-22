@@ -343,6 +343,10 @@ func restoreProxySnapshot(snapshot proxySnapshot) error {
 }
 
 func (runtime *coreRuntime) dashboardSnapshot() dashboardSnapshot {
+	if !runtime.proxyEnabled {
+		return dashboardSnapshot{Mode: tunnel.Mode().String(), MemoryBytes: statistic.DefaultManager.Memory(),
+			OnlyProxyTraffic: runtime.general.OnlyProxyTraffic}
+	}
 	uploadSpeed, downloadSpeed := statistic.DefaultManager.NowTraffic(runtime.general.OnlyProxyTraffic)
 	uploadTotal, downloadTotal := statistic.DefaultManager.TotalTraffic(runtime.general.OnlyProxyTraffic)
 	connectionCount := 0
@@ -677,6 +681,9 @@ func normalizeDelayRequest(value string, timeout int64) (string, int64, error) {
 
 // connectionsSnapshot 拷贝展示字段并按开始时间倒序，避免把内部 tracker 暴露给宿主。
 func (runtime *coreRuntime) connectionsSnapshot() connectionsSnapshot {
+	if !runtime.proxyEnabled {
+		return connectionsSnapshot{Connections: []connectionSnapshot{}}
+	}
 	snapshot := statistic.DefaultManager.Snapshot()
 	connections := make([]connectionSnapshot, 0, len(snapshot.Connections))
 	for _, tracker := range snapshot.Connections {

@@ -1,81 +1,20 @@
 import { AppTheme } from '../model/ThemeModels';
 import { DEFAULT_APP_THEME, themeFontSize } from '../utils/ThemeUtils';
-import { RuntimeStoreSnapshot } from '../model/RuntimeModels';
-import { feedbackService } from '../services/FeedbackService';
-import { runtimeStore } from '../stores/RuntimeStore';
 import { ResponsiveMetrics } from '../model/ResponsiveModels';
 import { resolveResponsiveMetrics, resolveContentWidth } from '../utils/ResponsiveUtils';
-import {
-  BUTTON_RADIUS, CONTROL_HEIGHT, FLOATING_NAVIGATION_INSET, CARD_RADIUS, CAPTION_FONT_SIZE
-} from '../constants/UiConstants';
+import { FLOATING_NAVIGATION_INSET } from '../constants/UiConstants';
 
 import { PageHeader } from '../components/PageHeader';
 import { FadingScrollLayout } from '../components/FadingScrollLayout';
 import { AppPage } from '../model/NavigationModels';
 
-/** 设置入口与运行数据清理；网络选项由常规页维护。 */
+/** 设置入口；网络选项由常规页维护。 */
 @Component
 export struct SettingsPage {
   @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
-  @Prop @Watch('updateActivity') isActive: boolean = true;
   @State headerInset: number = 0;
   onOpenPage: (page: AppPage) => void = (): void => {};
-  @State runtimeAvailable: boolean = false;
-  @State runtimeBusyKey: string = '';
   @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
-  private unsubscribeRuntime: (() => void) | undefined = undefined;
-
-  aboutToAppear(): void {
-    this.updateActivity();
-  }
-
-  aboutToDisappear(): void {
-    this.unsubscribeRuntime?.();
-    this.unsubscribeRuntime = undefined;
-  }
-
-  private updateActivity(): void {
-    this.unsubscribeRuntime?.();
-    this.unsubscribeRuntime = undefined;
-    if (this.isActive) {
-      this.unsubscribeRuntime = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
-        this.runtimeAvailable = snapshot.coreAvailable;
-        this.runtimeBusyKey = snapshot.busyKey;
-      });
-    }
-  }
-
-  private errorMessage(error: Object): string {
-    const exception = error as Error;
-    return typeof exception.message === 'string' && exception.message.length > 0 ?
-      exception.message : '设置操作失败';
-  }
-
-  private async resetTraffic(): Promise<void> {
-    try {
-      await runtimeStore.resetTraffic();
-      feedbackService.success('流量统计已重置');
-    } catch (error) {
-      feedbackService.error(this.errorMessage(error));
-    }
-  }
-
-  private clearRequests(): void {
-    runtimeStore.clearRequests();
-    feedbackService.success('请求记录已清空');
-  }
-
-  @Builder
-  private sectionTitle(title: string, subtitle?: string) {
-    Column({ space: 6 }) {
-      Text(title).fontSize(themeFontSize(18, this.theme)).fontFamily(this.theme.fontFamily).fontWeight(FontWeight.Medium).fontColor($r('app.color.content_primary')).width('100%')
-      if (!!subtitle) {
-        Text(subtitle).fontSize(themeFontSize(CAPTION_FONT_SIZE, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.content_secondary')).width('100%')
-      }
-    }
-    .alignItems(HorizontalAlign.Start)
-    .width('100%')
-  }
 
   @Builder
   private themeCard() {
@@ -84,24 +23,6 @@ export struct SettingsPage {
       this.moreRow('主题', $r('app.media.theme_palette'), AppPage.THEME, false)
     }
     .width('100%').borderRadius(24).clip(true).backgroundColor(this.theme.surface)
-  }
-
-  @Builder
-  private cleanupCard() {
-    Column({ space: 12 }) {
-      this.sectionTitle('数据管理')
-      Button(this.runtimeBusyKey.length > 0 ? '处理中…' : '重置 Core 流量统计')
-        .type(ButtonType.Normal).constraintSize({ minHeight: CONTROL_HEIGHT }).width('100%').borderRadius(BUTTON_RADIUS)
-        .fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.status_error')).backgroundColor($r('app.color.status_error_surface'))
-        .enabled(this.runtimeAvailable && this.runtimeBusyKey.length === 0)
-        .onClick((): void => { this.resetTraffic(); })
-      Button('清空会话请求记录')
-        .type(ButtonType.Normal).constraintSize({ minHeight: CONTROL_HEIGHT }).width('100%').borderRadius(BUTTON_RADIUS)
-        .fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily).fontColor($r('app.color.status_error')).backgroundColor($r('app.color.status_error_surface'))
-        .onClick((): void => { this.clearRequests(); })
-    }
-    .width('100%').padding(16)
-    .borderRadius(CARD_RADIUS).backgroundColor(this.theme.surface)
   }
 
   @Builder
@@ -144,7 +65,6 @@ export struct SettingsPage {
       Column({ space: 16 }) {
         this.themeCard()
         this.moreCard()
-        this.cleanupCard()
         Column() { this.moreRow('关于', $r('app.media.nav_resources'), AppPage.ABOUT, false) }
           .width('100%').borderRadius(24).clip(true).backgroundColor(this.theme.surface)
       }.width('100%').padding({ top: this.headerInset,
@@ -153,6 +73,7 @@ export struct SettingsPage {
     }
     .scrollBar(BarState.Off)
     .width('100%').height('100%')
+    .align(Alignment.Top)
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
 

@@ -176,6 +176,7 @@ export interface RuntimeCommandResponse<T> {
 /** 页面订阅的聚合视图；busyKey 表示互斥操作，独立测速任务由 delayOperations 描述。 */
 export interface RuntimeStoreSnapshot {
   coreAvailable: boolean;
+  proxyEnabled: boolean;
   refreshing: boolean;
   previewLoading: boolean;
   dashboard?: DashboardSnapshot;

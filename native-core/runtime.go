@@ -16,6 +16,7 @@ import (
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/geodata"
 	"github.com/metacubex/mihomo/component/mmdb"
+	"github.com/metacubex/mihomo/component/profile/cachefile"
 	"github.com/metacubex/mihomo/config"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/hub/executor"
@@ -118,6 +119,7 @@ func (runtime *coreRuntime) getLastError() string {
 // setFailure 在调用方持有写锁时进入失败状态；reject 只拒绝当前操作。
 func (runtime *coreRuntime) setFailure(code coreErrorCode, err error) coreErrorCode {
 	runtime.state = coreFailed
+	clearProxyActivity()
 	runtime.lastError = sanitizeCoreError(err)
 	emitCoreEvent(coreEventLifecycle, runtime.state, code, runtime.lastError)
 	return code
@@ -163,7 +165,7 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 		return runtime.reject(coreInvalidState, errors.New("core is already active"))
 	}
 	runtime.state = coreStarting
-	dnsHistory.clear()
+	clearProxyActivity()
 	runtime.lastError = ""
 	emitCoreEvent(coreEventLifecycle, runtime.state, coreOK, "starting core")
 	if options.configPath == "" || options.workDir == "" {
@@ -181,6 +183,9 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	}()
 	C.SetHomeDir(options.workDir)
 	C.SetConfig(options.configPath)
+	if err := clearPersistedDNS(cachefile.Cache()); err != nil {
+		return runtime.setFailure(coreStartFailed, err)
+	}
 	// 上轮停止后重新读取已更新文件，旧映射由 Reader 的 finalizer 回收。
 	mmdb.ReloadIP()
 	mmdb.ReloadASN()
@@ -318,6 +323,7 @@ func (runtime *coreRuntime) enableProxy(options coreProxyOptions) (code coreErro
 	if options.tunFD < 0 || options.mtu <= 0 {
 		return runtime.reject(coreInvalidArgument, errors.New("proxy options are invalid"))
 	}
+	clearProxyActivity()
 	protect, err := newProtectClient(options.protectSocketPath, options.generation)
 	if err != nil {
 		return runtime.reject(coreInvalidArgument, err)
@@ -348,6 +354,7 @@ func (runtime *coreRuntime) enableProxy(options coreProxyOptions) (code coreErro
 	}
 	runtime.protect = protect
 	runtime.proxyEnabled = true
+	dnsHistory.setEnabled(true)
 	runtime.lastError = ""
 	return coreOK
 }
@@ -360,6 +367,7 @@ func (runtime *coreRuntime) disableProxy() (code coreErrorCode) {
 		return runtime.reject(coreInvalidState, errors.New("core is not running"))
 	}
 	if !runtime.proxyEnabled {
+		clearProxyActivity()
 		return coreOK
 	}
 	previousProtect := runtime.protect
@@ -374,6 +382,7 @@ func (runtime *coreRuntime) disableProxy() (code coreErrorCode) {
 	activeSocketProtect.Store(nil)
 	runtime.protect = nil
 	runtime.proxyEnabled = false
+	clearProxyActivity()
 	if previousProtect != nil {
 		previousProtect.close()
 	}
@@ -464,6 +473,8 @@ func parseRuntimeConfigWithSettings(data []byte, autoHealthChecks bool, settings
 		return nil, nil, err
 	}
 	proxyGroupOrder := rawProxyGroupOrder(raw)
+	// DNS 映射只驻留内存，订阅不能开启访问数据的磁盘持久化。
+	raw.Profile.StoreFakeIP = false
 	applyGeneralOverrides(raw, settings, systemDNS)
 	applyHarmonyGeoMirrors(raw)
 	if err := applySavedGeoSettings(raw, C.Path.HomeDir()); err != nil {
@@ -587,6 +598,7 @@ func (runtime *coreRuntime) stop() (code coreErrorCode) {
 		return coreInvalidState
 	}
 	runtime.state = coreStopping
+	clearProxyActivity()
 	runtime.scheduleGeoUpdates()
 	emitCoreEvent(coreEventLifecycle, runtime.state, coreOK, "stopping core")
 	defer func() {

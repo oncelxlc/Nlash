@@ -35,6 +35,7 @@ func TestConfigurationHotApplyPreservesRuntimeAndAcceptedData(t *testing.T) {
 			if err := cachefile.Cache().Close(); err != nil {
 				t.Error(err)
 			}
+			cachefile.Cache().DB = nil
 		}
 	})
 	if runtime.getState() != coreRunning || runtime.isProxyEnabled() || listener.GetTunConf().Enable {
@@ -124,6 +125,7 @@ func TestApplyRuntimeConfigSynchronizesPlatformTun(t *testing.T) {
 			if err := cachefile.Cache().Close(); err != nil {
 				t.Error(err)
 			}
+			cachefile.Cache().DB = nil
 		}
 	})
 	C.SetHomeDir(t.TempDir())

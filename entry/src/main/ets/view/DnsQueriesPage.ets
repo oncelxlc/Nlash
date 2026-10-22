@@ -38,8 +38,14 @@ export struct DnsQueriesPage {
     this.active = true;
     this.lastRead = 0;
     this.unsubscribe = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
-      if (this.available !== snapshot.coreAvailable) { this.generation += 1; }
-      this.available = snapshot.coreAvailable;
+      if (this.available !== snapshot.proxyEnabled) { this.generation += 1; }
+      this.available = snapshot.proxyEnabled;
+      if (!this.available) {
+        this.records = [];
+        this.expandedId = '';
+        this.errorMessage = '';
+        this.lastRead = 0;
+      }
       if (this.available && Date.now() - this.lastRead >= 2000) { this.loadRecords(); }
     });
   }
@@ -51,6 +57,8 @@ export struct DnsQueriesPage {
     this.generation += 1;
     this.unsubscribe?.();
     this.unsubscribe = undefined;
+    this.records = [];
+    this.expandedId = '';
   }
 
   private async loadRecords(): Promise<void> {
@@ -134,9 +142,9 @@ export struct DnsQueriesPage {
       Stack() {
         if (filterDnsQueries(this.records, this.query).length === 0) {
           EmptyStateBackground({ icon: $r('app.media.nav_dns'),
-            title: !this.available ? 'Core 尚未就绪' : (this.query.length > 0 ? '没有匹配的 DNS 查询' : '暂无 DNS 查询'),
-            description: !this.available ? '启动 Core 后查看实际 DNS 解析记录。' :
-              (this.query.length > 0 ? '尝试其他关键词。' : '使用内核 DNS 解析后，最近 200 条查询会自动出现在这里。') })
+            title: !this.available ? '代理未运行' : (this.query.length > 0 ? '没有匹配的 DNS 查询' : '暂无 DNS 查询'),
+            description: !this.available ? '仅在代理运行时记录 DNS 查询，关闭后立即清空，不保存到本地。' :
+              (this.query.length > 0 ? '尝试其他关键词。' : '仅保留本次代理运行期间的最近 200 条查询，关闭后立即清空。') })
         }
         List({ space: 12 }) {
           ForEach(filterDnsQueries(this.records, this.query), (record: DnsQueryRecord) => {

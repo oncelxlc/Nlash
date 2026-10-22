@@ -22,6 +22,7 @@ import (
 
 func TestDNSHistoryCopiesBoundsAndClearsRecords(t *testing.T) {
 	var history dnsQueryHistory
+	history.setEnabled(true)
 	start := time.Now()
 	message := &D.Msg{Answer: []D.RR{&D.A{A: net.ParseIP("192.0.2.1")}}}
 	for i := 0; i < maxDNSHistory+10; i++ {
@@ -38,7 +39,7 @@ func TestDNSHistoryCopiesBoundsAndClearsRecords(t *testing.T) {
 	if history.snapshot()[0].Answers[0] != "192.0.2.1" {
 		t.Fatal("snapshot aliases history")
 	}
-	history.clear()
+	history.setEnabled(true)
 	history.append(coreDNS.QueryRecord{Start: start.Add(-time.Hour)})
 	if len(history.snapshot()) != 0 {
 		t.Fatal("stale query crossed core sessions")
@@ -47,6 +48,7 @@ func TestDNSHistoryCopiesBoundsAndClearsRecords(t *testing.T) {
 
 func TestDNSHistoryReportsFailuresAndBoundsPayload(t *testing.T) {
 	var history dnsQueryHistory
+	history.setEnabled(true)
 	history.append(coreDNS.QueryRecord{Question: D.Question{Name: "missing.example.", Qtype: 65000},
 		Start: time.Now(), Err: errors.New("private upstream failure")})
 	if record := history.snapshot()[0]; record.Error == "" || strings.Contains(record.Error, "private") || record.Type != "TYPE65000" {
@@ -63,6 +65,36 @@ func TestDNSHistoryReportsFailuresAndBoundsPayload(t *testing.T) {
 	payload, err := json.Marshal(history.snapshot())
 	if err != nil || len(payload) >= 1024*1024 {
 		t.Fatalf("DNS response exceeds IPC boundary: %d, %v", len(payload), err)
+	}
+}
+
+func TestDNSHistoryOnlyRecordsCurrentProxySession(t *testing.T) {
+	var history dnsQueryHistory
+	history.append(coreDNS.QueryRecord{Start: time.Now()})
+	if len(history.snapshot()) != 0 {
+		t.Fatal("recorded DNS before proxy was enabled")
+	}
+	history.setEnabled(true)
+	oldQuery := coreDNS.QueryRecord{Start: time.Now()}
+	history.append(oldQuery)
+	if len(history.snapshot()) != 1 {
+		t.Fatal("did not record active proxy DNS")
+	}
+	// Windows 的时钟粒度可能让紧邻的开启和关闭得到同一时间戳。
+	time.Sleep(20 * time.Millisecond)
+	history.setEnabled(false)
+	history.append(coreDNS.QueryRecord{Start: time.Now()})
+	if len(history.snapshot()) != 0 || history.records[0].ID != "" {
+		t.Fatal("disabled proxy retained or collected DNS records")
+	}
+	history.setEnabled(true)
+	history.append(oldQuery)
+	if len(history.snapshot()) != 0 {
+		t.Fatal("late DNS response leaked into the next proxy session")
+	}
+	history.append(coreDNS.QueryRecord{Start: time.Now()})
+	if len(history.snapshot()) != 1 {
+		t.Fatal("new proxy session did not resume recording")
 	}
 }
 

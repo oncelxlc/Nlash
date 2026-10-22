@@ -17,6 +17,7 @@ import proxyPresentationTest from './ProxyPresentation.test';
 import publicNetworkTest from './PublicNetwork.test';
 import activityDetailsTest from './ActivityDetails.test';
 import generalSettingsTest from './GeneralSettings.test';
+import runtimeSessionTest from './RuntimeSession.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -38,4 +39,5 @@ export default function testsuite() {
   publicNetworkTest();
   activityDetailsTest();
   generalSettingsTest();
+  runtimeSessionTest();
 }

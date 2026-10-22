@@ -41,7 +41,7 @@ export struct ConnectionsPage {
     this.stopObserving();
     if (!this.isActive) { return; }
     this.unsubscribe = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
-      this.available = snapshot.coreAvailable;
+      this.available = snapshot.proxyEnabled;
       const records = new Map<string, ConnectionSnapshot>();
       snapshot.connections.forEach((item: ConnectionSnapshot): void => { records.set(item.id, item); });
       this.recordsById = records;
@@ -58,6 +58,9 @@ export struct ConnectionsPage {
     this.unsubscribe = undefined;
     this.cancelConfirmation?.();
     this.alertDialog?.close();
+    this.connections = [];
+    this.recordsById = new Map<string, ConnectionSnapshot>();
+    this.expandedId = '';
   }
 
   private async closeConnection(id: string): Promise<void> {
@@ -179,8 +182,8 @@ export struct ConnectionsPage {
       Stack() {
         if (!this.available || this.visibleConnections().length === 0) {
           EmptyStateBackground({ icon: $r('app.media.nav_connections'),
-            title: !this.available ? '运行数据暂不可用' : (this.query.length > 0 ? '没有匹配的连接' : '当前没有活动连接'),
-            description: !this.available ? 'Core 就绪后，活动连接会自动出现在这里。' :
+            title: !this.available ? '代理未运行' : (this.query.length > 0 ? '没有匹配的连接' : '当前没有活动连接'),
+            description: !this.available ? '仅在代理运行时显示活动连接，关闭后立即清空。' :
               (this.query.length > 0 ? '尝试其他关键词。' : '有新的网络连接时会自动出现在这里。') })
         }
         List({ space: 12 }) {
