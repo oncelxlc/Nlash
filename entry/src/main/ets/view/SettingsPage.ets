@@ -7,20 +7,55 @@ import { FLOATING_NAVIGATION_INSET } from '../constants/UiConstants';
 import { PageHeader } from '../components/PageHeader';
 import { FadingScrollLayout } from '../components/FadingScrollLayout';
 import { AppPage } from '../model/NavigationModels';
+import { RuntimeStoreSnapshot } from '../model/RuntimeModels';
+import { generalSettingsService } from '../services/GeneralSettingsService';
+import { coreClient } from '../services/CoreClient';
+import { runtimeStore } from '../stores/RuntimeStore';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 
 /** 设置入口；网络选项由常规页维护。 */
 @Component
 export struct SettingsPage {
   @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
+  @StorageProp('logCaptureEnabled') logCaptureEnabled: boolean = false;
+  @Prop @Watch('updateActivity') isActive: boolean = true;
   @State headerInset: number = 0;
   onOpenPage: (page: AppPage) => void = (): void => {};
   @State metrics: ResponsiveMetrics = resolveResponsiveMetrics(0);
+  private unsubscribeRuntime: (() => void) | undefined;
+
+  aboutToAppear(): void { this.updateActivity(); }
+  aboutToDisappear(): void { this.unsubscribeRuntime?.(); this.unsubscribeRuntime = undefined; }
+
+  private updateActivity(): void {
+    this.unsubscribeRuntime?.();
+    this.unsubscribeRuntime = undefined;
+    if (!this.isActive) { return; }
+    let available: boolean | undefined;
+    this.unsubscribeRuntime = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
+      if (available === snapshot.coreAvailable) { return; }
+      available = snapshot.coreAvailable;
+      this.loadLogCapture();
+    });
+  }
+
+  private async loadLogCapture(): Promise<void> {
+    try {
+      if (coreClient.getVersion() !== 'unavailable/non-arm64') { await generalSettingsService.load(); }
+    } catch (_error) {
+      hilog.warn(0x4E4C, 'NlashSettings', 'Cannot refresh log capture setting');
+    }
+  }
 
   @Builder
   private themeCard() {
     Column() {
       this.moreRow('常规', $r('app.media.nav_settings'), AppPage.GENERAL)
       this.moreRow('主题', $r('app.media.theme_palette'), AppPage.THEME, false)
+      if (this.logCaptureEnabled) {
+        Divider().color(this.theme.divider).width('100%').padding({ left: 64, right: 20 })
+        this.moreRow('日志', $r('app.media.nav_requests'), AppPage.LOGS, false)
+      }
     }
     .width('100%').borderRadius(24).clip(true).backgroundColor(this.theme.surface)
   }
@@ -53,7 +88,6 @@ export struct SettingsPage {
         this.moreRow('最近请求', $r('app.media.runtime_duration'), AppPage.REQUESTS)
         this.moreRow('实时连接', $r('app.media.nav_connections'), AppPage.CONNECTIONS)
         this.moreRow('DNS 查询', $r('app.media.nav_dns'), AppPage.DNS)
-        this.moreRow('日志', $r('app.media.nav_requests'), AppPage.LOGS)
         this.moreRow('资源', $r('app.media.nav_resources'), AppPage.RESOURCES, false)
       }
       .width('100%').borderRadius(24).clip(true).backgroundColor(this.theme.surface)

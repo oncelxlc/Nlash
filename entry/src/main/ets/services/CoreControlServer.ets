@@ -12,7 +12,7 @@ import {
   decodeCoreCommandEnvelope,
   decodeProxyDelayProgress,
   encodeProxyDelayProgress,
-  encodeCoreResponseEnvelope
+  encodeCoreResponseChunks
 } from '../utils/CoreControlProtocol';
 import { CoreEvent, CoreEventType } from '../model/CoreModels';
 import { VPN_BUNDLE_NAME } from '../constants/VpnConstants';
@@ -137,21 +137,20 @@ class CoreControlServer {
 
   private publishResponse(requestId: string, response: string): void {
     try {
-      commonEventManager.publish(CORE_RESPONSE_EVENT, {
-        bundleName: VPN_BUNDLE_NAME,
-        data: encodeCoreResponseEnvelope({
-          version: CORE_CONTROL_VERSION,
-          requestId: requestId,
-          response: response
-        })
-      }, (error: BusinessError): void => {
-        if (error) {
-          hilog.error(DOMAIN, TAG, 'response publish failed code=%{public}d', error.code);
-        } else if (!this.loggedFirstResponse) {
-          this.loggedFirstResponse = true;
-          hilog.info(DOMAIN, TAG, 'published first control response');
-        }
-      });
+      const chunks = encodeCoreResponseChunks({ version: CORE_CONTROL_VERSION, requestId: requestId, response: response });
+      for (const data of chunks) {
+        commonEventManager.publish(CORE_RESPONSE_EVENT, {
+          bundleName: VPN_BUNDLE_NAME,
+          data: data
+        }, (error: BusinessError): void => {
+          if (error) {
+            hilog.error(DOMAIN, TAG, 'response publish failed code=%{public}d', error.code);
+          } else if (!this.loggedFirstResponse) {
+            this.loggedFirstResponse = true;
+            hilog.info(DOMAIN, TAG, 'published first control response');
+          }
+        });
+      }
     } catch (error) {
       hilog.error(DOMAIN, TAG, 'response publish threw');
     }

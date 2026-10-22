@@ -24,6 +24,8 @@ class ProfileStore {
   private activeProfileId: string = '';
   private stage: ProfileUpdateStage = ProfileUpdateStage.IDLE;
   private busyProfileId: string = '';
+  private selecting: boolean = false;
+  private selectionQueue: Promise<void> = Promise.resolve();
   private listeners: Set<ProfileStoreListener> = new Set<ProfileStoreListener>();
   private initializeOperation: Promise<void> | undefined;
   private initialized: boolean = false;
@@ -54,7 +56,7 @@ class ProfileStore {
       profiles: this.profiles.slice(),
       activeProfileId: this.activeProfileId,
       stage: this.stage,
-      busyProfileId: this.busyProfileId
+      busyProfileId: this.selecting ? '' : this.busyProfileId
     };
   }
 
@@ -196,19 +198,25 @@ class ProfileStore {
     }
   }
 
-  async select(id: string): Promise<void> {
-    await this.ensureReady();
-    this.assertIdle();
-    const profile = this.requireProfile(id);
-    this.beginOperation(id);
-    try {
-      await this.activate(profile);
-      this.finishOperation('已切换活动配置');
-    } catch (error) {
-      const failure = this.toError(error);
-      this.failOperation(failure.message);
-      throw failure;
-    }
+  select(id: string): Promise<void> {
+    const operation = this.selectionQueue.then(async (): Promise<void> => {
+      await this.ensureReady();
+      if (id === this.activeProfileId) { return; }
+      this.assertIdle();
+      const profile = this.requireProfile(id);
+      this.selecting = true;
+      this.beginOperation(id);
+      try {
+        await this.activate(profile);
+        this.finishOperation('已切换活动配置');
+      } catch (error) {
+        const failure = this.toError(error);
+        this.failOperation(failure.message);
+        throw failure;
+      } finally { this.selecting = false; }
+    });
+    this.selectionQueue = operation.then((): void => {}, (): void => {});
+    return operation;
   }
 
   /** 拖动后先更新显示顺序，持久化失败时恢复原列表。 */

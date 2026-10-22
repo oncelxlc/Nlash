@@ -97,6 +97,7 @@ class RuntimeStore {
   private connectionsSampledAt: number = 0;
   private requests: RequestRecord[] = [];
   private busyKey: string = '';
+  private actionQueue: Promise<void> = Promise.resolve();
   private lastBackgroundError: string = '';
   private listeners: Set<RuntimeStoreListener> = new Set<RuntimeStoreListener>();
   private pollTimer: number | undefined;
@@ -196,7 +197,7 @@ class RuntimeStore {
       trafficHistory: this.trafficHistory.slice(),
       connections: this.connections.slice(),
       requests: this.requests.slice(),
-      busyKey: this.busyKey
+      busyKey: this.busyKey === 'mode' || this.busyKey.startsWith('select:') ? '' : this.busyKey
     };
   }
 
@@ -255,24 +256,24 @@ class RuntimeStore {
     if (this.profileId.length === 0) {
       throw new Error('请先选择活动配置');
     }
-    const resolved = resolveSelectedProxyGroup(this.proxies, this.proxyMode, group);
-    if (resolved !== group) {
-      throw new Error('代理分组已失效');
-    }
-    const previous = this.selectedProxyGroup;
-    const profileId = this.profileId;
-    const mode = this.proxyMode;
-    this.selectedProxyGroup = group;
-    this.publish();
-    try {
-      await preferenceRepository.setProxyGroup(profileId, mode, group);
-    } catch (error) {
-      if (profileId === this.profileId && mode === this.proxyMode && this.selectedProxyGroup === group) {
-        this.selectedProxyGroup = previous;
-        this.publish();
+    await this.runAction('select:group', async (): Promise<void> => {
+      const resolved = resolveSelectedProxyGroup(this.proxies, this.proxyMode, group);
+      if (resolved !== group) { throw new Error('代理分组已失效'); }
+      const previous = this.selectedProxyGroup;
+      const profileId = this.profileId;
+      const mode = this.proxyMode;
+      this.selectedProxyGroup = group;
+      this.publish();
+      try {
+        await preferenceRepository.setProxyGroup(profileId, mode, group);
+      } catch (error) {
+        if (profileId === this.profileId && mode === this.proxyMode && this.selectedProxyGroup === group) {
+          this.selectedProxyGroup = previous;
+          this.publish();
+        }
+        throw new Error('代理分组保存失败');
       }
-      throw new Error('代理分组保存失败');
-    }
+    });
   }
 
   async testDelay(group: string, proxy: string, testUrl: string): Promise<number> {
@@ -357,6 +358,7 @@ class RuntimeStore {
   async setMode(mode: RuntimeMode): Promise<void> {
     this.requireRuntime();
     await this.runAction('mode', async (): Promise<void> => {
+      if (this.dashboard?.mode === mode) { return; }
       const generation = ++this.runtimeSnapshotGeneration;
       const payload: SetModeCommandPayload = { mode: mode };
       this.requireOK<Object>(await runtimeControlService.execute<Object>('setRuntimeMode', payload));
@@ -689,22 +691,25 @@ class RuntimeStore {
     this.dashboard = undefined;
   }
 
-  private async runAction(key: string, action: () => Promise<void>): Promise<void> {
-    if (this.busyKey.length > 0) {
-      throw new Error('已有 Core 操作正在执行');
-    }
-    this.busyKey = key;
-    this.publish();
-    try {
-      await action();
-    } catch (error) {
-      throw new Error(this.errorMessage(error));
-    } finally {
-      if (this.busyKey === key) {
+  private runAction(key: string, action: () => Promise<void>): Promise<void> {
+    const profile = this.profileSignature;
+    const mode = this.proxyMode;
+    const operation = this.actionQueue.then(async (): Promise<void> => {
+      if (profile !== this.profileSignature) { throw new Error('活动配置已变化，请重试'); }
+      if (key.startsWith('select:') && mode !== this.proxyMode) { throw new Error('出站模式已变化，请重试'); }
+      this.busyKey = key;
+      this.publish();
+      try {
+        await action();
+      } catch (error) {
+        throw new Error(this.errorMessage(error));
+      } finally {
         this.busyKey = '';
         this.publish();
       }
-    }
+    });
+    this.actionQueue = operation.then((): void => {}, (): void => {});
+    return operation;
   }
 
   // 进度事件与最终响应共用注册表去重，且不能跨配置写回节点延迟。

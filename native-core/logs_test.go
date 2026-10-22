@@ -11,7 +11,7 @@ import (
 	coreLog "github.com/metacubex/mihomo/log"
 )
 
-func TestLogCaptureFiltersLevelsAndPreservesPausedRecords(t *testing.T) {
+func TestLogCaptureFiltersLevelsAndClearsDisabledRecords(t *testing.T) {
 	history := &coreLogHistory{}
 	settings := defaultGeneralSettings()
 	history.configure(settings)
@@ -30,20 +30,23 @@ func TestLogCaptureFiltersLevelsAndPreservesPausedRecords(t *testing.T) {
 		t.Fatalf("unexpected levels or ordering: %+v", snapshot)
 	}
 	snapshot.Records[0].Message = "changed"
-	settings.LogCapture = false
-	history.configure(settings)
-	history.append(coreLog.Event{LogLevel: coreLog.ERROR, Payload: "paused"})
-	settings.LogCapture, settings.LogLevel = true, "silent"
+	settings.LogLevel = "silent"
 	history.configure(settings)
 	history.append(coreLog.Event{LogLevel: coreLog.ERROR, Payload: "silent"})
 	if records := history.snapshot().Records; len(records) != 2 || records[0].Message != "error" {
-		t.Fatal("paused capture changed existing records or snapshots shared storage")
+		t.Fatal("level change changed existing records or snapshots shared storage")
 	}
-	settings.LogLevel = "debug"
+	settings.LogCapture = false
+	history.configure(settings)
+	history.append(coreLog.Event{LogLevel: coreLog.ERROR, Payload: "disabled"})
+	if snapshot := history.snapshot(); snapshot.Capture || len(snapshot.Records) != 0 || history.bytes != 0 {
+		t.Fatal("disabling capture did not clear records and byte accounting")
+	}
+	settings.LogCapture, settings.LogLevel = true, "debug"
 	history.configure(settings)
 	history.append(coreLog.Event{LogLevel: coreLog.DEBUG, Payload: "resumed"})
-	if records := history.snapshot().Records; len(records) != 3 || records[0].Message != "resumed" {
-		t.Fatal("capture did not resume at the new level")
+	if records := history.snapshot().Records; len(records) != 1 || records[0].Message != "resumed" || records[0].ID != "3" {
+		t.Fatal("capture did not restart with fresh records and unique IDs")
 	}
 }
 
@@ -115,10 +118,19 @@ func TestLogSettingsPersistWithoutReloadAndSubscribeToMihomo(t *testing.T) {
 	if !response.OK {
 		t.Fatal("logs became unreadable after core stopped")
 	}
-	if result := runtime.saveGeneralSettings(json.RawMessage(`{"logLevel":"invalid"}`)); result.OK {
+	if result := runtime.saveGeneralSettings(json.RawMessage(`{"logCapture":false,"logLevel":"invalid"}`)); result.OK {
 		t.Fatal("invalid log level was accepted")
 	}
-	if logHistory.snapshot().Level != "debug" {
+	if snapshot := logHistory.snapshot(); snapshot.Level != "debug" || !snapshot.Capture || len(snapshot.Records) == 0 {
 		t.Fatal("failed save changed capture settings")
+	}
+	if result := runtime.saveGeneralSettings(json.RawMessage(`{"logCapture":false}`)); !result.OK {
+		t.Fatalf("disabling capture failed: %+v", result)
+	}
+	if snapshot := logHistory.snapshot(); snapshot.Capture || len(snapshot.Records) != 0 {
+		t.Fatal("saving disabled capture did not clear logs")
+	}
+	if saved, err := readGeneralSettings(dir); err != nil || saved.LogCapture {
+		t.Fatal("disabled capture was not persisted")
 	}
 }

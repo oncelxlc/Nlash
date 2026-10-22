@@ -173,7 +173,7 @@ export interface RuntimeCommandResponse<T> {
   data?: T;
 }
 
-/** 页面订阅的聚合视图；busyKey 表示互斥操作，独立测速任务由 delayOperations 描述。 */
+/** 页面订阅的聚合视图；busyKey 仅展示显式连接操作，静默切换不发布忙碌状态。 */
 export interface RuntimeStoreSnapshot {
   coreAvailable: boolean;
   proxyEnabled: boolean;

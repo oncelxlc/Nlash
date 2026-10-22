@@ -56,6 +56,10 @@ func (history *coreLogHistory) configure(settings generalSettings) {
 	defer history.mu.Unlock()
 	history.capture = settings.LogCapture
 	history.level = coreLog.LogLevelMapping[settings.LogLevel]
+	if !history.capture {
+		history.records = nil
+		history.bytes = 0
+	}
 }
 
 func (history *coreLogHistory) append(event coreLog.Event) {

@@ -31,17 +31,16 @@ export struct ThemePage {
   @State errorMessage: string = '';
   @State headerInset: number = 0;
   @State contentPadding: number = 16;
-  @State scaleDraft: number = 100;
-  private saving: boolean = false;
+  @State scaleDraft: number = Math.round(settingsStore.getSnapshot().settings.customFontScale * 100);
   private unsubscribe: (() => void) | undefined = undefined;
   private colorDialog: CustomDialogController = new CustomDialogController({
     builder: ThemeColorDialog({
       initialColor: this.settings.customThemeColor,
       onSubmit: async (color: string): Promise<void> => {
-        const next = settingsStore.getSnapshot().settings;
-        next.customThemeColor = color;
-        next.themeColor = color;
-        await settingsStore.setAppearance(next);
+        await settingsStore.updateAppearance((next: AppSettings): void => {
+          next.customThemeColor = color;
+          next.themeColor = color;
+        });
       }
     }),
     customStyle: true,
@@ -50,11 +49,13 @@ export struct ThemePage {
 
   aboutToAppear(): void {
     this.unsubscribe = settingsStore.subscribe((snapshot: SettingsStoreSnapshot): void => {
-      this.saving = snapshot.saving;
-      // 保存锁只拦截重复提交，不切换整页控件的禁用外观或重复刷新设置。
+      // 保存期间保留当前外观；后台队列按顺序合并各选项。
       if (snapshot.saving) { return; }
+      if (this.settings.customFontScale !== snapshot.settings.customFontScale ||
+        this.settings.followSystemFontScale !== snapshot.settings.followSystemFontScale) {
+        this.scaleDraft = Math.round(snapshot.settings.customFontScale * 100);
+      }
       this.settings = snapshot.settings;
-      this.scaleDraft = Math.round(snapshot.settings.customFontScale * 100);
     });
   }
 
@@ -65,12 +66,8 @@ export struct ThemePage {
   }
 
   private async update(change: (settings: AppSettings) => void): Promise<void> {
-    if (this.saving) { return; }
-    const next = settingsStore.getSnapshot().settings;
-    change(next);
     this.errorMessage = '';
-    if (JSON.stringify(next) === JSON.stringify(this.settings)) { return; }
-    try { await settingsStore.setAppearance(next); }
+    try { await settingsStore.updateAppearance(change); }
     catch (error) { this.errorMessage = (error as Error).message || '主题保存失败，请重试'; }
   }
 
@@ -167,7 +164,7 @@ export struct ThemePage {
         Image($r('app.media.action_add')).width(22).height(22).fillColor($r('app.color.content_primary')).accessibilityLevel('no')
       }.id('theme-custom-color').width(44).height(44).padding(10).backgroundColor(this.theme.muted)
         .accessibilityText('自定义主题色').onClick((): void => {
-          if (!this.saving) { this.colorDialog.open(); }
+          this.colorDialog.open();
         })
     }.width('100%').padding(12).borderRadius(24).backgroundColor(this.theme.surface)
     Row({ space: 12 }) {
@@ -247,7 +244,6 @@ export struct ThemePage {
           .trackColor(this.theme.muted).blockColor(this.theme.accent)
           .accessibilityText('自定义文字大小，85% 至 200%')
           .onChange((value: number, mode: SliderChangeMode): void => {
-            if (this.saving) { return; }
             this.scaleDraft = value;
             if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
               this.update((next: AppSettings): void => { next.customFontScale = value / 100; });

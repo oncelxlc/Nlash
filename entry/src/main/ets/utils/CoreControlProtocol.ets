@@ -1,7 +1,9 @@
 import {
   CORE_CONTROL_VERSION,
+  CORE_RESPONSE_CHUNK_LENGTH,
   MAX_CORE_COMMAND_LENGTH,
   MAX_CORE_RESPONSE_LENGTH,
+  MAX_CORE_RESPONSE_CHUNKS,
   MAX_CORE_PROGRESS_LENGTH
 } from '../constants/CoreControlConstants';
 import { CoreCommandEnvelope, CoreResponseEnvelope, ProxyDelayProgress } from '../model/CoreControlModels';
@@ -30,6 +32,22 @@ export function encodeCoreResponseEnvelope(envelope: CoreResponseEnvelope): stri
   return JSON.stringify(envelope);
 }
 
+export function encodeCoreResponseChunks(envelope: CoreResponseEnvelope): string[] {
+  if (envelope.response.length <= CORE_RESPONSE_CHUNK_LENGTH) {
+    return [encodeCoreResponseEnvelope(envelope)];
+  }
+  const chunks: string[] = [];
+  const count = Math.ceil(envelope.response.length / CORE_RESPONSE_CHUNK_LENGTH);
+  for (let index = 0; index < count; index++) {
+    chunks.push(encodeCoreResponseEnvelope({
+      version: envelope.version, requestId: envelope.requestId,
+      response: envelope.response.slice(index * CORE_RESPONSE_CHUNK_LENGTH, (index + 1) * CORE_RESPONSE_CHUNK_LENGTH),
+      chunkIndex: index, chunkCount: count
+    }));
+  }
+  return chunks;
+}
+
 export function decodeCoreResponseEnvelope(value: string): CoreResponseEnvelope | undefined {
   let envelope: CoreResponseEnvelope;
   try {
@@ -37,12 +55,50 @@ export function decodeCoreResponseEnvelope(value: string): CoreResponseEnvelope 
   } catch (error) {
     return undefined;
   }
-  if (envelope.version !== CORE_CONTROL_VERSION || !isRequestId(envelope.requestId) ||
+  if (envelope === null || envelope.version !== CORE_CONTROL_VERSION || !isRequestId(envelope.requestId) ||
     typeof envelope.response !== 'string' || envelope.response.length === 0 ||
     envelope.response.length > MAX_CORE_RESPONSE_LENGTH) {
     return undefined;
   }
+  if (envelope.chunkIndex !== undefined || envelope.chunkCount !== undefined) {
+    const index = envelope.chunkIndex;
+    const count = envelope.chunkCount;
+    if (typeof index !== 'number' || typeof count !== 'number' || !Number.isInteger(index) ||
+      !Number.isInteger(count) || count < 2 || count > MAX_CORE_RESPONSE_CHUNKS || index < 0 || index >= count ||
+      envelope.response.length > CORE_RESPONSE_CHUNK_LENGTH) {
+      return undefined;
+    }
+  }
   return envelope;
+}
+
+/** 公共事件可能乱序或重复，完整响应到齐后才交给业务层解析。缓冲区随请求超时一并释放。 */
+export class CoreResponseBuffer {
+  private chunks: Map<number, string> = new Map<number, string>();
+  private count: number = 0;
+
+  append(envelope: CoreResponseEnvelope): string | undefined {
+    if (envelope.chunkIndex === undefined || envelope.chunkCount === undefined) {
+      return envelope.response;
+    }
+    if (this.count !== 0 && this.count !== envelope.chunkCount) {
+      throw new Error('Core 响应分片数量不一致');
+    }
+    const previous = this.chunks.get(envelope.chunkIndex);
+    if (previous !== undefined && previous !== envelope.response) {
+      throw new Error('Core 响应分片内容不一致');
+    }
+    this.count = envelope.chunkCount;
+    this.chunks.set(envelope.chunkIndex, envelope.response);
+    if (this.chunks.size !== this.count) { return undefined; }
+    const parts: string[] = [];
+    for (let index = 0; index < this.count; index++) {
+      const part = this.chunks.get(index);
+      if (part === undefined) { return undefined; }
+      parts.push(part);
+    }
+    return parts.join('');
+  }
 }
 
 export function encodeProxyDelayProgress(progress: ProxyDelayProgress): string {

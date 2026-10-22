@@ -136,12 +136,11 @@ export struct ConfigurationPage {
   }
 
   private async selectProfile(id: string): Promise<void> {
-    if (id === this.activeProfileId || this.busyProfileId.length > 0) {
+    if (this.busyProfileId.length > 0) {
       return;
     }
     try {
       await profileStore.select(id);
-      feedbackService.success('已切换活动配置');
     } catch (error) {
       feedbackService.error(this.errorMessage(error));
     }

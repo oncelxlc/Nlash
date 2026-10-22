@@ -41,8 +41,7 @@ export struct GeneralPage {
   onBack: () => void = (): void => {};
   @State settings: GeneralSettings = DEFAULT_GENERAL_SETTINGS;
   @State testUrl: string = settingsStore.getSnapshot().settings.delayTestUrl;
-  @State saving: boolean = false;
-  @State available: boolean = false;
+  private available: boolean = false;
   @State supported: boolean = true;
   @State loaded: boolean = false;
   @State loading: boolean = false;
@@ -53,6 +52,7 @@ export struct GeneralPage {
   private generation: number = 0;
   private unsubscribeRuntime: (() => void) | undefined;
   private unsubscribeSettings: (() => void) | undefined;
+  private unsubscribeGeneral: (() => void) | undefined;
   private dialog: CustomDialogController | undefined;
 
   aboutToAppear(): void { this.updateActivity(); }
@@ -67,11 +67,19 @@ export struct GeneralPage {
     this.unsubscribeSettings = settingsStore.subscribe((snapshot: SettingsStoreSnapshot): void => {
       this.testUrl = snapshot.settings.delayTestUrl;
     });
+    this.unsubscribeGeneral = generalSettingsService.subscribe((settings: GeneralSettings): void => {
+      this.settings = settings;
+      this.loaded = true;
+    });
     this.unsubscribeRuntime = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
       const changed = this.available !== snapshot.coreAvailable;
       this.available = snapshot.coreAvailable;
-      if (changed && !this.saving) { this.generation += 1; this.loaded = false; this.errorMessage = ''; }
-      if (this.supported && !this.loaded && !this.loading && !this.saving && this.errorMessage.length === 0) {
+      if (changed && !generalSettingsService.isSaving()) {
+        this.generation += 1;
+        this.errorMessage = '';
+        if (this.supported) { this.load(); }
+      }
+      if (this.supported && !this.loaded && !this.loading && !generalSettingsService.isSaving() && this.errorMessage.length === 0) {
         this.load();
       }
     });
@@ -88,11 +96,13 @@ export struct GeneralPage {
     this.unsubscribeRuntime = undefined;
     this.unsubscribeSettings?.();
     this.unsubscribeSettings = undefined;
+    this.unsubscribeGeneral?.();
+    this.unsubscribeGeneral = undefined;
     this.dialog?.close();
   }
 
   private async load(): Promise<void> {
-    if (this.loading) { return; }
+    if (this.loading || generalSettingsService.isSaving()) { return; }
     this.loading = true;
     const generation = this.generation;
     try {
@@ -108,21 +118,9 @@ export struct GeneralPage {
   }
 
   private async save(change: (settings: GeneralSettings) => void): Promise<void> {
-    if (this.saving || !this.loaded) { throw new Error('设置尚未读取，请稍后重试'); }
-    const previous = this.settings;
-    const next = JSON.parse(JSON.stringify(previous)) as GeneralSettings;
-    change(next);
-    this.saving = true;
-    this.settings = next;
+    if (!this.loaded) { throw new Error('设置尚未读取，请稍后重试'); }
     this.errorMessage = '';
-    try {
-      const saved = await generalSettingsService.save(next);
-      if (this.active) { this.settings = saved; this.loaded = true; }
-      feedbackService.success(this.available ? '常规设置已应用' : '常规设置已保存，下次启动 Core 时应用');
-    } catch (error) {
-      if (this.active) { this.settings = previous; }
-      throw new Error((error as Error).message || '保存失败，请重试');
-    } finally { this.saving = false; }
+    await generalSettingsService.update(change);
   }
 
   private async toggle(change: (settings: GeneralSettings) => void): Promise<void> {
@@ -167,7 +165,7 @@ export struct GeneralPage {
       Toggle({ type: ToggleType.Switch, isOn: $$.value })
         .id(`general-${$$.key}`).width(52).height(32).selectedColor(this.theme.accent)
         .responseRegion({ x: -4, y: -8, width: 60, height: 48 })
-        .enabled(this.loaded && !this.saving).accessibilityText($$.title)
+        .enabled(this.loaded).accessibilityText($$.title)
         .onChange((value: boolean): void => {
           if (value !== $$.value) {
             this.toggle((next: GeneralSettings): void => { $$.change(next, value); });
@@ -192,7 +190,7 @@ export struct GeneralPage {
       }.width('100%')
     }.id(`general-edit-${$$.title}`).width('100%').constraintSize({ minHeight: 64 }).borderRadius(0)
       .padding({ left: 16, right: 16, top: 12, bottom: 12 }).backgroundColor(Color.Transparent)
-      .enabled(!this.saving && ($$.requiresCore === false || this.loaded))
+      .enabled($$.requiresCore === false || this.loaded)
       .accessibilityText(`${$$.title}，${$$.value}`).onClick($$.action)
     if (!$$.last) { this.separator() }
   }
@@ -249,7 +247,6 @@ export struct GeneralPage {
         this.edit('测试链接', '用于节点延迟测试的 HTTP(S) 地址。', this.testUrl,
           async (value: string): Promise<void> => {
             await settingsStore.setDelayTestUrl(value);
-            feedbackService.success('测试链接已保存');
           });
       } })
       this.toggleRow({ key: 'unified-delay', title: '统一延迟', value: this.settings.unifiedDelay,
@@ -302,21 +299,19 @@ export struct GeneralPage {
         Text('日志等级').fontSize(themeFontSize(16, this.theme)).fontFamily(this.theme.fontFamily)
           .fontColor($r('app.color.content_primary')).width('100%')
         SingleChoiceControl({ labels: LOG_LEVEL_LABELS, selectedIndex: LOG_LEVELS.indexOf(this.settings.logLevel),
-          scrollable: true, isEnabled: this.loaded && !this.saving, accessibilityLabel: '日志等级',
+          scrollable: true, isEnabled: this.loaded, accessibilityLabel: '日志等级',
           onChange: (index: number): void => {
             this.toggle((next: GeneralSettings): void => { next.logLevel = LOG_LEVELS[index]; });
           } })
       }.width('100%').padding(16)
     }.width('100%').borderRadius(24).clip(true).backgroundColor(this.theme.surface)
-    this.note('捕获所选等级及更高等级的内核日志；静默时不捕获。最多保留最近 500 条、64 KiB 正文，仅驻留内存。关闭捕获后可继续查看和导出已有记录。')
+    this.note('捕获所选等级及更高等级的内核日志；静默时不捕获。最多保留最近 500 条、64 KiB 正文，仅驻留内存。关闭捕获会清空已有日志，并隐藏设置中的日志入口。')
   }
 
   @Builder
   private content() {
     Scroll() {
       Column({ space: 12 }) {
-        if (this.supported && !this.available) { this.note('Core 未运行，设置读取后可保存，下次启动时应用。') }
-        if (this.loading || this.saving) { this.note(this.saving ? '正在应用设置…' : '正在读取设置…') }
         if (this.errorMessage.length > 0) {
           Text(this.errorMessage).fontSize(themeFontSize(14, this.theme)).fontFamily(this.theme.fontFamily)
             .fontColor($r('app.color.status_error')).width('100%')

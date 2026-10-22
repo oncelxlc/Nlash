@@ -31,7 +31,6 @@ export struct ProxyPage {
   @State headerInset: number = 0;
   @Prop forceExpanded: boolean = false;
   @State coreAvailable: boolean = false;
-  private selecting: boolean = false;
   @State previewLoading: boolean = false;
   @State groups: ProxyGroupSnapshot[] = [];
   @State selections: ProxySelection[] = [];
@@ -161,16 +160,12 @@ export struct ProxyPage {
   }
 
   private async selectNode(group: ProxyGroupSnapshot, node: ProxyNodeSnapshot): Promise<void> {
-    if (!group.selectable || this.selecting) { return; }
-    this.selecting = true;
+    if (!group.selectable) { return; }
     try {
       await runtimeStore.selectProxy(group.name, node.name);
       await runtimeStore.selectProxyGroup(group.name);
-      feedbackService.success(`已选择 ${node.name}`);
     } catch (error) {
       feedbackService.error(this.errorMessage(error));
-    } finally {
-      this.selecting = false;
     }
   }
 

@@ -28,13 +28,14 @@ export struct ResourcesPage {
     autoUpdate: false, intervalHours: 24, updating: false
   };
   @State available: boolean = false;
-  @State saving: boolean = false;
   @State updating: boolean = false;
   @State errorMessage: string = '';
   @State loadError: string = '';
   @State loaded: boolean = false;
   private active: boolean = false;
   private loading: boolean = false;
+  private pendingSaves: number = 0;
+  private saveQueue: Promise<void> = Promise.resolve();
   private lastRead: number = 0;
   private generation: number = 0;
   private unsubscribe: (() => void) | undefined;
@@ -50,7 +51,7 @@ export struct ResourcesPage {
     this.unsubscribe = runtimeStore.subscribe((state: RuntimeStoreSnapshot): void => {
       if (this.available !== state.coreAvailable) { this.generation += 1; this.loaded = false; }
       this.available = state.coreAvailable;
-      if (this.available && !this.saving && Date.now() - this.lastRead >= 2000) { this.loadResources(); }
+      if (this.available && this.pendingSaves === 0 && Date.now() - this.lastRead >= 2000) { this.loadResources(); }
     });
   }
 
@@ -71,7 +72,7 @@ export struct ResourcesPage {
     const generation = this.generation;
     try {
       const snapshot = await diagnosticsService.resources();
-      if (this.active && generation === this.generation && !this.saving) {
+      if (this.active && generation === this.generation && this.pendingSaves === 0) {
         this.snapshot = snapshot;
         this.loaded = true;
         this.loadError = '';
@@ -82,12 +83,14 @@ export struct ResourcesPage {
   }
 
   private async save(patch: GeoSettingsPatch): Promise<void> {
-    this.saving = true;
-    try {
+    this.pendingSaves += 1;
+    this.generation += 1;
+    const operation = this.saveQueue.then(async (): Promise<void> => {
       const snapshot = await diagnosticsService.saveResources(patch);
       if (this.active) { this.snapshot = snapshot; this.errorMessage = ''; }
-      feedbackService.success('资源设置已保存');
-    } finally { this.saving = false; }
+    });
+    this.saveQueue = operation.then((): void => {}, (): void => {});
+    try { await operation; } finally { this.pendingSaves -= 1; }
   }
 
   private async toggleAutoUpdate(): Promise<void> {
@@ -142,7 +145,7 @@ export struct ResourcesPage {
   private actions() {
     Row({ space: 8 }) {
       HeaderIconButton({ icon: $r('app.media.action_refresh'), label: '更新 Geo 资源',
-        available: this.available && this.loaded && !this.saving, busy: this.updating || this.snapshot.updating,
+        available: this.available && this.loaded, busy: this.updating || this.snapshot.updating,
         onActivate: (): void => { this.updateResources(); } })
       Button({ type: ButtonType.Circle }) {
         Image($r('app.media.action_more')).width(24).height(24)
@@ -150,7 +153,7 @@ export struct ResourcesPage {
       }
       .width(CONTROL_HEIGHT).height(CONTROL_HEIGHT).padding(0).backgroundColor(this.theme.surface)
       .accessibilityText('资源更新设置')
-      .enabled(this.available && this.loaded && !this.saving && !this.updating && !this.snapshot.updating)
+      .enabled(this.available && this.loaded && !this.updating && !this.snapshot.updating)
       .bindMenu(this.updateMenu(), { backgroundColor: this.theme.surface })
     }
   }
@@ -169,7 +172,7 @@ export struct ResourcesPage {
       }.width('100%')
     }
     .width('100%').constraintSize({ minHeight: 80 }).padding(20).borderRadius(0).backgroundColor(Color.Transparent)
-    .enabled(this.available && this.loaded && !this.saving && !this.updating && !this.snapshot.updating)
+    .enabled(this.available && this.loaded && !this.updating && !this.snapshot.updating)
     .accessibilityText(`${data.resource.kind}，${elapsedLabel(data.resource.updatedAt)}，编辑下载地址`)
     .onClick((): void => { this.openEditor(data.resource.kind, data.resource.url, false); })
     if (data.index < this.snapshot.resources.length - 1) {

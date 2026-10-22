@@ -32,6 +32,7 @@ class LogDataSource implements IDataSource {
 @Component
 export struct LogsPage {
   @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
+  @StorageProp('logCaptureEnabled') @Watch('captureChanged') logCaptureEnabled: boolean = false;
   @Prop @Watch('updateActivity') isActive: boolean = true;
   onBack: () => void = (): void => {};
   @State query: string = '';
@@ -51,6 +52,16 @@ export struct LogsPage {
 
   aboutToAppear(): void { this.updateActivity(); }
   aboutToDisappear(): void { this.stopPolling(); }
+
+  private captureChanged(): void {
+    if (this.logCaptureEnabled) { return; }
+    this.stopPolling();
+    this.capture = false;
+    this.records = [];
+    this.totalCount = 0;
+    this.updateResults();
+    if (this.isActive) { this.load(this.generation); }
+  }
 
   private stopPolling(): void {
     this.generation += 1;

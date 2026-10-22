@@ -188,6 +188,7 @@ struct Index {
       LogsPage({ isActive: this.isPageActive(page), onBack: (): void => { this.selectPage(AppPage.SETTINGS); } })
     } else if (page === AppPage.SETTINGS) {
       SettingsPage({
+        isActive: this.isPageActive(page),
         onOpenPage: (destination: AppPage): void => { this.selectPage(destination); } })
     } else {
       ActivityPage({ page: page, isActive: this.isPageActive(page),

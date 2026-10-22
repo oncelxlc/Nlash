@@ -26,3 +26,6 @@ export interface GeneralSettings {
   logLevel: LogLevel;
   logCapture: boolean;
 }
+
+export type GeneralSettingsChange = (settings: GeneralSettings) => void;
+export type GeneralSettingsListener = (settings: GeneralSettings) => void;

@@ -13,6 +13,7 @@ class SettingsStore {
   private context: common.ApplicationContext | undefined;
   private settings: AppSettings = DEFAULT_APP_SETTINGS;
   private saving: boolean = false;
+  private saveQueue: Promise<void> = Promise.resolve();
   private initialized: boolean = false;
   private initializeOperation: Promise<void> | undefined;
   private windowReady: boolean = false;
@@ -51,24 +52,34 @@ class SettingsStore {
   }
 
   async setThemeMode(mode: AppThemeMode): Promise<void> {
-    const next = this.copySettings(this.settings);
-    next.themeMode = mode;
-    await this.setAppearance(next);
+    await this.updateAppearance((next: AppSettings): void => { next.themeMode = mode; });
   }
 
   async setNavigationTransition(transition: NavigationTransition): Promise<void> {
-    const next = this.copySettings(this.settings);
-    next.navigationTransition = transition;
-    await this.setAppearance(next);
+    await this.updateAppearance((next: AppSettings): void => { next.navigationTransition = transition; });
   }
 
   async setAppearance(settings: AppSettings): Promise<void> {
-    const next = this.copySettings(settings);
-    next.mtu = this.settings.mtu;
-    next.delayTestUrl = this.settings.delayTestUrl;
-    const previousMode = this.settings.themeMode;
-    await this.save(next);
-    if (previousMode !== next.themeMode) { this.applyTheme(next.themeMode); }
+    let previousMode = this.settings.themeMode;
+    await this.save((current: AppSettings): AppSettings => {
+      previousMode = current.themeMode;
+      const next = this.copySettings(settings);
+      next.mtu = current.mtu;
+      next.delayTestUrl = current.delayTestUrl;
+      return next;
+    });
+    if (previousMode !== this.settings.themeMode) { this.applyTheme(this.settings.themeMode); }
+    this.refreshTheme();
+  }
+
+  async updateAppearance(change: (settings: AppSettings) => void): Promise<void> {
+    let previousMode = this.settings.themeMode;
+    await this.save((next: AppSettings): AppSettings => {
+      previousMode = next.themeMode;
+      change(next);
+      return next;
+    });
+    if (previousMode !== this.settings.themeMode) { this.applyTheme(this.settings.themeMode); }
     this.refreshTheme();
   }
 
@@ -112,9 +123,7 @@ class SettingsStore {
     if (!Number.isFinite(mtu) || mtu < 1280 || mtu > 9000) {
       throw new Error('MTU 必须在 1280–9000 之间');
     }
-    const next = this.copySettings(this.settings);
-    next.mtu = Math.round(mtu);
-    await this.save(next);
+    await this.save((next: AppSettings): AppSettings => { next.mtu = Math.round(mtu); return next; });
   }
 
   async setDelayTestUrl(url: string): Promise<void> {
@@ -122,9 +131,7 @@ class SettingsStore {
     if (!isValidDelayTestUrl(value)) {
       throw new Error('延迟测试地址必须是有效的 HTTP(S) URL');
     }
-    const next = this.copySettings(this.settings);
-    next.delayTestUrl = value;
-    await this.save(next);
+    await this.save((next: AppSettings): AppSettings => { next.delayTestUrl = value; return next; });
   }
 
   /** 同时校验并保存网络设置，避免表单的一部分成功、另一部分失败。 */
@@ -136,10 +143,11 @@ class SettingsStore {
     if (!isValidDelayTestUrl(value)) {
       throw new Error('延迟测试地址必须是有效的 HTTP(S) URL');
     }
-    const next = this.copySettings(this.settings);
-    next.mtu = Math.round(mtu);
-    next.delayTestUrl = value;
-    await this.save(next);
+    await this.save((next: AppSettings): AppSettings => {
+      next.mtu = Math.round(mtu);
+      next.delayTestUrl = value;
+      return next;
+    });
   }
 
   private async initializeInternal(context: common.ApplicationContext): Promise<void> {
@@ -152,25 +160,25 @@ class SettingsStore {
   }
 
   // 先落盘再替换内存设置，失败时仍向订阅者保留最后一次成功保存的值。
-  private async save(settings: AppSettings): Promise<void> {
-    if (this.initializeOperation !== undefined) {
-      await this.initializeOperation;
-    }
-    if (!this.initialized) {
-      throw new Error('设置尚未初始化');
-    }
-    if (this.saving) { throw new Error('设置正在保存，请稍后重试'); }
-    this.saving = true;
-    this.publish();
-    try {
-      await preferenceRepository.saveAppSettings(settings);
-      this.settings = this.copySettings(settings);
-    } catch (error) {
-      throw new Error('设置保存失败');
-    } finally {
-      this.saving = false;
+  private save(change: (settings: AppSettings) => AppSettings): Promise<void> {
+    const operation = this.saveQueue.then(async (): Promise<void> => {
+      if (this.initializeOperation !== undefined) { await this.initializeOperation; }
+      if (!this.initialized) { throw new Error('设置尚未初始化'); }
+      this.saving = true;
       this.publish();
-    }
+      try {
+        const next = this.copySettings(change(this.copySettings(this.settings)));
+        await preferenceRepository.saveAppSettings(next);
+        this.settings = next;
+      } catch (error) {
+        throw new Error('设置保存失败');
+      } finally {
+        this.saving = false;
+        this.publish();
+      }
+    });
+    this.saveQueue = operation.then((): void => {}, (): void => {});
+    return operation;
   }
 
   private applyTheme(mode: AppThemeMode): void {

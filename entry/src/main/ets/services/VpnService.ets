@@ -386,11 +386,7 @@ export class VpnService {
     this.sessionStartedAt = sessionStartedAt;
     this.sessionEndedAt = sessionEndedAt;
     if (previousProxyState !== proxyState) {
-      if (proxyState === ProxyState.ENABLED && previousProxyState === ProxyState.ENABLING) {
-        feedbackService.success('代理已开启');
-      } else if (proxyState === ProxyState.DISABLED && previousProxyState === ProxyState.DISABLING) {
-        feedbackService.info('代理已关闭');
-      } else if (proxyState === ProxyState.ERROR) {
+      if (proxyState === ProxyState.ERROR) {
         feedbackService.error(message.length > 0 ? message : '代理操作失败');
       }
     } else if (previousCoreState !== coreState && coreState === CoreServiceState.ERROR) {

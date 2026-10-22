@@ -8,6 +8,7 @@ import {
   CORE_RESPONSE_EVENT
 } from '../constants/CoreControlConstants';
 import {
+  CoreResponseBuffer,
   decodeCoreResponseEnvelope,
   decodeProxyDelayProgress,
   encodeCoreCommandEnvelope
@@ -25,6 +26,7 @@ interface PendingCommand {
   resolve: (response: string) => void;
   reject: (error: Error) => void;
   timeoutId: number;
+  response: CoreResponseBuffer;
 }
 
 /** UI 进程的控制通道，以 UUID 关联 CommonEvent 请求与 Extension 返回的响应。 */
@@ -98,9 +100,16 @@ class RuntimeControlService {
           if (pending === undefined) {
             return;
           }
-          clearTimeout(pending.timeoutId);
-          this.pending.delete(envelope.requestId);
-          pending.resolve(envelope.response);
+          try {
+            const response = pending.response.append(envelope);
+            if (response !== undefined) {
+              clearTimeout(pending.timeoutId);
+              this.pending.delete(envelope.requestId);
+              pending.resolve(response);
+            }
+          } catch (error) {
+            this.rejectPending(envelope.requestId, error as Error);
+          }
           return;
         }
         const progress = decodeProxyDelayProgress(data.data ?? '');
@@ -122,7 +131,8 @@ class RuntimeControlService {
       this.pending.set(requestId, {
         resolve: resolve,
         reject: reject,
-        timeoutId: timeoutId
+        timeoutId: timeoutId,
+        response: new CoreResponseBuffer()
       });
       try {
         commonEventManager.publish(CORE_COMMAND_EVENT, {

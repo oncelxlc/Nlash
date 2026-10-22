@@ -10,6 +10,8 @@ export interface CoreResponseEnvelope {
   version: number;
   requestId: string;
   response: string;
+  chunkIndex?: number;
+  chunkCount?: number;
 }
 
 /** 单节点增量测速结果；operationId 用于关联任务，delay 单位为毫秒，失败时为 -1。 */
