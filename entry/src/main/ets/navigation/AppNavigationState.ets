@@ -7,11 +7,12 @@ export class AppNavigationState {
   activityOpen: boolean = false;
   activityTab: ActivityTab = ActivityTab.CONNECTIONS;
   detailPage: AppPage = AppPage.CONNECTIONS;
+  visitedDetails: AppPage[] = [];
 
   /** 兼容卡片或通知发出的旧页面目标，集中转换为现有导航结构。 */
   selectPage(page: AppPage): void {
     if (page === AppPage.REQUESTS || page === AppPage.CONNECTIONS || page === AppPage.DNS ||
-      page === AppPage.RESOURCES || page === AppPage.THEME || page === AppPage.GENERAL) {
+      page === AppPage.RESOURCES || page === AppPage.THEME || page === AppPage.GENERAL || page === AppPage.ABOUT) {
       this.detailPage = page;
       if (page === AppPage.REQUESTS || page === AppPage.CONNECTIONS) {
         this.activityTab = page === AppPage.REQUESTS ? ActivityTab.REQUESTS : ActivityTab.CONNECTIONS;
@@ -24,6 +25,9 @@ export class AppNavigationState {
         this.detailPage = this.activityTab === ActivityTab.REQUESTS ? AppPage.REQUESTS : AppPage.CONNECTIONS;
       }
       this.selectedPage = this.activityOpen ? AppPage.SETTINGS : page;
+    }
+    if (this.activityOpen && !this.visitedDetails.includes(this.detailPage)) {
+      this.visitedDetails = this.visitedDetails.concat(this.detailPage);
     }
   }
 

@@ -48,6 +48,8 @@ const VIEW_SYNC_INTERVAL_MS = 1000;
 @Component
 export struct DashboardPage {
   @StorageProp('appTheme') @Watch('onThemeChange') theme: AppTheme = DEFAULT_APP_THEME;
+  @StorageProp('appForeground') @Watch('updateActivity') foreground: boolean = false;
+  @Prop @Watch('updateActivity') isActive: boolean = true;
   @State headerInset: number = 0;
   @State coreState: CoreServiceState = vpnService.getCoreState();
   @State proxyState: ProxyState = vpnService.getProxyState();
@@ -92,6 +94,14 @@ export struct DashboardPage {
   private alertDialog: CustomDialogController | undefined;
 
   aboutToAppear(): void {
+    this.updateActivity();
+  }
+
+  aboutToDisappear(): void { this.stopObserving(); }
+
+  private updateActivity(): void {
+    this.stopObserving();
+    if (!this.isActive || !this.foreground) { return; }
     this.unsubscribeProfile = profileStore.subscribe((snapshot: ProfileStoreSnapshot): void => {
       this.profiles = snapshot.profiles;
       this.activeProfile = snapshot.profiles.find((profile: Profile): boolean => profile.id === snapshot.activeProfileId);
@@ -105,10 +115,12 @@ export struct DashboardPage {
     });
     this.syncViewState();
     this.viewSyncTimer = setInterval((): void => this.syncViewState(), VIEW_SYNC_INTERVAL_MS);
+    this.updateCountryRotation();
     runtimeStore.refresh();
   }
 
-  aboutToDisappear(): void {
+  private stopObserving(): void {
+    this.stopCountryRotation();
     this.alertDialog?.close();
     this.unsubscribeProfile?.();
     this.unsubscribeProfile = undefined;
@@ -173,7 +185,7 @@ export struct DashboardPage {
 
   private updateCountryRotation(): void {
     this.stopCountryRotation();
-    if (this.publicNetworkChecking && selectionAnimation().duration !== 0) {
+    if (this.isActive && this.foreground && this.publicNetworkChecking && selectionAnimation().duration !== 0) {
       this.getUIContext().animateTo({ duration: 1600, curve: Curve.Linear, iterations: -1 }, (): void => {
         this.countryRotation = 360;
       });
@@ -936,7 +948,7 @@ export struct DashboardPage {
     } else if (card === DashboardCard.CONNECTIONS) {
       RuntimeStatusCard({ runtime: this.runtime, requestCount: this.requestCount })
     } else if (card === DashboardCard.MEMORY) {
-      RuntimeMemoryCard({ runtime: this.runtime, cardHeight: this.isCompact() ? 148 : 176 })
+      RuntimeMemoryCard({ runtime: this.runtime, isActive: this.isActive, cardHeight: this.isCompact() ? 148 : 176 })
     }
   }
 

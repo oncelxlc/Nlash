@@ -19,6 +19,7 @@ interface ResourceRowData { resource: GeoResource; index: number; }
 @Component
 export struct ResourcesPage {
   @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
+  @Prop @Watch('updateActivity') isActive: boolean = true;
   @Prop contentPadding: number = 16;
   onBack: () => void = (): void => {};
   @State snapshot: GeoResourceSnapshot = {
@@ -39,8 +40,13 @@ export struct ResourcesPage {
   private unsubscribe: (() => void) | undefined;
   private dialog: CustomDialogController | undefined;
 
-  aboutToAppear(): void {
+  aboutToAppear(): void { this.updateActivity(); }
+
+  private updateActivity(): void {
+    this.stopObserving();
+    if (!this.isActive) { return; }
     this.active = true;
+    this.lastRead = 0;
     this.unsubscribe = runtimeStore.subscribe((state: RuntimeStoreSnapshot): void => {
       if (this.available !== state.coreAvailable) { this.generation += 1; this.loaded = false; }
       this.available = state.coreAvailable;
@@ -48,9 +54,13 @@ export struct ResourcesPage {
     });
   }
 
-  aboutToDisappear(): void {
+  aboutToDisappear(): void { this.stopObserving(); }
+
+  private stopObserving(): void {
     this.active = false;
+    this.generation += 1;
     this.unsubscribe?.();
+    this.unsubscribe = undefined;
     this.dialog?.close();
   }
 

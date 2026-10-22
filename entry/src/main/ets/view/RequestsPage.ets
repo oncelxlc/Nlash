@@ -23,6 +23,7 @@ interface RequestCardData { record: RequestRecord; }
 @Component
 export struct RequestsPage {
   @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
+  @Prop @Watch('updateActivity') isActive: boolean = true;
   @Prop contentPadding: number = 16;
   @Link filter: RequestFilter;
   @Link query: string;
@@ -37,6 +38,12 @@ export struct RequestsPage {
 
   aboutToAppear(): void {
     this.searching = this.query.length > 0 || this.filter !== RequestFilter.ALL;
+    this.updateActivity();
+  }
+
+  private updateActivity(): void {
+    this.stopObserving();
+    if (!this.isActive) { return; }
     this.unsubscribe = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
       const records = new Map<string, RequestRecord>();
       snapshot.requests.forEach((item: RequestRecord): void => { records.set(item.id, item); });
@@ -45,8 +52,11 @@ export struct RequestsPage {
     });
   }
 
-  aboutToDisappear(): void {
+  aboutToDisappear(): void { this.stopObserving(); }
+
+  private stopObserving(): void {
     this.unsubscribe?.();
+    this.unsubscribe = undefined;
     this.cancelConfirmation?.();
     this.alertDialog?.close();
   }

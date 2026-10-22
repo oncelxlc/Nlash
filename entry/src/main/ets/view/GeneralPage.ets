@@ -35,6 +35,7 @@ interface GeneralEditParams {
 @Component
 export struct GeneralPage {
   @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
+  @Prop @Watch('updateActivity') isActive: boolean = true;
   onBack: () => void = (): void => {};
   @State settings: GeneralSettings = DEFAULT_GENERAL_SETTINGS;
   @State testUrl: string = settingsStore.getSnapshot().settings.delayTestUrl;
@@ -52,7 +53,11 @@ export struct GeneralPage {
   private unsubscribeSettings: (() => void) | undefined;
   private dialog: CustomDialogController | undefined;
 
-  aboutToAppear(): void {
+  aboutToAppear(): void { this.updateActivity(); }
+
+  private updateActivity(): void {
+    this.stopObserving();
+    if (!this.isActive) { return; }
     this.active = true;
     try { this.supported = coreClient.getVersion() !== 'unavailable/non-arm64'; }
     catch (_error) { this.supported = false; }
@@ -71,11 +76,16 @@ export struct GeneralPage {
     if (this.supported) { this.load(); }
   }
 
-  aboutToDisappear(): void {
+  aboutToDisappear(): void { this.stopObserving(); }
+
+  private stopObserving(): void {
     this.active = false;
     this.generation += 1;
+    this.loaded = false;
     this.unsubscribeRuntime?.();
+    this.unsubscribeRuntime = undefined;
     this.unsubscribeSettings?.();
+    this.unsubscribeSettings = undefined;
     this.dialog?.close();
   }
 

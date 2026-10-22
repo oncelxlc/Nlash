@@ -87,6 +87,8 @@ class SettingsStore {
       hilog.warn(0x0000, 'NlashTheme', 'Cannot read system palette: %{public}s', String(error));
     }
     const theme = resolveAppTheme(this.settings, dark, systemAccent);
+    // 配置回调可能重复到达；相同配色不重新触发整页主题更新与转场。
+    if (JSON.stringify(AppStorage.get('appTheme')) === JSON.stringify(theme)) { return; }
     AppStorage.setOrCreate('appTheme', theme);
     ThemeControl.setDefaultTheme({ colors: {
       brand: theme.accent,

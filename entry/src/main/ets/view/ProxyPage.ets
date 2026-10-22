@@ -27,6 +27,7 @@ import { ProxyNodeCard } from '../components/ProxyNodeCard';
 @Component
 export struct ProxyPage {
   @StorageProp('appTheme') @Watch('onThemeChange') theme: AppTheme = DEFAULT_APP_THEME;
+  @Prop @Watch('updateActivity') isActive: boolean = true;
   @State headerInset: number = 0;
   @Prop forceExpanded: boolean = false;
   @State coreAvailable: boolean = false;
@@ -60,8 +61,16 @@ export struct ProxyPage {
   aboutToAppear(): void {
     this.restoreSelectionPending = true;
     this.entryGroup = '';
-    this.getUIContext().getUIObserver().on('didLayout', this.restoreSelectionAfterLayout);
     this.fontScale = this.theme.fontScale || this.getUIContext().fp2px(1) / this.getUIContext().vp2px(1);
+    this.updateActivity();
+  }
+
+  private updateActivity(): void {
+    this.stopObserving();
+    if (!this.isActive) { return; }
+    if (this.restoreSelectionPending) {
+      this.getUIContext().getUIObserver().on('didLayout', this.restoreSelectionAfterLayout);
+    }
     this.unsubscribeRuntime = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
       this.coreAvailable = snapshot.coreAvailable;
       this.previewLoading = snapshot.previewLoading;
@@ -98,7 +107,9 @@ export struct ProxyPage {
     runtimeStore.refresh();
   }
 
-  aboutToDisappear(): void {
+  aboutToDisappear(): void { this.stopObserving(); }
+
+  private stopObserving(): void {
     this.getUIContext().getUIObserver().off('didLayout', this.restoreSelectionAfterLayout);
     this.unsubscribeRuntime?.();
     this.unsubscribeRuntime = undefined;

@@ -13,6 +13,7 @@ import { ResourcesPage } from './ResourcesPage';
 export struct ActivityPage {
   @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
   @Prop page: AppPage = AppPage.ACTIVITY;
+  @Prop isActive: boolean = true;
   @Prop selectedTab: ActivityTab = ActivityTab.CONNECTIONS;
   onBack: () => void = (): void => {};
   @State connectionQuery: string = '';
@@ -23,15 +24,16 @@ export struct ActivityPage {
   build() {
     Column() {
       if (this.page === AppPage.DNS) {
-        DnsQueriesPage({ contentPadding: this.metrics.pagePadding, onBack: this.onBack })
+        DnsQueriesPage({ isActive: this.isActive, contentPadding: this.metrics.pagePadding, onBack: this.onBack })
       } else if (this.page === AppPage.RESOURCES) {
-        ResourcesPage({ contentPadding: this.metrics.pagePadding, onBack: this.onBack })
+        ResourcesPage({ isActive: this.isActive, contentPadding: this.metrics.pagePadding, onBack: this.onBack })
       } else if (this.page === AppPage.REQUESTS ||
         (this.page === AppPage.ACTIVITY && this.selectedTab === ActivityTab.REQUESTS)) {
-        RequestsPage({ query: this.requestQuery, filter: this.requestFilter,
+        RequestsPage({ isActive: this.isActive, query: this.requestQuery, filter: this.requestFilter,
           contentPadding: this.metrics.pagePadding, onBack: this.onBack })
       } else {
-        ConnectionsPage({ query: this.connectionQuery, contentPadding: this.metrics.pagePadding, onBack: this.onBack })
+        ConnectionsPage({ isActive: this.isActive, query: this.connectionQuery,
+          contentPadding: this.metrics.pagePadding, onBack: this.onBack })
       }
     }
     .width('100%').height('100%').backgroundColor(this.theme.background)

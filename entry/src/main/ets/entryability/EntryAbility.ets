@@ -77,6 +77,7 @@ export default class EntryAbility extends UIAbility {
 
   onDestroy(): void {
     this.foreground = false;
+    AppStorage.setOrCreate('appForeground', false);
     this.unsubscribeVpnLifecycle?.();
     this.unsubscribeVpnLifecycle = undefined;
     vpnNotificationService.stop().catch((): void => {
@@ -112,6 +113,7 @@ export default class EntryAbility extends UIAbility {
 
   onForeground(): void {
     this.foreground = true;
+    AppStorage.setOrCreate('appForeground', true);
     profileStore.onForeground();
     runtimeStore.setForeground(true);
     notificationPermissionService.ensurePermission(this.context).then((enabled: boolean): Promise<void> => {
@@ -128,6 +130,7 @@ export default class EntryAbility extends UIAbility {
   /** 暂停界面轮询，代理和通知继续遵循各自的服务生命周期。 */
   onBackground(): void {
     this.foreground = false;
+    AppStorage.setOrCreate('appForeground', false);
     runtimeStore.setForeground(false);
     // Ability has back to background
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onBackground');

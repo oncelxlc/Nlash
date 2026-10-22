@@ -10,6 +10,7 @@ import { ProxyPage } from '../view/ProxyPage';
 import { SettingsPage } from '../view/SettingsPage';
 import { ThemePage } from '../view/ThemePage';
 import { GeneralPage } from '../view/GeneralPage';
+import { AboutPage } from '../view/AboutPage';
 import { AppPage } from '../model/NavigationModels';
 import { NAVIGATION_PAGES } from '../constants/NavigationConstants';
 import { AppNavigationState } from '../navigation/AppNavigationState';
@@ -19,13 +20,13 @@ import { navigationIntentService } from '../services/NavigationIntentService';
 import { NavigationTransition, SettingsStoreSnapshot } from '../model/SettingsModels';
 import { settingsStore } from '../stores/SettingsStore';
 import { PageEntrance } from '../components/PageEntrance';
-import { detailTransition } from '../utils/AnimationUtils';
 
 /** 应用页面容器，统一导航、反馈展示及返回行为，并管理页面级订阅的释放。 */
 @Entry
 @Component
 struct Index {
   @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
+  @StorageProp('appForeground') foreground: boolean = false;
   @State navigationState: AppNavigationState = new AppNavigationState();
   @State navigationTransition: NavigationTransition = settingsStore.getSnapshot().settings.navigationTransition;
   @State entranceOffset: number = 24;
@@ -70,8 +71,15 @@ struct Index {
   }
 
   private selectPage(page: AppPage): void {
+    this.entranceOffset = page > this.navigationState.selectedPage ? 24 : -24;
     this.navigationState.selectPage(page);
   }
+
+  private activePage(): AppPage {
+    return this.navigationState.activityOpen ? this.navigationState.detailPage : this.navigationState.selectedPage;
+  }
+
+  private isPageActive(page: AppPage): boolean { return this.foreground && this.activePage() === page; }
 
   private selectTab(index: number): void {
     const page = NAVIGATION_PAGES[index];
@@ -96,6 +104,7 @@ struct Index {
       case AppPage.SETTINGS:
       case AppPage.THEME:
       case AppPage.GENERAL:
+      case AppPage.ABOUT:
         return $r('app.string.nav_settings');
       case AppPage.ACTIVITY:
       case AppPage.DNS:
@@ -119,6 +128,7 @@ struct Index {
       case AppPage.SETTINGS:
       case AppPage.THEME:
       case AppPage.GENERAL:
+      case AppPage.ABOUT:
         return $r('app.media.nav_settings');
       case AppPage.ACTIVITY:
         return $r('app.media.nav_activity');
@@ -160,29 +170,28 @@ struct Index {
   @Builder
   private pageContent(page: AppPage) {
     if (page === AppPage.DASHBOARD) {
-      DashboardPage()
+      DashboardPage({ isActive: this.isPageActive(page) })
     } else if (page === AppPage.PROXY) {
-      ProxyPage()
+      ProxyPage({ isActive: this.isPageActive(page) })
     } else if (page === AppPage.CONFIGURATION) {
       ConfigurationPage()
-    } else if (page === AppPage.ACTIVITY) {
-      if (this.navigationState.detailPage === AppPage.THEME) {
-        ThemePage({ onBack: (): void => { this.selectPage(AppPage.SETTINGS); } })
-      } else if (this.navigationState.detailPage === AppPage.GENERAL) {
-        GeneralPage({ onBack: (): void => { this.selectPage(AppPage.SETTINGS); } })
-      } else {
-        ActivityPage({
-          page: this.navigationState.detailPage,
-          selectedTab: this.navigationState.activityTab,
-          onBack: (): void => { this.selectPage(AppPage.SETTINGS); }
-        })
-      }
+    } else if (page === AppPage.THEME) {
+      ThemePage({ onBack: (): void => { this.selectPage(AppPage.SETTINGS); } })
+    } else if (page === AppPage.GENERAL) {
+      GeneralPage({ isActive: this.isPageActive(page), onBack: (): void => { this.selectPage(AppPage.SETTINGS); } })
+    } else if (page === AppPage.ABOUT) {
+      AboutPage({ onBack: (): void => { this.selectPage(AppPage.SETTINGS); } })
     } else if (page === AppPage.SETTINGS) {
-      SettingsPage({ onOpenPage: (destination: AppPage): void => { this.selectPage(destination); } })
+      SettingsPage({ isActive: this.isPageActive(page),
+        onOpenPage: (destination: AppPage): void => { this.selectPage(destination); } })
+    } else {
+      ActivityPage({ page: page, isActive: this.isPageActive(page),
+        onBack: (): void => { this.selectPage(AppPage.SETTINGS); } })
     }
   }
 
-  build() {
+  @Builder
+  private applicationContent() {
     Stack() {
       HdsTabs({
         barPosition: BarPosition.End,
@@ -190,10 +199,7 @@ struct Index {
       }) {
         ForEach(NAVIGATION_PAGES, (page: AppPage) => {
           TabContent() {
-            PageEntrance({
-              effect: this.navigationTransition, initialOffset: this.entranceOffset,
-              content: (): void => { this.pageContent(page); }
-            })
+            this.pageContent(page)
           }
           .tabBar(this.getTabBarStyle(page))
           .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
@@ -204,10 +210,11 @@ struct Index {
       .animationDuration(0)
       .onContentWillChange((from: number, to: number): boolean => {
         this.entranceOffset = to > from ? 24 : -24;
+        this.selectTab(to);
         return true;
       })
       .barOverlap(true)
-      .cachedMaxCount(0, TabsCacheMode.CACHE_LATEST_SWITCHED)
+      .cachedMaxCount(NAVIGATION_PAGES.length - 1, TabsCacheMode.CACHE_LATEST_SWITCHED)
       .barFloatingStyle({
         adaptToHandedness: true,
         thermoCtrl: true,
@@ -225,11 +232,12 @@ struct Index {
       .visibility(this.navigationState.activityOpen ? Visibility.Hidden : Visibility.Visible)
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
 
-      if (this.navigationState.activityOpen) {
-        Column() { this.pageContent(AppPage.ACTIVITY) }
+      ForEach(this.navigationState.visitedDetails, (page: AppPage) => {
+        Column() { this.pageContent(page) }
           .width('100%').height('100%').backgroundColor(this.theme.background)
-          .transition(detailTransition(this.navigationTransition === NavigationTransition.SLIDE))
-      }
+          .visibility(this.navigationState.activityOpen && this.navigationState.detailPage === page ?
+            Visibility.Visible : Visibility.Hidden)
+      }, (page: AppPage): string => page.toString())
     }
     .width('100%')
     .height('100%')
@@ -237,4 +245,11 @@ struct Index {
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
 
+  build() {
+    Stack() {
+      PageEntrance({ pageKey: this.activePage(), effect: this.navigationTransition,
+        initialOffset: this.entranceOffset, content: (): void => { this.applicationContent(); } })
+    }.width('100%').height('100%').backgroundColor(this.theme.background)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+  }
 }

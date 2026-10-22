@@ -18,6 +18,7 @@ interface ConnectionCardData { connection: ConnectionSnapshot; }
 @Component
 export struct ConnectionsPage {
   @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
+  @Prop @Watch('updateActivity') isActive: boolean = true;
   @Prop contentPadding: number = 16;
   @Link query: string;
   onBack: () => void = (): void => {};
@@ -33,6 +34,12 @@ export struct ConnectionsPage {
 
   aboutToAppear(): void {
     this.searching = this.query.length > 0;
+    this.updateActivity();
+  }
+
+  private updateActivity(): void {
+    this.stopObserving();
+    if (!this.isActive) { return; }
     this.unsubscribe = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
       this.available = snapshot.coreAvailable;
       const records = new Map<string, ConnectionSnapshot>();
@@ -44,8 +51,11 @@ export struct ConnectionsPage {
     runtimeStore.refresh();
   }
 
-  aboutToDisappear(): void {
+  aboutToDisappear(): void { this.stopObserving(); }
+
+  private stopObserving(): void {
     this.unsubscribe?.();
+    this.unsubscribe = undefined;
     this.cancelConfirmation?.();
     this.alertDialog?.close();
   }

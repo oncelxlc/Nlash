@@ -15,6 +15,8 @@ const MEMORY_POLL_INTERVAL_MS = 5000;
 @Component
 export struct RuntimeMemoryCard {
   @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
+  @StorageProp('appForeground') @Watch('updateActivity') foreground: boolean = false;
+  @Prop @Watch('updateActivity') isActive: boolean = true;
   @Prop runtime: DashboardSnapshot | undefined = undefined;
   @Prop cardHeight: number = 148;
   @State appMemoryBytes: number | undefined = undefined;
@@ -24,12 +26,20 @@ export struct RuntimeMemoryCard {
   private alertDialog: CustomDialogController | undefined;
 
   aboutToAppear(): void {
+    this.updateActivity();
+  }
+
+  private updateActivity(): void {
+    this.stopPolling();
+    if (!this.isActive || !this.foreground) { return; }
     this.generation += 1;
     this.refreshMemory();
     this.timer = setInterval((): void => { this.refreshMemory(); }, MEMORY_POLL_INTERVAL_MS);
   }
 
-  aboutToDisappear(): void {
+  aboutToDisappear(): void { this.stopPolling(); }
+
+  private stopPolling(): void {
     this.alertDialog?.close();
     this.generation += 1;
     if (this.timer !== undefined) {

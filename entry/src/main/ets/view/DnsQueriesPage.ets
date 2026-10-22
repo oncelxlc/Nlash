@@ -15,6 +15,7 @@ import { CONTROL_HEIGHT, DETAIL_CARD_RADIUS, BODY_FONT_SIZE, CAPTION_FONT_SIZE }
 @Component
 export struct DnsQueriesPage {
   @StorageProp('appTheme') theme: AppTheme = DEFAULT_APP_THEME;
+  @Prop @Watch('updateActivity') isActive: boolean = true;
   @Prop contentPadding: number = 16;
   onBack: () => void = (): void => {};
   @State records: DnsQueryRecord[] = [];
@@ -29,8 +30,13 @@ export struct DnsQueriesPage {
   private generation: number = 0;
   private unsubscribe: (() => void) | undefined;
 
-  aboutToAppear(): void {
+  aboutToAppear(): void { this.updateActivity(); }
+
+  private updateActivity(): void {
+    this.stopObserving();
+    if (!this.isActive) { return; }
     this.active = true;
+    this.lastRead = 0;
     this.unsubscribe = runtimeStore.subscribe((snapshot: RuntimeStoreSnapshot): void => {
       if (this.available !== snapshot.coreAvailable) { this.generation += 1; }
       this.available = snapshot.coreAvailable;
@@ -38,7 +44,14 @@ export struct DnsQueriesPage {
     });
   }
 
-  aboutToDisappear(): void { this.active = false; this.unsubscribe?.(); }
+  aboutToDisappear(): void { this.stopObserving(); }
+
+  private stopObserving(): void {
+    this.active = false;
+    this.generation += 1;
+    this.unsubscribe?.();
+    this.unsubscribe = undefined;
+  }
 
   private async loadRecords(): Promise<void> {
     if (this.loading) { return; }

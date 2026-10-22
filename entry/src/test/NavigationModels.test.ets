@@ -9,7 +9,7 @@ export default function navigationModelsTest() {
   describe('navigationModels', () => {
     it('opensEverySettingsDetailAndReturnsWithoutLosingThePrimaryPage', 0, () => {
       const state = new AppNavigationState();
-      [AppPage.REQUESTS, AppPage.CONNECTIONS, AppPage.DNS, AppPage.RESOURCES, AppPage.THEME, AppPage.GENERAL].forEach((page: AppPage): void => {
+      [AppPage.REQUESTS, AppPage.CONNECTIONS, AppPage.DNS, AppPage.RESOURCES, AppPage.THEME, AppPage.GENERAL, AppPage.ABOUT].forEach((page: AppPage): void => {
         state.selectPage(page);
         expect(state.detailPage).assertEqual(page);
         expect(state.activityOpen).assertTrue();
@@ -21,6 +21,21 @@ export default function navigationModelsTest() {
       state.selectPage(AppPage.DNS);
       state.selectPage(AppPage.ACTIVITY);
       expect(state.detailPage).assertEqual(AppPage.REQUESTS);
+    });
+    it('retainsOnlyVisitedDetailsOnceDuringTheCurrentSession', 0, () => {
+      const state = new AppNavigationState();
+      expect(state.visitedDetails.length).assertEqual(0);
+      state.selectPage(AppPage.THEME);
+      state.selectPage(AppPage.SETTINGS);
+      state.selectPage(AppPage.ABOUT);
+      state.selectPage(AppPage.DASHBOARD);
+      state.selectPage(AppPage.THEME);
+      expect(state.visitedDetails.length).assertEqual(2);
+      expect(state.visitedDetails[0]).assertEqual(AppPage.THEME);
+      expect(state.visitedDetails[1]).assertEqual(AppPage.ABOUT);
+      state.selectPage(AppPage.ACTIVITY);
+      expect(state.visitedDetails[2]).assertEqual(AppPage.CONNECTIONS);
+      expect(new AppNavigationState().visitedDetails.length).assertEqual(0);
     });
     it('exposesExpectedNavigationItems', 0, () => {
       expect(NAVIGATION_PAGES.length).assertEqual(4);
