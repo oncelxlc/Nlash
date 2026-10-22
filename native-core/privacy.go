@@ -19,7 +19,6 @@ func clearPersistedDNS(cache *cachefile.CacheFile) error {
 }
 
 func init() {
-	// Mihomo's default logger writes detailed connection data to stdout. Nlash only
-	// exposes the stable, sanitized events emitted by events.go.
+	// Detailed logs stay in the opt-in memory buffer; never send them to system stdout.
 	logrus.SetOutput(io.Discard)
 }

@@ -53,6 +53,7 @@ export struct SettingsPage {
         this.moreRow('最近请求', $r('app.media.runtime_duration'), AppPage.REQUESTS)
         this.moreRow('实时连接', $r('app.media.nav_connections'), AppPage.CONNECTIONS)
         this.moreRow('DNS 查询', $r('app.media.nav_dns'), AppPage.DNS)
+        this.moreRow('日志', $r('app.media.nav_requests'), AppPage.LOGS)
         this.moreRow('资源', $r('app.media.nav_resources'), AppPage.RESOURCES, false)
       }
       .width('100%').borderRadius(24).clip(true).backgroundColor(this.theme.surface)

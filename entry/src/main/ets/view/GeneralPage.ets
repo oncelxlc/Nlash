@@ -15,6 +15,8 @@ import { selectionAnimation } from '../utils/AnimationUtils';
 import { FadingScrollLayout } from '../components/FadingScrollLayout';
 import { SecondaryPageHeader } from '../components/SecondaryPageHeader';
 import { GeneralInputDialog } from '../components/GeneralInputDialog';
+import { SingleChoiceControl } from '../components/SingleChoiceControl';
+import { LOG_LEVELS, LOG_LEVEL_LABELS } from '../constants/LogConstants';
 
 interface GeneralToggleParams {
   key: string;
@@ -291,6 +293,25 @@ export struct GeneralPage {
   }
 
   @Builder
+  private logSection() {
+    this.sectionTitle('日志')
+    Column() {
+      this.toggleRow({ key: 'log-capture', title: '开启日志捕获', value: this.settings.logCapture,
+        change: (next: GeneralSettings, value: boolean): void => { next.logCapture = value; } })
+      Column({ space: 12 }) {
+        Text('日志等级').fontSize(themeFontSize(16, this.theme)).fontFamily(this.theme.fontFamily)
+          .fontColor($r('app.color.content_primary')).width('100%')
+        SingleChoiceControl({ labels: LOG_LEVEL_LABELS, selectedIndex: LOG_LEVELS.indexOf(this.settings.logLevel),
+          scrollable: true, isEnabled: this.loaded && !this.saving, accessibilityLabel: '日志等级',
+          onChange: (index: number): void => {
+            this.toggle((next: GeneralSettings): void => { next.logLevel = LOG_LEVELS[index]; });
+          } })
+      }.width('100%').padding(16)
+    }.width('100%').borderRadius(24).clip(true).backgroundColor(this.theme.surface)
+    this.note('捕获所选等级及更高等级的内核日志；静默时不捕获。最多保留最近 500 条、64 KiB 正文，仅驻留内存。关闭捕获后可继续查看和导出已有记录。')
+  }
+
+  @Builder
   private content() {
     Scroll() {
       Column({ space: 12 }) {
@@ -306,6 +327,7 @@ export struct GeneralPage {
         this.inboundSection()
         this.connectionSection()
         this.coreSection()
+        this.logSection()
       }.width('100%').constraintSize({ maxWidth: 640 })
         .padding({ top: this.headerInset, bottom: 32, left: this.contentPadding, right: this.contentPadding })
     }.width('100%').height('100%').scrollBar(BarState.Off).align(Alignment.Top)

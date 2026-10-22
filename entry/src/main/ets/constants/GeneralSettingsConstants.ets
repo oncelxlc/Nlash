@@ -1,4 +1,5 @@
 import { GeneralSettings } from '../model/GeneralSettingsModels';
+import { LogLevel } from '../model/LogModels';
 
 export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
   mixedPort: 7890,
@@ -16,5 +17,7 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
   ipv6: false,
   hosts: [],
   appendSystemDns: false,
-  geoMemoryMode: true
+  geoMemoryMode: true,
+  logLevel: LogLevel.INFO,
+  logCapture: false
 };

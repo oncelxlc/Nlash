@@ -11,7 +11,8 @@ export enum AppPage {
   RESOURCES,
   THEME,
   GENERAL,
-  ABOUT
+  ABOUT,
+  LOGS
 }
 
 export enum ActivityTab {

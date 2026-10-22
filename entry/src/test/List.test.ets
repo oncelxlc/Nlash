@@ -18,6 +18,7 @@ import publicNetworkTest from './PublicNetwork.test';
 import activityDetailsTest from './ActivityDetails.test';
 import generalSettingsTest from './GeneralSettings.test';
 import runtimeSessionTest from './RuntimeSession.test';
+import logsTest from './Logs.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -40,4 +41,5 @@ export default function testsuite() {
   activityDetailsTest();
   generalSettingsTest();
   runtimeSessionTest();
+  logsTest();
 }

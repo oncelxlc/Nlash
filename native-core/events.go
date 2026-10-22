@@ -1,6 +1,10 @@
 package main
 
-import "sync"
+import (
+	"sync"
+
+	coreLog "github.com/metacubex/mihomo/log"
+)
 
 const maxCoreProgressBytes = 8 * 1024
 
@@ -29,6 +33,11 @@ func setCoreEventHandler(handler coreEventHandler) {
 }
 
 func emitCoreEvent(eventType coreEventType, state coreRuntimeState, code coreErrorCode, message string) {
+	level := coreLog.INFO
+	if code != coreOK {
+		level = coreLog.ERROR
+	}
+	logHistory.append(coreLog.Event{LogLevel: level, Payload: message})
 	dispatchCoreEvent(eventType, state, code, sanitizeCoreErrorText(message))
 }
 

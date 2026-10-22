@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -51,14 +52,19 @@ type generalSettings struct {
 	Hosts                []hostOverride `json:"hosts"`
 	AppendSystemDNS      bool           `json:"appendSystemDns"`
 	GeoMemoryMode        bool           `json:"geoMemoryMode"`
+	LogLevel             string         `json:"logLevel"`
+	LogCapture           bool           `json:"logCapture"`
 }
 
 func defaultGeneralSettings() generalSettings {
 	return generalSettings{MixedPort: 7890, UnifiedDelay: true, TCPConcurrent: true,
-		AutoCloseConnections: true, GeoMemoryMode: true, Hosts: []hostOverride{}}
+		AutoCloseConnections: true, GeoMemoryMode: true, Hosts: []hostOverride{}, LogLevel: "info"}
 }
 
 func validateGeneralSettings(settings generalSettings) error {
+	if _, ok := coreLog.LogLevelMapping[settings.LogLevel]; !ok {
+		return errors.New("日志等级无效")
+	}
 	if settings.MixedPort < 0 || settings.MixedPort > 65535 ||
 		(settings.ExternalController && settings.MixedPort == 9090) {
 		return errors.New("端口须为 0–65535，且不能与控制器端口 9090 冲突")
@@ -129,6 +135,7 @@ func readGeneralSettings(home string) (generalSettings, error) {
 
 // 应用层只覆写自己管理的项目，订阅原文与其他 DNS、规则配置保持完整。
 func applyGeneralOverrides(raw *config.RawConfig, settings generalSettings, systemDNS []string) {
+	raw.LogLevel = coreLog.LogLevelMapping[settings.LogLevel]
 	raw.MixedPort = settings.MixedPort
 	raw.AllowLan = settings.AllowLan
 	raw.BindAddress = "*"
@@ -230,7 +237,10 @@ func (runtime *coreRuntime) saveGeneralSettings(payload json.RawMessage) coreCom
 	if next.Hosts == nil {
 		next.Hosts = []hostOverride{}
 	}
-	if runtime.state != coreRunning {
+	withoutLogChanges := next
+	withoutLogChanges.LogLevel, withoutLogChanges.LogCapture = previous.LogLevel, previous.LogCapture
+	// 日志开关和等级不重建代理监听器或活动连接。
+	if runtime.state != coreRunning || reflect.DeepEqual(withoutLogChanges, previous) {
 		data, err := json.Marshal(next)
 		if err == nil {
 			err = writeAtomic(filepath.Join(runtime.workDir, generalSettingsFile), data)
@@ -239,6 +249,8 @@ func (runtime *coreRuntime) saveGeneralSettings(payload json.RawMessage) coreCom
 			return commandFailure("SAVE_FAILED", "保存失败，原设置已保留")
 		}
 		runtime.general = next
+		logHistory.configure(next)
+		coreLog.SetLevel(coreLog.LogLevelMapping[next.LogLevel])
 		return commandSuccess(next)
 	}
 	if runtime.proxyEnabled && runtime.general.IPv6 != next.IPv6 {
@@ -285,6 +297,7 @@ func (runtime *coreRuntime) applyGeneralSettings(next generalSettings, persist b
 		return commandFailure("APPLY_FAILED", "应用或保存失败，已恢复原设置；请检查端口占用和存储空间")
 	}
 	runtime.general = next
+	logHistory.configure(next)
 	return commandSuccess(next)
 }
 

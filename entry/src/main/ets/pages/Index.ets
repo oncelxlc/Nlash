@@ -11,6 +11,7 @@ import { SettingsPage } from '../view/SettingsPage';
 import { ThemePage } from '../view/ThemePage';
 import { GeneralPage } from '../view/GeneralPage';
 import { AboutPage } from '../view/AboutPage';
+import { LogsPage } from '../view/LogsPage';
 import { AppPage } from '../model/NavigationModels';
 import { NAVIGATION_PAGES } from '../constants/NavigationConstants';
 import { AppNavigationState } from '../navigation/AppNavigationState';
@@ -105,6 +106,7 @@ struct Index {
       case AppPage.THEME:
       case AppPage.GENERAL:
       case AppPage.ABOUT:
+      case AppPage.LOGS:
         return $r('app.string.nav_settings');
       case AppPage.ACTIVITY:
       case AppPage.DNS:
@@ -129,6 +131,7 @@ struct Index {
       case AppPage.THEME:
       case AppPage.GENERAL:
       case AppPage.ABOUT:
+      case AppPage.LOGS:
         return $r('app.media.nav_settings');
       case AppPage.ACTIVITY:
         return $r('app.media.nav_activity');
@@ -181,6 +184,8 @@ struct Index {
       GeneralPage({ isActive: this.isPageActive(page), onBack: (): void => { this.selectPage(AppPage.SETTINGS); } })
     } else if (page === AppPage.ABOUT) {
       AboutPage({ onBack: (): void => { this.selectPage(AppPage.SETTINGS); } })
+    } else if (page === AppPage.LOGS) {
+      LogsPage({ isActive: this.isPageActive(page), onBack: (): void => { this.selectPage(AppPage.SETTINGS); } })
     } else if (page === AppPage.SETTINGS) {
       SettingsPage({
         onOpenPage: (destination: AppPage): void => { this.selectPage(destination); } })

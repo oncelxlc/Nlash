@@ -1,3 +1,5 @@
+import { LogLevel } from './LogModels';
+
 export interface HostOverride {
   host: string;
   value: string;
@@ -21,4 +23,6 @@ export interface GeneralSettings {
   hosts: HostOverride[];
   appendSystemDns: boolean;
   geoMemoryMode: boolean;
+  logLevel: LogLevel;
+  logCapture: boolean;
 }

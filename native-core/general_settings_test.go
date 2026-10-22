@@ -58,13 +58,15 @@ func TestGeneralDefaultsMigrationAndValidation(t *testing.T) {
 		}
 		settings, err := readGeneralSettings(dir)
 		if err != nil || !settings.UnifiedDelay || !settings.TCPConcurrent || !settings.GeoMemoryMode ||
-			!settings.AutoCloseConnections || settings.IPv6 || settings.Hosts == nil {
+			!settings.AutoCloseConnections || settings.IPv6 || settings.Hosts == nil ||
+			settings.LogLevel != "info" || settings.LogCapture {
 			t.Fatalf("default migration failed: %+v, %v", settings, err)
 		}
 	}
 	for _, payload := range []string{
 		`{"mixedPort":-1}`, `{"mixedPort":65536}`, `{"externalController":true,"controllerSecret":""}`,
 		`{"authentication":true}`, `{"username":"user:name"}`, `{"password":"a\nb"}`,
+		`{"logLevel":"trace"}`, `{"logLevel":""}`,
 		`{"hosts":[{"host":"test.invalid","value":"bad:ip"}]}`,
 		`{"hosts":[{"host":"bad..invalid","value":"1.1.1.1"}]}`,
 		`{"hosts":[{"host":"test.invalid","value":"1.1.1.1"},{"host":"TEST.invalid","value":"2.2.2.2"}]}`,
@@ -89,11 +91,12 @@ func TestGeneralOverridesPreserveProfileAndEnforceAuthentication(t *testing.T) {
 	settings.Authentication, settings.Username, settings.Password = true, "user", "pass:word"
 	settings.ExternalController, settings.ControllerSecret = true, "secret"
 	settings.IPv6, settings.FindProcess, settings.AppendSystemDNS = true, true, true
+	settings.LogLevel = "debug"
 	settings.Hosts = []hostOverride{{Host: "local.invalid", Value: "192.0.2.1, 2001:db8::1"}}
 	applyGeneralOverrides(raw, settings, []string{"8.8.8.8", "192.0.2.53"})
 	if !reflect.DeepEqual(raw.Authentication, []string{"user:pass:word"}) || len(raw.SkipAuthPrefixes) != 0 ||
 		raw.ExternalController != "127.0.0.1:9090" || raw.FindProcessMode != process.FindProcessAlways ||
-		!raw.IPv6 || !raw.DNS.IPv6 || raw.GeodataLoader != "memconservative" {
+		!raw.IPv6 || !raw.DNS.IPv6 || raw.GeodataLoader != "memconservative" || raw.LogLevel.String() != "debug" {
 		t.Fatal("core settings or authentication not applied")
 	}
 	if len(raw.Hosts) != 2 || raw.Hosts["profile.invalid"] != "1.1.1.1" ||

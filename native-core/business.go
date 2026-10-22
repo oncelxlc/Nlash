@@ -211,6 +211,9 @@ func (runtime *coreRuntime) executeCommand(raw string) string {
 	if command.Type == "updateSystemDNS" {
 		return marshalCommandResponse(runtime.updateSystemDNS(command.Payload))
 	}
+	if command.Type == "logSnapshot" {
+		return marshalCommandResponse(commandSuccess(logHistory.snapshot()))
+	}
 	runtime.mu.RLock()
 	defer runtime.mu.RUnlock()
 	if command.Type == "previewProxySnapshot" {

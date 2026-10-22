@@ -199,6 +199,7 @@ func (runtime *coreRuntime) start(options coreStartOptions) (code coreErrorCode)
 	if err != nil {
 		return runtime.setFailure(coreConfigInvalid, err)
 	}
+	logHistory.configure(settings)
 	cfg, proxyGroupOrder, err := parseRuntimeConfigWithSettings(data, false, settings, runtime.systemDNS)
 	if err != nil {
 		return runtime.setFailure(coreConfigInvalid, err)
