@@ -59,8 +59,6 @@ export struct ProxyPage {
   private unsubscribeSettings: (() => void) | undefined = undefined;
 
   aboutToAppear(): void {
-    this.restoreSelectionPending = true;
-    this.entryGroup = '';
     this.fontScale = this.theme.fontScale || this.getUIContext().fp2px(1) / this.getUIContext().vp2px(1);
     this.updateActivity();
   }
@@ -94,7 +92,7 @@ export struct ProxyPage {
           operation.pendingProxies.join('\n') !== this.delayOperations[index]?.pendingProxies.join('\n'))) {
         this.delayOperations = snapshot.delayOperations;
       }
-      // 等待配置和偏好加载完成；仅在本次进入时恢复，不跟随定时快照反复滚动。
+      // 等待配置和偏好加载完成；页面存活期间只自动定位一次，切页和前后台切换不重置。
       if (this.restoreSelectionPending && !this.previewLoading && this.entryGroup.length === 0 &&
         groups.some((group: ProxyGroupSnapshot): boolean => group.name === snapshot.selectedProxyGroup)) {
         this.entryGroup = snapshot.selectedProxyGroup;
